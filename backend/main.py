@@ -260,6 +260,23 @@ async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         print(f"Erro DB: {e}")
         raise HTTPException(status_code=500, detail="Erro ao buscar dados.")
+    
+@app.delete("/plans/{plan_id}")
+async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+    """Remove um plano do banco de dados (Ação de Admin)."""
+    try:
+        result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+        plan = result.scalars().first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Plano não encontrado")
+        
+        await db.delete(plan)
+        await db.commit()
+        return {"ok": True, "message": "Plano deletado com sucesso"}
+    except Exception as e:
+        await db.rollback()
+        print(f"Erro DB: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao deletar plano.")
 
 # ============================================================================
 # 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)

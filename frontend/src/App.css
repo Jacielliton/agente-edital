@@ -48,8 +48,7 @@ body {
 */
 #root {
   width: 100%;
-  min-height: 100vh;
-  display: flex;
+  min-height: 100vh;  
   justify-content: center;
   align-items: flex-start; /* Mantém o conteúdo no topo */
   padding: 3rem 1.5rem; /* Espaçamento vertical e lateral seguro */
@@ -59,10 +58,12 @@ body {
 .container {
   width: 100%; 
   max-width: 1000px;
+  /* "margin: 0 auto" centraliza o bloco horizontalmente */
+  margin: 0 auto; 
+  padding: 0 1.5rem; /* Adiciona um respiro nas laterais para mobile */
   display: flex;
   flex-direction: column;
   gap: 2rem;
-  /* Margem auto removida pois o flex pai (#root) já centraliza */
 }
 
 /* --- Header --- */
@@ -792,4 +793,150 @@ body {
   .input, .select, .btn {
     min-height: 48px;
   }
+}
+
+/* --- Navbar --- */
+.navbar {
+  background: white;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.nav-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1.5rem;
+}
+
+.nav-logo {
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: color 0.2s;
+}
+
+.nav-item:hover {
+  color: var(--primary);
+}
+
+.main-content {
+  padding-top: 2rem;
+}
+
+/* --- Dashboard Grid --- */
+.grid-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.card-dashboard {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-dashboard:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: #cbd5e1;
+}
+
+.card-dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.badge-area {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 99px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.date-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-dash-title {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.15rem;
+  color: var(--text-main);
+  line-height: 1.4;
+  flex: 1;
+}
+
+.card-dash-footer {
+  margin-top: auto;
+}
+
+/* --- Admin Table --- */
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.admin-table th, 
+.admin-table td {
+  text-align: left;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-table th {
+  background: #f8fafc;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.error-btn {
+  color: var(--error-text);
+  border-color: #fecaca;
+}
+
+.error-btn:hover {
+  background-color: var(--error-bg);
 }
