@@ -1,10 +1,11 @@
 G:\PROJETOS-CODER\SITES\agente-edital\backend 
-G:\PROJETOS-CODER\SITES\agente-edital\cod.txt 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\.env 
+G:\PROJETOS-CODER\SITES\agente-edital\backend\.env.example 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\main.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\package-lock.json 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\package.json 
+G:\PROJETOS-CODER\SITES\agente-edital\backend\requirements.txt 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\eslint.config.js 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\index.html 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\package-lock.json 

@@ -1,22 +1,68 @@
-#backend\main.py
+# backend/main.py
 import os
 import uvicorn
 import json
 import re
 import asyncio
-from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from datetime import datetime
+from typing import List, Dict, Any, Optional, AsyncGenerator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
+from pydantic import BaseModel, ConfigDict
 from dotenv import load_dotenv
+
+# Imports de Banco de Dados (SQLAlchemy + Asyncpg)
+from sqlalchemy import Column, Integer, String, DateTime, JSON, select, desc
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
+
+# Cliente OpenAI/OpenRouter
+from openai import OpenAI
+
+# ============================================================================
+# 1. CONFIGURAÇÃO DE AMBIENTE E BANCO DE DADOS
+# ============================================================================
 
 # Carrega variáveis de ambiente do arquivo .env
 load_dotenv(override=True)
+ENV_FILE_PATH = os.getenv("ENV_FILE_PATH", ".env")
 
-# Cliente OpenRouter dinâmico (permite trocar token sem reiniciar)
-_CLIENT = None
-_CLIENT_KEY = None
+# String de conexão com o banco (PostgreSQL)
+# OBS: Porta padrão ajustada para 5445 para evitar conflitos locais, conforme docker-compose
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:senha123@localhost:5445/agente_edital")
+
+# Configuração do Engine SQLAlchemy (Async)
+engine = create_async_engine(DATABASE_URL, echo=False)
+
+# SessionMaker Moderno para conexões assíncronas
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
+
+Base = declarative_base()
+
+# Dependência para injetar a sessão do banco nos endpoints
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session
+
+# --- MODELO DE BANCO DE DADOS (ORM) ---
+class StoredPlan(Base):
+    __tablename__ = "study_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True)  # Ex: "Analista INSS"
+    area = Column(String)               # Ex: "TI", "Direito"
+    content = Column(JSON)              # O JSON completo gerado
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================================================
+# 2. CLIENTE OPENROUTER / LLM
+# ============================================================================
 
 _CLIENT = None
 _CLIENT_KEY = None
@@ -37,120 +83,193 @@ def get_openrouter_client():
 
     return _CLIENT
 
-
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openrouter/aurora-alpha")
 AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
 
-app = FastAPI()
+# ============================================================================
+# 3. FASTAPI SETUP & LIFESPAN
+# ============================================================================
 
-# Configuração de CORS (Permite que o Frontend React acesse o Backend)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Gerencia o ciclo de vida da aplicação.
+    Tenta conectar ao banco na inicialização. Se falhar, avisa mas não derruba o app.
+    """
+    # --- STARTUP ---
+    print("\n🚀 Inicializando Professor AI Backend...")
+    print(f"📡 Tentando conectar ao banco de dados...")
+    
+    try:
+        # Tenta criar tabelas para verificar a conexão
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("✅ Banco de Dados conectado com sucesso na porta configurada.\n")
+    except Exception as e:
+        print(f"\n⚠️  AVISO CRÍTICO DE BANCO DE DADOS ⚠️")
+        print(f"Não foi possível conectar ao PostgreSQL em: {DATABASE_URL}")
+        print(f"Erro detalhado: {e}")
+        print(" -> O servidor continuará rodando, mas salvar/carregar histórico irá falhar.")
+        print(" -> Verifique se 'docker-compose up -d' foi executado.\n")
+    
+    yield
+    
+    # --- SHUTDOWN ---
+    print("🛑 Encerrando conexão com o banco de dados...")
+    await engine.dispose()
+
+app = FastAPI(lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# --- CONFIG ENDPOINTS (frontend lê modelo padrão e pode atualizar .env) ---
+
+# ============================================================================
+# 4. SCHEMAS (PYDANTIC)
+# ============================================================================
 
 class ConfigRequest(BaseModel):
     default_model: str | None = None
     token: str | None = None
     available_models: list[str] | None = None
 
+class SyllabusRequest(BaseModel):
+    text: str
+    model: str | None = None
+
+class SavePlanRequest(BaseModel):
+    title: str
+    area: str
+    content: Dict[str, Any]
+
+class PlanSummaryResponse(BaseModel):
+    id: int
+    title: str
+    area: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+# ============================================================================
+# 5. ENDPOINTS DE CONFIGURAÇÃO E BANCO DE DADOS
+# ============================================================================
+
 def update_env_file(path: str, updates: dict) -> None:
-    """Atualiza (ou cria) chaves no arquivo .env sem destruir outras linhas."""
+    """Atualiza chaves no arquivo .env preservando comentários."""
     try:
         p = path
         lines = []
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
                 lines = f.read().splitlines()
+        
         kv = {}
         out_lines = []
-        # parse básico KEY=VALUE (preserva comentários e linhas inválidas)
         for line in lines:
             if not line or line.lstrip().startswith("#") or "=" not in line:
                 out_lines.append(line)
                 continue
             k, v = line.split("=", 1)
             kv[k.strip()] = v
-        # aplicar updates
+            
         for k, v in updates.items():
-            if v is None:
-                continue
-            kv[k] = v
-        # reconstruir preservando comentários/linhas não-KV + substituindo KV existentes
-        seen = set()
+            if v is not None: kv[k] = v
+        
+        final_content = []
+        written = set()
         for line in lines:
-            if not line or line.lstrip().startswith("#") or "=" not in line:
-                continue
-            k = line.split("=", 1)[0].strip()
-            if k in kv and k not in seen:
-                out_lines.append(f"{k}={kv[k]}")
-                seen.add(k)
-        # adicionar novas chaves no final
+            if "=" in line and not line.lstrip().startswith("#"):
+                k = line.split("=", 1)[0].strip()
+                if k in kv:
+                    final_content.append(f"{k}={kv[k]}")
+                    written.add(k)
+                else: final_content.append(line)
+            else: final_content.append(line)
+        
         for k, v in kv.items():
-            if k not in seen:
-                out_lines.append(f"{k}={v}")
+            if k not in written: final_content.append(f"{k}={v}")
+            
         with open(p, "w", encoding="utf-8") as f:
-            f.write("\n".join(out_lines).strip() + "\n")
+            f.write("\n".join(final_content) + "\n")
+            
     except Exception as e:
+        print(f"Erro ao salvar .env: {e}")
         raise HTTPException(status_code=500, detail=f"Falha ao atualizar .env: {e}")
 
 @app.get("/config")
 async def get_config():
-    # Nunca exponha o token ao frontend.
     default_model = os.getenv("DEFAULT_MODEL", DEFAULT_MODEL)
     models = [m.strip() for m in os.getenv("AVAILABLE_MODELS", ",".join(AVAILABLE_MODELS)).split(",") if m.strip()]
     has_token = bool(os.getenv("OPENROUTER_API_KEY"))
-    return {
-        "default_model": default_model,
-        "available_models": models,
-        "has_token": has_token
-    }
+    return {"default_model": default_model, "available_models": models, "has_token": has_token}
 
 @app.post("/config")
 async def set_config(cfg: ConfigRequest):
     updates = {}
-    if cfg.default_model is not None and cfg.default_model.strip():
-        updates["DEFAULT_MODEL"] = cfg.default_model.strip()
-    if cfg.available_models is not None and isinstance(cfg.available_models, list):
+    if cfg.default_model: updates["DEFAULT_MODEL"] = cfg.default_model.strip()
+    if cfg.available_models:
         cleaned = [m.strip() for m in cfg.available_models if isinstance(m, str) and m.strip()]
         updates["AVAILABLE_MODELS"] = ",".join(cleaned)
-    if cfg.token is not None:
-        # aceitar string vazia para remover
-        updates["OPENROUTER_API_KEY"] = cfg.token.strip()
-    if not updates:
-        return {"ok": True, "updated": []}
+    if cfg.token: updates["OPENROUTER_API_KEY"] = cfg.token.strip()
 
-    update_env_file(ENV_FILE_PATH, updates)
-
-    # recarrega env em runtime para efeito imediato
-    load_dotenv(override=True)
-
-    # atualiza variáveis em memória
-    global DEFAULT_MODEL, AVAILABLE_MODELS
-    DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openrouter/aurora-alpha")
-    AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
-
+    if updates:
+        update_env_file(ENV_FILE_PATH, updates)
+        load_dotenv(override=True)
+        global DEFAULT_MODEL, AVAILABLE_MODELS
+        DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openrouter/aurora-alpha")
+        AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
     return {"ok": True, "updated": list(updates.keys())}
 
+# --- ENDPOINTS DB ---
 
-# Modelo de dados recebido do Frontend
-class SyllabusRequest(BaseModel):
-    text: str
-    model: str | None = None  # se None, usa DEFAULT_MODEL do .env
+@app.post("/plans", status_code=201)
+async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
+    """Salva o JSON gerado no banco de dados Postgres."""
+    try:
+        new_plan = StoredPlan(title=plan.title, area=plan.area, content=plan.content)
+        db.add(new_plan)
+        await db.commit()
+        await db.refresh(new_plan)
+        return {"ok": True, "id": new_plan.id}
+    except Exception as e:
+        await db.rollback()
+        print(f"Erro DB: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao salvar no banco.")
 
+@app.get("/plans", response_model=List[PlanSummaryResponse])
+async def list_plans(db: AsyncSession = Depends(get_db)):
+    """Lista o histórico de aulas geradas."""
+    try:
+        result = await db.execute(select(StoredPlan).order_by(desc(StoredPlan.created_at)))
+        return result.scalars().all()
+    except Exception as e:
+        print(f"Erro DB: {e}")
+        return []
 
-# =========================
-# UTILS
-# =========================
+@app.get("/plans/{plan_id}")
+async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+    """Recupera o JSON completo de uma aula específica pelo ID."""
+    try:
+        result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+        plan = result.scalars().first()
+        if not plan: raise HTTPException(status_code=404, detail="Plano não encontrado")
+        return plan.content
+    except Exception as e:
+        print(f"Erro DB: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao buscar dados.")
+
+# ============================================================================
+# 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)
+# ============================================================================
+
 def clean_response(text: str) -> str:
     """Remove <think> and markdown fences to improve JSON parse."""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = text.replace("```json", "").replace("```", "").strip()
     return text
-
 
 def try_parse_json_loose(text: str) -> Any:
     """
@@ -169,10 +288,8 @@ def try_parse_json_loose(text: str) -> Any:
             return json.loads(m.group(0))
         raise
 
-
 def clamp_text(s: str, max_len: int) -> str:
     return (s or "")[:max_len]
-
 
 def normalize_terms(terms: Any) -> List[str]:
     if not isinstance(terms, list):
@@ -183,15 +300,12 @@ def normalize_terms(terms: Any) -> List[str]:
             out.append(t.strip())
     return out
 
-
 def ensure_list(val: Any) -> List[Any]:
     """Ensure value is a list; otherwise return empty list."""
     return val if isinstance(val, list) else []
 
-
 def ensure_str(val: Any) -> str:
     return val if isinstance(val, str) else ""
-
 
 def normalize_modules(mods: Any) -> List[Dict[str, Any]]:
     """
@@ -252,7 +366,6 @@ def normalize_modules(mods: Any) -> List[Dict[str, Any]]:
         "regra_de_escopo": ""
     }]
 
-
 def validate_como_funciona(como: str) -> Dict[str, Any]:
     """
     Objective checks for 'aula_teorica.como_funciona' depth.
@@ -302,7 +415,6 @@ def validate_como_funciona(como: str) -> Dict[str, Any]:
         "because_count": because_count,
     }
 
-
 def detect_suspect_tools(text: str, allowed_terms: List[str]) -> List[str]:
     """
     Detect common tools/libs that might be invented.
@@ -315,7 +427,6 @@ def detect_suspect_tools(text: str, allowed_terms: List[str]) -> List[str]:
     allowed = {t.lower() for t in (allowed_terms or [])}
     lower = (text or "").lower()
     return [c for c in candidates if (c in lower and c.lower() not in allowed)]
-
 
 def extract_choice_letter(val: Any) -> Optional[str]:
     """
@@ -333,7 +444,6 @@ def extract_choice_letter(val: Any) -> Optional[str]:
     # fallback: first char
     ch = s[0]
     return ch if ch in "ABCDEF" else None
-
 
 def normalize_wrong_reasons(val: Any) -> Dict[str, str]:
     """
@@ -364,7 +474,6 @@ def normalize_wrong_reasons(val: Any) -> Dict[str, str]:
 
     return out
 
-
 def sanitize_lesson(lesson: Dict[str, Any]) -> Dict[str, Any]:
     """Force expected types in lesson payload to protect frontend."""
     if not isinstance(lesson, dict):
@@ -388,7 +497,6 @@ def sanitize_lesson(lesson: Dict[str, Any]) -> Dict[str, Any]:
         aula_teorica[k] = ensure_str(aula_teorica.get(k))
 
     return lesson
-
 
 def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
     """Normalize quiz list and question fields so frontend never breaks."""
@@ -422,7 +530,6 @@ def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
 
         out.append(q)
     return out
-
 
 async def get_json_response(prompt: str, model_name: str, temp: float = 0.25) -> Any:
     """Call OpenRouter and return JSON with retries."""
@@ -478,10 +585,10 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25) ->
         )
     raise HTTPException(status_code=503, detail=f"O modelo falhou após várias tentativas. Erro: {last_error}")
 
+# ============================================================================
+# 7. AGENTS
+# ============================================================================
 
-# =========================
-# AGENTS
-# =========================
 async def agent_architect(text: str, model: str) -> Dict[str, Any]:
     """
     Architect now returns modules as OBJECTS (not only strings),
@@ -821,9 +928,10 @@ Retorne APENAS JSON:
     return await get_json_response(prompt, model, temp=0.35)
 
 
-# =========================
-# ROUTE
-# =========================
+# ============================================================================
+# 8. ROTA PRINCIPAL (/analyze)
+# ============================================================================
+
 @app.post("/analyze")
 async def analyze_syllabus_deep(request: SyllabusRequest):
     if not request.text or not request.text.strip():

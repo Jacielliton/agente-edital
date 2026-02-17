@@ -3,3 +3,6 @@ uvicorn
 python-dotenv
 openai
 pydantic
+sqlalchemy
+asyncpg
+psycopg2-binary
