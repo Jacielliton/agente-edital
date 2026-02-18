@@ -4,7 +4,7 @@ import uvicorn
 import json
 import re
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -12,6 +12,10 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from dotenv import load_dotenv
+
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from fastapi.security import OAuth2PasswordBearer
 
 # Imports de Banco de Dados (SQLAlchemy + Asyncpg)
 from sqlalchemy import Column, Integer, String, DateTime, JSON, select, desc
@@ -25,18 +29,14 @@ from openai import OpenAI
 # 1. CONFIGURAÇÃO DE AMBIENTE E BANCO DE DADOS
 # ============================================================================
 
-# Carrega variáveis de ambiente do arquivo .env
 load_dotenv(override=True)
 ENV_FILE_PATH = os.getenv("ENV_FILE_PATH", ".env")
 
-# String de conexão com o banco (PostgreSQL)
-# OBS: Porta padrão ajustada para 5445 para evitar conflitos locais, conforme docker-compose
+# String de conexão com o banco
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:senha123@localhost:5445/agente_edital")
 
-# Configuração do Engine SQLAlchemy (Async)
 engine = create_async_engine(DATABASE_URL, echo=False)
 
-# SessionMaker Moderno para conexões assíncronas
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -45,91 +45,72 @@ AsyncSessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
-# Dependência para injetar a sessão do banco nos endpoints
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         yield session
 
-# --- MODELO DE BANCO DE DADOS (ORM) ---
+# ============================================================================
+# 2. MODELOS DE BANCO DE DADOS (ORM)
+# ============================================================================
+
 class StoredPlan(Base):
     __tablename__ = "study_plans"
-
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)  # Ex: "Analista INSS"
-    area = Column(String)               # Ex: "TI", "Direito"
-    content = Column(JSON)              # O JSON completo gerado
+    title = Column(String, index=True)
+    area = Column(String)
+    content = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# ============================================================================
-# 2. CLIENTE OPENROUTER / LLM
-# ============================================================================
-
-_CLIENT = None
-_CLIENT_KEY = None
-
-def get_openrouter_client():
-    global _CLIENT, _CLIENT_KEY
-
-    key = os.getenv("OPENROUTER_API_KEY")
-    if not key:
-        return None
-
-    if _CLIENT is None or _CLIENT_KEY != key:
-        _CLIENT_KEY = key
-        _CLIENT = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=key,
-        )
-
-    return _CLIENT
-
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openrouter/aurora-alpha")
-AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    role = Column(String, default="user") # 'admin' ou 'user'
 
 # ============================================================================
-# 3. FASTAPI SETUP & LIFESPAN
+# 3. SEGURANÇA (JWT & HASH)
 # ============================================================================
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Gerencia o ciclo de vida da aplicação.
-    Tenta conectar ao banco na inicialização. Se falhar, avisa mas não derruba o app.
-    """
-    # --- STARTUP ---
-    print("\n🚀 Inicializando Professor AI Backend...")
-    print(f"📡 Tentando conectar ao banco de dados...")
-    
-    try:
-        # Tenta criar tabelas para verificar a conexão
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        print("✅ Banco de Dados conectado com sucesso na porta configurada.\n")
-    except Exception as e:
-        print(f"\n⚠️  AVISO CRÍTICO DE BANCO DE DADOS ⚠️")
-        print(f"Não foi possível conectar ao PostgreSQL em: {DATABASE_URL}")
-        print(f"Erro detalhado: {e}")
-        print(" -> O servidor continuará rodando, mas salvar/carregar histórico irá falhar.")
-        print(" -> Verifique se 'docker-compose up -d' foi executado.\n")
-    
-    yield
-    
-    # --- SHUTDOWN ---
-    print("🛑 Encerrando conexão com o banco de dados...")
-    await engine.dispose()
+SECRET_KEY = os.getenv("SECRET_KEY", "uma_chave_super_secreta_e_aleatoria_123")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 dia
 
-app = FastAPI(lifespan=lifespan)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    # Correção aqui: use apenas 'timedelta'
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 # ============================================================================
 # 4. SCHEMAS (PYDANTIC)
 # ============================================================================
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    role: str
+    email: str
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    role: str = "user"
 
 class ConfigRequest(BaseModel):
     default_model: str | None = None
@@ -150,8 +131,116 @@ class PlanSummaryResponse(BaseModel):
     title: str
     area: str
     created_at: datetime
-
     model_config = ConfigDict(from_attributes=True)
+
+# ============================================================================
+# 5. CLIENTE OPENROUTER
+# ============================================================================
+
+_CLIENT = None
+_CLIENT_KEY = None
+
+def get_openrouter_client():
+    global _CLIENT, _CLIENT_KEY
+    key = os.getenv("OPENROUTER_API_KEY")
+    if not key: return None
+    if _CLIENT is None or _CLIENT_KEY != key:
+        _CLIENT_KEY = key
+        _CLIENT = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
+    return _CLIENT
+
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openrouter/aurora-alpha")
+AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
+
+# ============================================================================
+# 6. LIFESPAN (CICLO DE VIDA & INICIALIZAÇÃO)
+# ============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("\n🚀 Inicializando Professor AI Backend...")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("✅ Banco conectado e tabelas verificadas.")
+
+        # Criar Usuários Padrão
+        async with AsyncSessionLocal() as db:
+            # Admin
+            result = await db.execute(select(User).filter(User.email == "admin@admin.com"))
+            if not result.scalars().first():
+                print("👤 Criando usuário ADMIN padrão (admin@admin.com / admin123)")
+                admin_user = User(
+                    email="admin@admin.com",
+                    hashed_password=get_password_hash("admin123"),
+                    role="admin"
+                )
+                db.add(admin_user)
+                await db.commit()
+            
+            # User Comum
+            result_user = await db.execute(select(User).filter(User.email == "user@user.com"))
+            if not result_user.scalars().first():
+                print("👤 Criando usuário USER padrão (user@user.com / user123)")
+                normal_user = User(
+                    email="user@user.com",
+                    hashed_password=get_password_hash("user123"),
+                    role="user"
+                )
+                db.add(normal_user)
+                await db.commit()
+
+    except Exception as e:
+        print(f"⚠️ Erro ao inicializar DB: {e}")
+    
+    yield
+    await engine.dispose()
+
+# ============================================================================
+# 7. APP FASTAPI & ROTAS
+# ============================================================================
+
+# !!! AQUI ESTAVA O ERRO: O app deve ser criado ANTES de ser usado !!!
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- ROTAS DE AUTENTICAÇÃO ---
+
+@app.post("/auth/register")
+async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).filter(User.email == user.email))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="Email já cadastrado")
+    
+    hashed_pw = get_password_hash(user.password)
+    new_user = User(email=user.email, hashed_password=hashed_pw, role=user.role)
+    db.add(new_user)
+    await db.commit()
+    return {"message": "Usuário criado com sucesso"}
+
+@app.post("/auth/login", response_model=Token)
+async def login(form_data: UserLogin, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).filter(User.email == form_data.email))
+    user = result.scalars().first()
+    
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+    
+    token_data = {"sub": user.email, "role": user.role}
+    access_token = create_access_token(token_data)
+    
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer", 
+        "role": user.role,
+        "email": user.email
+    }
 
 # ============================================================================
 # 5. ENDPOINTS DE CONFIGURAÇÃO E BANCO DE DADOS
@@ -225,9 +314,10 @@ async def set_config(cfg: ConfigRequest):
 
 # --- ENDPOINTS DB ---
 
+# --- ROTAS DE PLANOS (DB) ---
+
 @app.post("/plans", status_code=201)
 async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
-    """Salva o JSON gerado no banco de dados Postgres."""
     try:
         new_plan = StoredPlan(title=plan.title, area=plan.area, content=plan.content)
         db.add(new_plan)
@@ -241,7 +331,6 @@ async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
 
 @app.get("/plans", response_model=List[PlanSummaryResponse])
 async def list_plans(db: AsyncSession = Depends(get_db)):
-    """Lista o histórico de aulas geradas."""
     try:
         result = await db.execute(select(StoredPlan).order_by(desc(StoredPlan.created_at)))
         return result.scalars().all()
@@ -251,7 +340,6 @@ async def list_plans(db: AsyncSession = Depends(get_db)):
 
 @app.get("/plans/{plan_id}")
 async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
-    """Recupera o JSON completo de uma aula específica pelo ID."""
     try:
         result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
         plan = result.scalars().first()
@@ -263,7 +351,7 @@ async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     
 @app.delete("/plans/{plan_id}")
 async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
-    """Remove um plano do banco de dados (Ação de Admin)."""
+    """Remove um plano (Ação de Admin)."""
     try:
         result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
         plan = result.scalars().first()
@@ -1041,6 +1129,70 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
         print(f"ERRO GERAL NO SERVIDOR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- NOVOS SCHEMAS PARA USUÁRIOS ---
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    model_config = ConfigDict(from_attributes=True)
 
+class UserUpdateRole(BaseModel):
+    role: str
+
+# --- NOVAS ROTAS DE GERENCIAMENTO DE USUÁRIOS ---
+
+@app.get("/users", response_model=List[UserResponse])
+async def list_users(db: AsyncSession = Depends(get_db)):
+    """Lista todos os usuários cadastrados."""
+    try:
+        result = await db.execute(select(User).order_by(User.id))
+        return result.scalars().all()
+    except Exception as e:
+        print(f"Erro ao listar usuários: {e}")
+        return []
+
+@app.delete("/users/{user_id}")
+async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+    """Deleta um usuário pelo ID."""
+    try:
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalars().first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        
+        # Opcional: Impedir que delete o próprio admin principal (id 1) se quiser
+        if user.id == 1: 
+             raise HTTPException(status_code=400, detail="Não é possível deletar o Admin Mestre.")
+
+        await db.delete(user)
+        await db.commit()
+        return {"ok": True, "message": "Usuário deletado"}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        await db.rollback()
+        print(f"Erro DB: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao deletar usuário")
+
+@app.put("/users/{user_id}/role")
+async def update_user_role(user_id: int, payload: UserUpdateRole, db: AsyncSession = Depends(get_db)):
+    """Atualiza o cargo (role) do usuário (admin <-> user)."""
+    try:
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalars().first()
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuário não encontrado")
+        
+        if user.role == payload.role:
+             return {"ok": True, "message": "Cargo já é este."}
+
+        user.role = payload.role
+        await db.commit()
+        return {"ok": True, "message": f"Cargo atualizado para {payload.role}"}
+    except Exception as e:
+        await db.rollback()
+        print(f"Erro DB: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao atualizar usuário")
+    
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
