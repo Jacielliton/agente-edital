@@ -7,7 +7,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8000/plans")
+    fetch("http://localhost:8001/plans")
       .then((res) => res.json())
       .then((data) => setPlans(data))
       .catch((err) => console.error(err))

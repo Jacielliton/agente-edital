@@ -8,7 +8,7 @@ export default function SingleLesson() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`http://localhost:8000/plans/${id}`)
+    fetch(`http://localhost:8001/plans/${id}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Erro ao carregar");
         return res.json();

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import LessonContent from "../components/LessonContent"; // <--- ADICIONADO IMPORT
 
 // Definindo a URL da API
-const API_URL = "http://localhost:8000"; 
+const API_URL = "http://localhost:8001"; 
 
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
