@@ -1,3 +1,176 @@
+gerar estrutura
 for /f "delims=" %i in ('dir "G:\PROJETOS-CODER\SITES\agente-edital" /b /s ^| findstr /v /i "venv" ^| findstr /v /i "node_modules" ^| findstr /v /i ".git" ^| findstr /v /i ".next"') do @echo %i >> lista.txt
 
+substituir localhost:8001 por https://agente-edital.tecnopriv.top/api em todos arquivos
+grep -rl "localhost:8001" . | xargs sed -i 's|http://localhost:8001|https://agente-edital.tecnopriv.top/api|g'
 
+
+
+Para garantir que sua VPS fique **segura, estável e fácil de manter** no futuro, preparei um checklist de "Blindagem e Manutenção".
+
+Se você seguir esses passos, evitará problemas comuns como: servidor invadido, serviço caindo ao reiniciar a VPS, ou esquecer como atualiza o site daqui a um mês.
+
+---
+
+### 1. Segurança Básica (Firewall)
+
+Agora que você configurou o **Nginx (Porta 80/443)** para falar com o Python internamente, **ninguém de fora** precisa acessar a porta 8001 diretamente. Deixar portas abertas é um convite para hackers.
+
+Execute estes comandos na VPS:
+
+```bash
+# 1. Garanta que o SSH (seu acesso) esteja liberado (ESSENCIAL)
+sudo ufw allow ssh
+# OU se você usa porta diferente da 22: sudo ufw allow 22/tcp
+
+# 2. Libere o Nginx (Site HTTP e HTTPS)
+sudo ufw allow 'Nginx Full'
+
+# 3. BLOQUEIE a porta 8001 (O Python só conversa com o Nginx localmente agora)
+sudo ufw delete allow 8001/tcp
+
+# 4. Ative o Firewall (se ainda não estiver ativo)
+sudo ufw enable
+
+```
+
+*Se perguntar "Command may disrupt existing ssh connections", digite `y` e Enter (desde que você tenha rodado o passo 1).*
+
+---
+
+### 2. Certificado SSL Automático (HTTPS)
+
+Seu site já está em HTTPS, mas se o certificado expirar, o site sai do ar. Vamos usar o **Certbot** para renovar automaticamente.
+
+1. Instale o Certbot:
+```bash
+sudo apt install certbot python3-certbot-nginx
+
+```
+
+
+2. Gere o certificado (ele configura o Nginx sozinho):
+```bash
+sudo certbot --nginx -d agente-edital.tecnopriv.top
+
+```
+
+
+3. Verifique se a renovação automática está ativa:
+```bash
+sudo systemctl status snap.certbot.renew.service
+# OU verifique o timer do sistema
+sudo systemctl list-timers | grep certbot
+
+```
+
+
+
+---
+
+### 3. Garantir que tudo ligue sozinho (Auto-Start)
+
+Se a VPS reiniciar (por queda de energia ou atualização), seu site tem que voltar sozinho.
+
+1. **Docker (Banco de Dados):**
+Verifique se no seu `docker-compose.yml` tem a linha `restart: always`.
+```yaml
+services:
+  db:
+    ...
+    restart: always  <-- ISSO É IMPORTANTE
+
+```
+
+
+Se não tiver, edite, salve e rode `docker compose up -d` novamente.
+2. **Backend (Python):**
+Você já configurou o Systemd (`sudo systemctl enable agente-edital`). Isso garante que o Python suba no boot.
+3. **Frontend (Nginx):**
+O Nginx já vem configurado para iniciar no boot por padrão no Ubuntu.
+
+---
+
+### 4. Script de "Atualização Fácil" (Deploy)
+
+Daqui a uma semana, você vai alterar uma cor no site e não vai lembrar os 10 comandos para atualizar. Vamos criar um script que faz tudo com **um comando**.
+
+1. Crie um arquivo na pasta raiz do projeto:
+```bash
+cd /opt/agente-edital
+nano deploy.sh
+
+```
+
+
+2. Cole este conteúdo dentro:
+```bash
+#!/bin/bash
+
+echo "🔄 Puxando atualizações do Git..."
+git pull origin main
+
+echo "📦 Instalando dependências do Backend..."
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+# Opcional: Migrações de banco se tiver
+# alembic upgrade head 
+
+echo "🎨 Construindo o Frontend..."
+cd ../frontend
+npm install
+
+# GARANTINDO A URL CERTA ANTES DO BUILD
+# Substitua SEU_DOMINIO pelo seu domínio real
+grep -rl "localhost:8000" src | xargs sed -i 's|http://localhost:8000|https://agente-edital.tecnopriv.top/api|g'
+grep -rl "localhost:8001" src | xargs sed -i 's|http://localhost:8001|https://agente-edital.tecnopriv.top/api|g'
+
+npm run build
+
+echo "🚀 Reiniciando o Backend..."
+sudo systemctl restart agente-edital
+
+echo "✅ Deploy concluído com sucesso!"
+
+```
+
+
+3. Dê permissão de execução:
+```bash
+chmod +x deploy.sh
+
+```
+
+
+
+**Como usar no futuro:**
+Sempre que você mudar algo no código e der `git push` do seu computador, entre na VPS e rode apenas:
+
+```bash
+./deploy.sh
+
+```
+
+---
+
+### 5. Backup do Banco de Dados (Opcional mas Recomendado)
+
+O Docker facilita muito. Para fazer um backup manual dos seus dados (planos e usuários):
+
+```bash
+# Cria um arquivo backup.sql com todos os dados
+docker exec -t professor_ai_db pg_dumpall -c -U postgres > dump_$(date +%Y-%m-%d).sql
+
+```
+
+Você pode rodar isso antes de fazer grandes mudanças.
+
+---
+
+### Resumo da sua VPS Blindada:
+
+1. **Portas:** Só 22 (SSH), 80 (HTTP) e 443 (HTTPS) abertas. A 8001 fica escondida.
+2. **HTTPS:** Renovação automática pelo Certbot.
+3. **Reinício:** Banco e API voltam sozinhos se o servidor desligar.
+4. **Updates:** Você tem um comando único (`./deploy.sh`) para atualizar tudo.

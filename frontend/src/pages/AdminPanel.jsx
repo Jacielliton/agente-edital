@@ -14,8 +14,8 @@ export default function AdminPanel() {
     
     // Busca Aulas e Usuários em paralelo
     Promise.all([
-      fetch("http://localhost:8001/plans").then(res => res.json()),
-      fetch("http://localhost:8001/users").then(res => res.json())
+      fetch("http://localhost:8000/plans").then(res => res.json()),
+      fetch("http://localhost:8000/users").then(res => res.json())
     ])
     .then(([plansData, usersData]) => {
       setPlans(plansData || []);
@@ -33,7 +33,7 @@ export default function AdminPanel() {
   const handleDeletePlan = async (id) => {
     if (!window.confirm("Tem certeza que deseja deletar esta aula?")) return;
     try {
-      const res = await fetch(`http://localhost:8001/plans/${id}`, { method: "DELETE" });
+      const res = await fetch(`http://localhost:8000/plans/${id}`, { method: "DELETE" });
       if (res.ok) setPlans(plans.filter((p) => p.id !== id));
       else alert("Erro ao deletar aula");
     } catch (e) { console.error(e); }
@@ -43,7 +43,7 @@ export default function AdminPanel() {
   const handleDeleteUser = async (id) => {
     if (!window.confirm("Tem certeza que deseja excluir este usuário permanentemente?")) return;
     try {
-      const res = await fetch(`http://localhost:8001/users/${id}`, { method: "DELETE" });
+      const res = await fetch(`http://localhost:8000/users/${id}`, { method: "DELETE" });
       if (res.ok) {
         setUsers(users.filter((u) => u.id !== id));
       } else {
@@ -58,7 +58,7 @@ export default function AdminPanel() {
     if (!window.confirm(`Deseja alterar o cargo de ${user.email} para "${newRole.toUpperCase()}"?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:8001/users/${user.id}/role`, {
+      const res = await fetch(`http://localhost:8000/users/${user.id}/role`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole })
