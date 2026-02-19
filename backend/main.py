@@ -1036,6 +1036,58 @@ Retorne APENAS JSON:
 """
     return await get_json_response(prompt, model, temp=0.25)
 
+async def agent_mindmap(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
+    titulo = modulo_obj.get("titulo", "Módulo")
+    print(f"--- 🧠 Mapa Mental: Estruturando visualmente '{titulo}'... ---")
+    lesson_text = json.dumps(lesson_content, ensure_ascii=False)
+
+    prompt = f"""
+Atue como um Especialista em Aprendizagem Visual.
+Analise a aula abaixo:
+{lesson_text}
+
+Crie um código Mermaid.js (graph TD) que resuma visualmente os conceitos principais desta aula.
+
+⚠️ REGRAS CRÍTICAS DE SINTAXE MERMAID (EVITE ERROS):
+1. NUNCA use parênteses (), vírgulas ,, aspas " ou colchetes [] dentro do texto dos nós.
+2. Use textos limpos e diretos. (Exemplo ERRADO: A[Gestão (BIA)]. Exemplo CORRETO: A[Gestao BIA]).
+3. NÃO use caracteres invisíveis ou "non-breaking spaces" para identação. Use espaços normais da barra de espaço.
+
+Retorne APENAS JSON estrito no formato:
+{{
+  "mapa_mental": {{
+    "titulo": "Título do Mapa (ex: Fluxo CI/CD)",
+    "codigo_mermaid": "graph TD;\\n  A[Conceito] --> B[Subconceito Detalhado];"
+  }}
+}}
+"""
+    return await get_json_response(prompt, model, temp=0.2)
+
+
+async def agent_flashcards(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
+    titulo = modulo_obj.get("titulo", "Módulo")
+    print(f"--- 🃏 Flashcards: Extraindo revisão ativa de '{titulo}'... ---")
+    lesson_text = json.dumps(lesson_content, ensure_ascii=False)
+
+    prompt = f"""
+Atue como um Especialista em Repetição Espaçada (Anki).
+Analise a aula abaixo:
+{lesson_text}
+
+Crie de 3 a 5 Flashcards focados em "Active Recall" para os pontos mais difíceis, decorebas ou pegadinhas da aula.
+
+Retorne APENAS JSON estrito no formato:
+{{
+  "flashcards": [
+    {{
+      "frente": "Pergunta curta e direta (ex: Qual a diferença entre TDD e BDD?)",
+      "verso": "Resposta exata e concisa.",
+      "dica": "Mnemônico ou dica de memorização (opcional)"
+    }}
+  ]
+}}
+"""
+    return await get_json_response(prompt, model, temp=0.25)
 
 async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model: str) -> Dict[str, Any]:
     print("--- 🎯 Estrategista v2: Criando plano baseado na realidade da aula... ---")
@@ -1148,24 +1200,29 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
             exam = await agent_examiner(mod, area, lesson, selected_model)
             await asyncio.sleep(1)
 
+            # 3.5 Mapa Mental (NOVO)
+            mindmap_data = await agent_mindmap(mod, area, lesson, selected_model)
+            await asyncio.sleep(1)
+
+            # 3.6 Flashcards (NOVO)
+            flashcards_data = await agent_flashcards(mod, area, lesson, selected_model)
+            await asyncio.sleep(1)
+
             # --- PREPARAÇÃO FINAL DOS DADOS ---
 
-            # Tratamento do Quiz
             quiz_list = sanitize_quiz(exam.get("quiz") if isinstance(exam, dict) else [])
-            
-            # Tratamento do Glossário
             glossary_list = ensure_list(glossary_data.get("glossario")) if isinstance(glossary_data, dict) else []
+            flashcards_list = ensure_list(flashcards_data.get("flashcards")) if isinstance(flashcards_data, dict) else []
+            mindmap_obj = mindmap_data.get("mapa_mental") if isinstance(mindmap_data, dict) else {}
 
-            # Tratamento do Aprofundamento (Researcher) com FALLBACK DE SEGURANÇA
             raw_subtemas = ensure_list(research.get("subtemas_aprofundados"))
             
-            # Fallback se a lista vier vazia
             if not raw_subtemas:
                 print("⚠️ Researcher retornou subtemas vazios. Aplicando fallback.")
                 raw_subtemas = [{
                     "subtema": "Aprofundamento em Análise",
                     "natureza": "teorica",
-                    "conteudo_denso": f"Neste módulo de {mod.get('titulo')}, recomenda-se foco total na bibliografia sugerida e na resolução de questões práticas, visto que é um tema base para os próximos tópicos.",
+                    "conteudo_denso": f"Neste módulo de {mod.get('titulo')}, recomenda-se foco total na bibliografia sugerida e na resolução de questões práticas.",
                     "laboratorio_pratico": {
                         "cenario": "Estudo de caso integrador.",
                         "resolucao": "Revisar conceitos fundamentais.",
@@ -1174,11 +1231,13 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
                     "pontos_de_atencao": ["Verificar atualizações recentes na área."]
                 }]
 
-            # 3.5 MONTAGEM DO OBJETO FINAL
+            # 3.7 MONTAGEM DO OBJETO FINAL
             full_module = {
                 **lesson,
                 "glosario": ensure_list(lesson.get("glosario")) + glossary_list,
                 "quiz": quiz_list,
+                "flashcards": flashcards_list, # <--- INSERIDO AQUI
+                "mapa_mental": mindmap_obj,    # <--- INSERIDO AQUI
                 "subtemas_aprofundados": raw_subtemas,
                 "meta_modulo": mod,
                 "meta_research": {

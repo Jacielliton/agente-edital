@@ -174,3 +174,184 @@ Você pode rodar isso antes de fazer grandes mudanças.
 2. **HTTPS:** Renovação automática pelo Certbot.
 3. **Reinício:** Banco e API voltam sozinhos se o servidor desligar.
 4. **Updates:** Você tem um comando único (`./deploy.sh`) para atualizar tudo.
+
+
+
+
+
+
+
+
+
+
+
+
+
+ATUALIZAR AUTOMATICAMENTE:
+
+
+Aqui está o tutorial definitivo para você atualizar sua VPS sempre que fizer alterações no código (seja no frontend, no backend ou em ambos).
+
+Como você desenvolve localmente usando `localhost` e na VPS usamos seu domínio oficial (`https://agente-edital.tecnopriv.top/api`), a melhor forma de atualizar sem quebrar nada é usar um script automático que já faz essa troca de URLs e compila tudo para você.
+
+---
+
+### Fase 1: No seu computador (Local)
+
+Sempre que você alterar o código, salve e mande para o GitHub:
+
+1. Abra o terminal na pasta do projeto no seu PC.
+2. Rode os comandos clássicos do Git:
+```bash
+git add .
+git commit -m "Descreva o que você mudou. Ex: Nova cor no botão de login"
+git push origin main
+
+```
+
+
+
+---
+
+### Fase 2: Na VPS (O jeito automático e recomendado)
+
+Para não ter que digitar vários comandos toda vez, vamos criar aquele script de deploy (caso você ainda não tenha criado).
+
+**Se for a primeira vez, crie o script:**
+
+1. Acesse sua VPS: `ssh root@72.60.3.89`
+2. Vá para a pasta do projeto: `cd /opt/agente-edital`
+3. Crie o arquivo: `nano deploy.sh`
+4. Cole o código abaixo (ele já cuida de puxar o código, atualizar as URLs e reiniciar os serviços):
+
+```bash
+#!/bin/bash
+
+echo "🔄 Baixando atualizações do Git..."
+git pull origin main
+
+echo "📦 Atualizando o Backend..."
+cd backend
+source venv/bin/activate
+# Instala novas bibliotecas se você tiver adicionado alguma
+# pip install -r requirements.txt 
+
+echo "🎨 Atualizando o Frontend..."
+cd ../frontend
+npm install
+
+# Garante que o frontend da VPS aponte para a API em produção (HTTPS)
+# e não para o localhost do seu PC
+echo "🔗 Ajustando URLs da API para Produção..."
+grep -rl "localhost:8000" src | xargs -r sed -i 's|http://localhost:8000|https://agente-edital.tecnopriv.top/api|g'
+grep -rl "localhost:8001" src | xargs -r sed -i 's|http://localhost:8001|https://agente-edital.tecnopriv.top/api|g'
+
+echo "🏗️ Construindo arquivos estáticos do React..."
+npm run build
+
+echo "🚀 Reiniciando o serviço do Backend..."
+sudo systemctl restart agente-edital
+
+echo "✅ Sistema atualizado com sucesso!"
+
+```
+
+5. Salve (`Ctrl+O`, `Enter`) e saia (`Ctrl+X`).
+6. Dê permissão para o script rodar: `chmod +x deploy.sh`
+
+**Como atualizar a partir de agora:**
+Sempre que você der um `git push` no seu computador, basta entrar na VPS e rodar apenas **dois comandos**:
+
+```bash
+cd /opt/agente-edital
+./deploy.sh
+
+```
+
+Pronto! O site já estará atualizado no ar.
+
+---
+
+### Fase 3: O Método Manual (Caso queira debugar algum erro)
+
+Se o script falhar ou você quiser fazer o processo na mão para entender o que está acontecendo, a ordem correta é:
+
+**1. Puxar o código:**
+
+```bash
+cd /opt/agente-edital
+git pull origin main
+
+```
+
+**2. Atualizar o Frontend:**
+
+```bash
+cd /opt/agente-edital/frontend
+npm install
+
+# Trocar o localhost pelo domínio real para evitar erro de Mixed Content
+grep -rl "localhost:8000" src | xargs -r sed -i 's|http://localhost:8000|https://agente-edital.tecnopriv.top/api|g'
+
+# Gerar a nova build
+npm run build
+
+```
+
+**3. Atualizar o Backend:**
+
+```bash
+cd /opt/agente-edital/backend
+
+# Reiniciar o serviço para o Python carregar o código novo
+sudo systemctl restart agente-edital
+
+# Checar se reiniciou sem erros
+sudo systemctl status agente-edital
+
+```
+
+### 💡 Dica de Ouro
+
+Se as mudanças não aparecerem no navegador imediatamente após o deploy, pressione `Ctrl + F5` (ou `Cmd + Shift + R` no Mac) na página do seu site. O navegador costuma guardar o CSS e JS antigos no "cache" para carregar mais rápido.
+
+
+
+
+
+CASO DA ERRO:
+O erro principal que impediu a sua atualização está nestas linhas:
+
+```text
+error: Your local changes to the following files would be overwritten by merge:
+...
+Please commit your changes or stash them before you merge.
+Aborting
+
+```
+
+**O que aconteceu:**
+Como fizemos algumas alterações *diretamente na VPS* durante os testes (como as trocas manuais de IP e edições no `main.py`), o Git da VPS identificou que os arquivos locais estão diferentes do seu GitHub. Para não "apagar" o seu trabalho acidentalmente, o Git abortou o download.
+
+Como o seu GitHub agora é a versão oficial e o script `./deploy.sh` já faz as trocas de URL automaticamente, nós precisamos dizer para a VPS: *"Esqueça as modificações locais e deixe tudo exatamente igual ao GitHub"*.
+
+### Como resolver:
+
+No terminal da sua VPS, dentro da pasta `/opt/agente-edital`, rode os seguintes comandos:
+
+**1. Force a VPS a espelhar o GitHub (Isso apagará as edições manuais feitas na VPS):**
+
+```bash
+git fetch --all
+git reset --hard origin/main
+
+```
+
+**2. Rode o seu script de deploy novamente:**
+
+```bash
+./deploy.sh
+
+```
+
+A partir de agora, o `./deploy.sh` deve rodar limpo, pois a VPS não terá mais alterações "soltas" bloqueando o Git. Sempre que for programar, lembre-se de fazer as alterações apenas no seu PC, subir para o Git, e na VPS rodar apenas o `./deploy.sh`.
