@@ -716,6 +716,72 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25) ->
 # ============================================================================
 # 7. AGENTS
 # ============================================================================
+async def agent_essay_generator(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
+    titulo = modulo_obj.get("titulo", "Módulo")
+    print(f"--- ✍️  Discursiva: Criando prova CESPE para '{titulo}'... ---")
+    lesson_text = json.dumps(lesson_content, ensure_ascii=False)
+
+    prompt = f"""
+Atue como um EXAMINADOR SÊNIOR DA BANCA CESPE/CEBRASPE.
+Sua missão é criar UMA questão discursiva (estudo de caso ou redação técnica) focada nos conceitos críticos desta aula.
+
+AULA:
+{lesson_text}
+
+DIRETRIZES DA QUESTÃO CESPE:
+1. "texto_motivador": Um cenário hipotético, estudo de caso prático ou texto base sobre o tema.
+2. "comando": A instrução principal (ex: "Considerando a situação hipotética acima, redija um texto dissertativo abordando necessariamente os tópicos a seguir:").
+3. "aspectos": 2 a 3 tópicos específicos que o candidato DEVE abordar. Cada aspecto deve ter seu "valor_maximo" em pontos. A soma total deve ser exatamente 10.0 pontos.
+
+RETORNE APENAS JSON NESTE FORMATO EXATO:
+{{
+  "discursiva": {{
+    "texto_motivador": "...",
+    "comando": "...",
+    "aspectos": [
+      {{ "aspecto": "1. Primeiro conceito a explicar...", "valor_maximo": 4.0 }},
+      {{ "aspecto": "2. Segundo conceito...", "valor_maximo": 6.0 }}
+    ]
+  }}
+}}
+"""
+    return await get_json_response(prompt, model, temp=0.3)
+
+async def agent_essay_corrector(req: EssayCorrectionRequest) -> Dict[str, Any]:
+    print("--- 📝 Corretor: Avaliando Discursiva do Aluno... ---")
+    prompt = f"""
+Atue como um EXAMINADOR RIGOROSO DA BANCA CESPE/CEBRASPE.
+Sua missão é corrigir a redação de um candidato.
+
+=== DADOS DA QUESTÃO ===
+TEXTO MOTIVADOR: {req.texto_motivador}
+COMANDO: {req.comando}
+ASPECTOS COBRADOS: {json.dumps(req.aspectos, ensure_ascii=False)}
+
+=== RESPOSTA DO CANDIDATO ===
+{req.resposta_aluno}
+
+DIRETRIZES DE CORREÇÃO (ESTILO CESPE):
+1. Avalie o CONTEÚDO TÉCNICO de cada aspecto. Desconte pontos severamente se a resposta for rasa ou incorreta.
+2. Atribua a "nota_atribuida" para cada aspecto (não ultrapassando o valor máximo).
+3. Analise a Estrutura Textual, Coesão e Gramática (deduza décimos da nota final se houver falhas graves).
+
+RETORNE APENAS JSON NESTE FORMATO EXATO:
+{{
+  "nota_final": 8.5,
+  "avaliacoes_aspectos": [
+    {{
+      "aspecto": "Nome do Aspecto",
+      "nota_atribuida": 3.5,
+      "comentario": "Justificativa direta do porquê o candidato ganhou ou perdeu pontos."
+    }}
+  ],
+  "erros_gramaticais": "Apontamento de erros de português e clareza textual.",
+  "feedback_geral": "Parecer final da banca."
+}}
+"""
+    return await get_json_response(prompt, req.model, temp=0.2)
+
 
 
 async def agent_instruction_designer(text: str, area: str, model: str) -> Dict[str, Any]:
@@ -1122,7 +1188,14 @@ Retorne APENAS JSON:
 """
     return await get_json_response(prompt, model, temp=0.35)
 
-
+# --- NOVOS MODELOS PARA DISCURSIVA ---
+class EssayCorrectionRequest(BaseModel):
+    texto_motivador: str
+    comando: str
+    aspectos: List[Dict[str, Any]]
+    resposta_aluno: str
+    model: Optional[str] = "openrouter/aurora-alpha"
+    
 # ============================================================================
 # 8. ROTA PRINCIPAL (/analyze)
 # ============================================================================
@@ -1208,6 +1281,10 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
             flashcards_data = await agent_flashcards(mod, area, lesson, selected_model)
             await asyncio.sleep(1)
 
+            # 3.7 Discursiva (NOVO)
+            essay_data = await agent_essay_generator(mod, area, lesson, selected_model)
+            await asyncio.sleep(1)
+            
             # --- PREPARAÇÃO FINAL DOS DADOS ---
 
             quiz_list = sanitize_quiz(exam.get("quiz") if isinstance(exam, dict) else [])
@@ -1236,8 +1313,9 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
                 **lesson,
                 "glosario": ensure_list(lesson.get("glosario")) + glossary_list,
                 "quiz": quiz_list,
-                "flashcards": flashcards_list, # <--- INSERIDO AQUI
-                "mapa_mental": mindmap_obj,    # <--- INSERIDO AQUI
+                "flashcards": flashcards_list,
+                "mapa_mental": mindmap_obj,
+                "discursiva": essay_data.get("discursiva") if isinstance(essay_data, dict) else {}, # <--- NOVO
                 "subtemas_aprofundados": raw_subtemas,
                 "meta_modulo": mod,
                 "meta_research": {
@@ -1332,6 +1410,17 @@ async def update_user_role(user_id: int, payload: UserUpdateRole, db: AsyncSessi
         await db.rollback()
         print(f"Erro DB: {e}")
         raise HTTPException(status_code=500, detail="Erro ao atualizar usuário")
+
+    
+@app.post("/correct-essay")
+async def correct_essay(req: EssayCorrectionRequest):
+    try:
+        result = await agent_essay_corrector(req)
+        return result
+    except Exception as e:
+        print(f"Erro na correção: {e}")
+        # Retorna o erro 500 para acionar o bloco "catch" do frontend
+        raise HTTPException(status_code=500, detail="API de correção indisponível.")
     
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
