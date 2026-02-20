@@ -67,6 +67,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(String, default="user") # 'admin' ou 'user'
+    api_key = Column(String, nullable=True)          # <--- NOVO: Chave da IA
+    preferred_model = Column(String, nullable=True)  # <--- NOVO: Modelo Preferido
 
 # ============================================================================
 # 3. SEGURANÇA (JWT & HASH)
@@ -77,7 +79,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 dia
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -87,7 +89,7 @@ def get_password_hash(password):
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    # Correção aqui: use apenas 'timedelta'
+    # Atualizado para o padrão moderno do Python para evitar o DeprecationWarning
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -111,6 +113,46 @@ class UserCreate(BaseModel):
     email: str
     password: str
     role: str = "user"
+    
+# Novos Schemas de Configuração do Usuário
+class UserSettingsUpdate(BaseModel):
+    api_key: Optional[str] = None
+    preferred_model: Optional[str] = None
+
+class UserSettingsResponse(BaseModel):
+    api_key: Optional[str] = None
+    preferred_model: Optional[str] = None
+
+# Dependência para pegar o usuário logado
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Credenciais inválidas ou token expirado",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    # CORREÇÃO 2: Limpa possíveis aspas residuais enviadas pelo localStorage do frontend
+    clean_token = token.replace('"', '').replace("'", "")
+    
+    try:
+        payload = jwt.decode(clean_token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            print("⚠️ [Auth] Token validado, mas não possui a chave 'sub' (email).")
+            raise credentials_exception
+    except JWTError as e:
+        # LOG IMPORTANTE: Vai mostrar no terminal exatamente por que rejeitou
+        print(f"⚠️ [Auth] Falha no Token JWT: {e} | Início do token: {clean_token[:15]}...")
+        raise credentials_exception
+        
+    result = await db.execute(select(User).filter(User.email == email))
+    user = result.scalars().first()
+    
+    if user is None:
+        print(f"⚠️ [Auth] O token aponta para o email '{email}', mas este usuário não existe no DB!")
+        raise credentials_exception
+        
+    return user
 
 class ConfigRequest(BaseModel):
     default_model: str | None = None
@@ -659,11 +701,17 @@ def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
         out.append(q)
     return out
 
-async def get_json_response(prompt: str, model_name: str, temp: float = 0.25) -> Any:
-    """Call OpenRouter and return JSON with retries."""
-    client = get_openrouter_client()
-    if not client:
-        raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY não encontrado no ambiente (.env).")
+async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None) -> Any:
+    """Call OpenRouter and return JSON with retries, using user API key if provided."""
+    
+    # Se o usuário mandou a chave dele, cria um cliente exclusivo para ele
+    if api_key and api_key.strip():
+        client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key.strip())
+    else:
+        # Senão, usa o cliente padrão do sistema
+        client = get_openrouter_client()
+        if not client:
+            raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY não encontrado no ambiente (.env).")
 
     tentativa = 0
     max_tentativas = 5
@@ -698,20 +746,15 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25) ->
             last_error = str(e)
             print(f"❌ Erro na chamada AI: {last_error}")
 
-            if "429" in last_error:
-                print("⚠️ Rate Limit detectado. Aguardando...")
+            if "429" in last_error or "401" in last_error:
+                print("⚠️ Rate Limit ou Chave Inválida detectado. Aguardando...")
                 await asyncio.sleep(6 + (tentativa * 4))
             else:
                 await asyncio.sleep(2 + (tentativa * 2))
 
             tentativa += 1
 
-    if last_error and "429" in last_error:
-        raise HTTPException(
-            status_code=429,
-            detail="Limite de uso do modelo atingido (Rate Limit). Por favor, escolha outro modelo no menu.",
-        )
-    raise HTTPException(status_code=503, detail=f"O modelo falhou após várias tentativas. Erro: {last_error}")
+    raise HTTPException(status_code=503, detail=f"O modelo falhou após várias tentativas. Verifique sua Chave de API. Erro: {last_error}")
 
 # ============================================================================
 # 7. AGENTS
@@ -780,7 +823,7 @@ RETORNE APENAS JSON NESTE FORMATO EXATO:
   "feedback_geral": "Parecer final da banca."
 }}
 """
-    return await get_json_response(prompt, req.model, temp=0.2)
+    return await get_json_response(prompt, req.model, temp=0.2, api_key=req.api_key)
 
 
 
@@ -1195,6 +1238,7 @@ class EssayCorrectionRequest(BaseModel):
     aspectos: List[Dict[str, Any]]
     resposta_aluno: str
     model: Optional[str] = "openrouter/aurora-alpha"
+    api_key: Optional[str] = None # <--- NOVO CAMPO
     
 # ============================================================================
 # 8. ROTA PRINCIPAL (/analyze)
@@ -1411,6 +1455,21 @@ async def update_user_role(user_id: int, payload: UserUpdateRole, db: AsyncSessi
         print(f"Erro DB: {e}")
         raise HTTPException(status_code=500, detail="Erro ao atualizar usuário")
 
+@app.get("/users/me/settings", response_model=UserSettingsResponse)
+async def get_user_settings(current_user: User = Depends(get_current_user)):
+    """Busca as configurações de IA salvas do usuário logado"""
+    return {
+        "api_key": current_user.api_key,
+        "preferred_model": current_user.preferred_model
+    }
+
+@app.put("/users/me/settings")
+async def update_user_settings(settings: UserSettingsUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Salva a chave e modelo personalizados do usuário logado"""
+    current_user.api_key = settings.api_key
+    current_user.preferred_model = settings.preferred_model
+    await db.commit()
+    return {"ok": True, "message": "Configurações de IA atualizadas no banco de dados."}
     
 @app.post("/correct-essay")
 async def correct_essay(req: EssayCorrectionRequest):

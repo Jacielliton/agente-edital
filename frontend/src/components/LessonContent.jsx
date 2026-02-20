@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import QuizCard from "../QuizCard"; 
 import Mermaid from "./Mermaid";
@@ -6,17 +6,137 @@ import Mermaid from "./Mermaid";
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
 
+// --- NOVA FUNÇÃO "CAÇA-TOKEN" BLINDADA EXTREMA ---
+const getAuthToken = () => {
+  const storages = [localStorage, sessionStorage];
+  
+  for (const storage of storages) {
+    // 1. Busca direta pelas chaves mais comuns
+    let t = storage.getItem("access_token") || storage.getItem("token");
+    // O padrão de um token JWT válido SEMPRE começa com "eyJ"
+    if (t && t.startsWith("eyJ")) return t;
+
+    // 2. Busca dentro do objeto 'user'
+    try {
+      const uStr = storage.getItem("user");
+      if (uStr && uStr.startsWith("{")) {
+        const uObj = JSON.parse(uStr);
+        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
+        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
+      }
+    } catch(e) {}
+
+    // 3. Busca profunda extrema: varre TODO o storage procurando por qualquer JWT
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      const val = storage.getItem(key);
+      if (typeof val === "string" && val.startsWith("eyJ")) return val;
+      
+      try {
+        if (val && val.startsWith("{")) {
+          const obj = JSON.parse(val);
+          for (let k in obj) {
+            if (typeof obj[k] === "string" && obj[k].startsWith("eyJ")) return obj[k];
+          }
+        }
+      } catch(e) {}
+    }
+  }
+  
+  console.error("⚠️ Atenção: Nenhum token JWT válido foi encontrado no navegador.");
+  return null;
+};
+
 // --- COMPONENTE DA PROVA DISCURSIVA ---
-function EssaySection({ discursiva, modelName }) {
+function EssaySection({ discursiva, defaultModel }) {
   const [answer, setAnswer] = useState("");
   const [correction, setCorrection] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Estado para o Modal de Configuração de IA do Aluno
+  const [showConfig, setShowConfig] = useState(false);
+  const [tempKey, setTempKey] = useState("");
+  const [tempModel, setTempModel] = useState("");
+  
+  // Dados persistidos via Banco de Dados
+  const [userApiKey, setUserApiKey] = useState("");
+  const [userModel, setUserModel] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  // Busca as configurações do Banco de Dados assim que o componente carrega
+  useEffect(() => {
+    const fetchDBSettings = async () => {
+      try {
+        const token = getAuthToken();
+        if (!token) return;
+
+        const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+        const res = await fetch(`${apiUrl}/users/me/settings`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.api_key) setUserApiKey(data.api_key);
+          if (data.preferred_model) setUserModel(data.preferred_model);
+        }
+      } catch (err) {
+        console.error("Falha ao buscar configurações de IA do servidor.", err);
+      }
+    };
+    fetchDBSettings();
+  }, []);
 
   if (!discursiva || !discursiva.comando) return null;
 
+  const openConfigModal = () => {
+    setTempKey(userApiKey);
+    setTempModel(userModel || defaultModel || "google/gemini-2.5-flash");
+    setShowConfig(true);
+  };
+
+  // Salva as configurações diretamente no Banco de Dados
+  const saveConfigToDB = async () => {
+    setSavingConfig(true);
+    try {
+      const token = getAuthToken();
+      if (!token) {
+        alert("Sua sessão expirou ou o token não foi encontrado. Por favor, faça login novamente.");
+        setSavingConfig(false);
+        return;
+      }
+
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      
+      const res = await fetch(`${apiUrl}/users/me/settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          api_key: tempKey.trim(),
+          preferred_model: tempModel.trim()
+        })
+      });
+
+      if (res.ok) {
+        setUserApiKey(tempKey.trim());
+        setUserModel(tempModel.trim());
+        setShowConfig(false);
+      } else {
+        alert(`Erro ao salvar no servidor (Status: ${res.status}). A sessão pode ser inválida.`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Falha de conexão com o banco de dados.");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   const handleCorrect = async () => {
-    // Validação Mínima
     if (answer.trim().length < 50) {
       alert("A banca exige mais conteúdo. Desenvolva melhor seus argumentos antes de enviar.");
       return;
@@ -27,6 +147,7 @@ function EssaySection({ discursiva, modelName }) {
     setCorrection(null);
     
     try {
+      // Para fazer a correção não precisa de Auth (a não ser que você queira), mas usamos para enviar a requisição
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
       const res = await fetch(`${apiUrl}/correct-essay`, {
         method: "POST",
@@ -36,7 +157,8 @@ function EssaySection({ discursiva, modelName }) {
           comando: discursiva.comando || "",
           aspectos: discursiva.aspectos || [],
           resposta_aluno: answer,
-          model: modelName || "stepfun/step-3.5-flash:free" 
+          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          api_key: userApiKey || null
         })
       });
 
@@ -48,25 +170,37 @@ function EssaySection({ discursiva, modelName }) {
       setCorrection(data);
     } catch (err) {
       console.error(err);
-      setError("A IA corretora está indisponível ou instável no momento. Tente enviar novamente em alguns minutos.");
+      setError("A IA corretora falhou. Verifique se sua Chave de API está correta nas configurações ou tente novamente.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <details className="details" style={{ borderColor: '#0f172a' }}>
-      <summary className="summaryTitle" style={{ color: '#f8fafc', backgroundColor: '#0f172a' }}>
-        ✍️ Prova Discursiva (Padrão CESPE)
+    <details className="details" style={{ borderColor: '#0f172a', position: 'relative' }}>
+      <summary className="summaryTitle" style={{ color: '#f8fafc', backgroundColor: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>✍️ Prova Discursiva (Padrão CESPE)</span>
       </summary>
+
       <div className="essay-container">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#e2e8f0', padding: '10px', borderRadius: '6px', marginBottom: '15px' }}>
+          <div style={{ fontSize: '0.85rem', color: '#475569' }}>
+            <strong>Motor de Correção:</strong> {userApiKey ? <span style={{color: '#10b981'}}>API Personalizada (DB: {userModel})</span> : "Padrão do Sistema"}
+          </div>
+          <button 
+            onClick={(e) => { e.preventDefault(); openConfigModal(); }} 
+            style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '4px', fontSize: '0.85rem', cursor: 'pointer' }}
+          >
+            ⚙️ Configurar IA
+          </button>
+        </div>
         
         <div style={{ marginBottom: '15px' }}>
           <strong>📋 Cenário / Texto Motivador:</strong>
           <p className="essay-text">{safeString(discursiva.texto_motivador)}</p>
         </div>
         
-        <div style={{ marginBottom: '15px', background: '#e2e8f0', padding: '10px', borderRadius: '4px' }}>
+        <div style={{ marginBottom: '15px', background: '#f1f5f9', padding: '10px', borderRadius: '4px', borderLeft: '4px solid #0f172a' }}>
           <strong>📝 Comando da Questão:</strong>
           <p className="essay-text" style={{ fontWeight: '500', margin: '5px 0 0 0', color: '#0f172a' }}>
             {safeString(discursiva.comando)}
@@ -101,13 +235,13 @@ function EssaySection({ discursiva, modelName }) {
             onClick={handleCorrect} 
             disabled={loading || answer.trim().length === 0}
           >
-            {loading ? "⏳ Submetendo à Banca Examinadora..." : "✔️ Enviar Resposta Definitiva"}
+            {loading ? "⏳ Avaliando (Pode levar alguns segundos)..." : "✔️ Submeter à Correção da IA"}
           </button>
         )}
 
         {error && (
           <div className="correction-error">
-            <strong>⚠️ Atenção: </strong> {error}
+            <strong>⚠️ Erro: </strong> {error}
           </div>
         )}
 
@@ -119,12 +253,12 @@ function EssaySection({ discursiva, modelName }) {
             
             <p style={{fontStyle: 'italic'}}><strong>Parecer da Banca:</strong> {safeString(correction.feedback_geral)}</p>
             
-            <h4 style={{ marginTop: '20px', color: '#0f172a' }}>🔹 Avaliação por Aspecto Cobrado:</h4>
+            <h4 style={{ marginTop: '20px', color: '#0f172a' }}>🔹 Avaliação por Aspecto:</h4>
             {safeArray(correction.avaliacoes_aspectos).map((av, k) => (
               <div key={k} style={{ marginBottom: '15px', background: '#f8fafc', padding: '10px', borderLeft: '3px solid #3b82f6' }}>
                 <div style={{fontWeight: 'bold', color: '#334155'}}>{safeString(av.aspecto)}</div>
                 <div style={{ color: '#2563eb', fontWeight: 'bold', margin: '5px 0' }}>
-                  Nota Atribuída: {safeString(av.nota_atribuida)}
+                  Nota: {safeString(av.nota_atribuida)}
                 </div>
                 <div style={{fontSize: '0.9em', color: '#475569'}}>
                   <em>{safeString(av.comentario)}</em>
@@ -132,7 +266,7 @@ function EssaySection({ discursiva, modelName }) {
               </div>
             ))}
 
-            <h4 style={{ marginTop: '20px', color: '#0f172a' }}>🔹 Estrutura e Correção Gramatical:</h4>
+            <h4 style={{ marginTop: '20px', color: '#0f172a' }}>🔹 Descontos Gramaticais / Estruturais:</h4>
             <p style={{fontSize: '0.9em', color: '#b91c1c'}}>{safeString(correction.erros_gramaticais)}</p>
 
             <button 
@@ -141,6 +275,56 @@ function EssaySection({ discursiva, modelName }) {
             >
               🔄 Tentar fazer a discursiva novamente
             </button>
+          </div>
+        )}
+
+        {showConfig && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+            <div style={{ background: '#fff', borderRadius: '8px', padding: '25px', width: '100%', maxWidth: '500px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
+              <h3 style={{ marginTop: 0, color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>⚙️ Configurar IA do Aluno</h3>
+              <p style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                Insira sua chave do OpenRouter. Ela será salva de forma segura na sua conta no banco de dados e sincronizada em todos os seus dispositivos.
+              </p>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '0.9rem' }}>Chave de API (OpenRouter):</label>
+                <input 
+                  type="password" 
+                  value={tempKey} 
+                  onChange={(e) => setTempKey(e.target.value)}
+                  placeholder="sk-or-v1-..."
+                  style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '0.9rem' }}>Modelo de IA Preferido:</label>
+                <input 
+                  type="text" 
+                  value={tempModel} 
+                  onChange={(e) => setTempModel(e.target.value)}
+                  placeholder="ex: google/gemini-2.5-flash"
+                  style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button 
+                  onClick={() => setShowConfig(false)}
+                  disabled={savingConfig}
+                  style={{ padding: '10px 15px', borderRadius: '4px', border: 'none', background: '#f1f5f9', color: '#475569', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={saveConfigToDB}
+                  disabled={savingConfig}
+                  style={{ padding: '10px 15px', borderRadius: '4px', border: 'none', background: '#10b981', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  {savingConfig ? "⏳ Salvando..." : "Salvar Configuração"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -154,22 +338,17 @@ export default function LessonContent({ result }) {
 
   const handleDownloadSVG = (titulo) => {
     const svgElement = document.querySelector('.mermaid-wrapper svg');
-    
     if (!svgElement) {
       alert("O mapa ainda está sendo gerado. Tente novamente em um segundo.");
       return;
     }
-
     const serializer = new XMLSerializer();
     let svgString = serializer.serializeToString(svgElement);
-
     if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
       svgString = svgString.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
     }
-
     const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement('a');
     link.href = url;
     link.download = `Mapa-Mental-${safeString(titulo).replace(/\s+/g, '-')}.svg`;
@@ -179,7 +358,6 @@ export default function LessonContent({ result }) {
   };
 
   if (!result) return null;
-
   const aulas = safeArray(result?.aulas);
 
   return (
@@ -412,7 +590,7 @@ export default function LessonContent({ result }) {
             )}
 
             {aula?.discursiva && Object.keys(aula.discursiva).length > 0 && (
-              <EssaySection discursiva={aula.discursiva} modelName={result?.modelo_utilizado} />
+              <EssaySection discursiva={aula.discursiva} defaultModel={result?.modelo_utilizado} />
             )}
 
           </article>

@@ -176,7 +176,9 @@ Você pode rodar isso antes de fazer grandes mudanças.
 4. **Updates:** Você tem um comando único (`./deploy.sh`) para atualizar tudo.
 
 
-
+docker-compose down -v
+docker-compose up -d
+python migrate.py
 
 
 
