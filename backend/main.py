@@ -98,7 +98,21 @@ def create_access_token(data: dict):
 # ============================================================================
 # 4. SCHEMAS (PYDANTIC)
 # ============================================================================
+class GenerateEssayRequest(BaseModel):
+    area: str
+    aula_titulo: str
+    lesson_content: Dict[str, Any]
+    model: Optional[str] = "stepfun/step-3.5-flash:free"
+    api_key: Optional[str] = None
 
+class ChatMessageRequest(BaseModel):
+    area: str
+    aula_titulo: str
+    mensagem: str
+    historico: List[Dict[str, str]] = []
+    model: Optional[str] = "stepfun/step-3.5-flash:free"
+    api_key: Optional[str] = None
+    
 class UserLogin(BaseModel):
     email: str
     password: str
@@ -759,7 +773,8 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
 # ============================================================================
 # 7. AGENTS
 # ============================================================================
-async def agent_essay_generator(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
+# Adicione api_key: Optional[str] = None na assinatura
+async def agent_essay_generator(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     titulo = modulo_obj.get("titulo", "Módulo")
     print(f"--- ✍️  Discursiva: Criando prova CESPE para '{titulo}'... ---")
     lesson_text = json.dumps(lesson_content, ensure_ascii=False)
@@ -788,7 +803,8 @@ RETORNE APENAS JSON NESTE FORMATO EXATO:
   }}
 }}
 """
-    return await get_json_response(prompt, model, temp=0.3)
+    # Mude a linha de retorno para enviar a api_key
+    return await get_json_response(prompt, model, temp=0.3, api_key=api_key)
 
 async def agent_essay_corrector(req: EssayCorrectionRequest) -> Dict[str, Any]:
     print("--- 📝 Corretor: Avaliando Discursiva do Aluno... ---")
@@ -825,7 +841,38 @@ RETORNE APENAS JSON NESTE FORMATO EXATO:
 """
     return await get_json_response(prompt, req.model, temp=0.2, api_key=req.api_key)
 
+async def agent_lesson_tutor(req: ChatMessageRequest) -> Dict[str, Any]:
+    print(f"--- 💬 Tutor: Respondendo dúvida da área de '{req.area}'... ---")
+    
+    # Prepara o histórico recente para dar contexto à IA (pega as últimas 4 mensagens)
+    hist_text = ""
+    if req.historico:
+        hist_text = "HISTÓRICO RECENTE DA CONVERSA:\n"
+        for msg in req.historico[-4:]:
+            role = "Aluno" if msg.get("role") == "user" else "Você (Tutor)"
+            hist_text += f"{role}: {msg.get('content')}\n"
 
+    prompt = f"""
+Atue como um Professor Tutor altamente didático, encorajador e SUPER ESPECIALISTA na área de: {req.area}.
+
+O aluno está estudando um edital ou curso completo dessa área e pode te fazer perguntas amplas, profundas ou correlacionadas a diversos tópicos (não apenas um assunto isolado). 
+Você domina todos os conceitos de {req.area} e deve ajudá-lo de forma completa.
+
+{hist_text}
+
+DÚVIDA ATUAL DO ALUNO:
+{req.mensagem}
+
+Responda DIRETAMENTE à dúvida do aluno. 
+Use um tom amigável, utilize analogias se necessário e formate o texto de forma fácil de ler. 
+NÃO invente informações fora do escopo de conhecimento técnico e científico desta área.
+
+RETORNE APENAS JSON NESTE FORMATO EXATO:
+{{
+  "resposta": "Sua resposta didática aqui (pode usar formatação markdown como negrito e listas)."
+}}
+"""
+    return await get_json_response(prompt, req.model, temp=0.4, api_key=req.api_key)
 
 async def agent_instruction_designer(text: str, area: str, model: str) -> Dict[str, Any]:
     print(f"--- 🎨 Designer Instrucional: Definindo estratégia para '{area}'... ---")
@@ -1480,6 +1527,27 @@ async def correct_essay(req: EssayCorrectionRequest):
         print(f"Erro na correção: {e}")
         # Retorna o erro 500 para acionar o bloco "catch" do frontend
         raise HTTPException(status_code=500, detail="API de correção indisponível.")
+    
+    
+@app.post("/generate-essay")
+async def generate_essay_endpoint(req: GenerateEssayRequest):
+    try:
+        mod_obj = {"titulo": req.aula_titulo}
+        # Chama o gerador enviando a chave de API do usuário (se houver)
+        result = await agent_essay_generator(mod_obj, req.area, req.lesson_content, req.model, req.api_key)
+        return result
+    except Exception as e:
+        print(f"Erro na geração da discursiva: {e}")
+        raise HTTPException(status_code=500, detail="Falha ao gerar nova discursiva.")
+    
+@app.post("/chat")
+async def chat_tutor(req: ChatMessageRequest):
+    try:
+        result = await agent_lesson_tutor(req)
+        return result
+    except Exception as e:
+        print(f"Erro no chat: {e}")
+        raise HTTPException(status_code=500, detail="A IA do Tutor falhou ao processar a resposta.")
     
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
