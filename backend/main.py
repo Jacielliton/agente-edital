@@ -98,6 +98,15 @@ def create_access_token(data: dict):
 # ============================================================================
 # 4. SCHEMAS (PYDANTIC)
 # ============================================================================
+
+class EssayCorrectionRequest(BaseModel):
+    texto_motivador: str
+    comando: str
+    aspectos: List[Dict[str, Any]]
+    resposta_aluno: str
+    model: Optional[str] = "stepfun/step-3.5-flash:free"
+    api_key: Optional[str] = None
+
 class GenerateEssayRequest(BaseModel):
     area: str
     aula_titulo: str
@@ -1278,14 +1287,6 @@ Retorne APENAS JSON:
 """
     return await get_json_response(prompt, model, temp=0.35)
 
-# --- NOVOS MODELOS PARA DISCURSIVA ---
-class EssayCorrectionRequest(BaseModel):
-    texto_motivador: str
-    comando: str
-    aspectos: List[Dict[str, Any]]
-    resposta_aluno: str
-    model: Optional[str] = "openrouter/aurora-alpha"
-    api_key: Optional[str] = None # <--- NOVO CAMPO
     
 # ============================================================================
 # 8. ROTA PRINCIPAL (/analyze)
