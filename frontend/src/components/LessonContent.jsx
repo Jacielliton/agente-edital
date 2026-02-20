@@ -484,7 +484,7 @@ export default function LessonContent({ result }) {
                 {!!aulaTeorica?.exemplo_pratico && (
                   <>
                     <h3>5. Exemplo Prático Resolvido</h3>
-                    <div className="code-block" style={{background: '#2d2d2d', color: '#f8f8f2', padding: '15px', borderRadius: '6px', overflowX: 'auto'}}>
+                    <div className="code-block" style={{background: '#7a7979', color: '#f8f8f2', padding: '15px', borderRadius: '6px', overflowX: 'auto'}}>
                       <ReactMarkdown>{safeString(aulaTeorica?.exemplo_pratico)}</ReactMarkdown>
                     </div>
                   </>
