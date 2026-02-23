@@ -1408,7 +1408,7 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
             # 3.7 MONTAGEM DO OBJETO FINAL
             full_module = {
                 **lesson,
-                "glosario": ensure_list(lesson.get("glosario")) + glossary_list,
+                "glosario": glossary_list,
                 "quiz": quiz_list,
                 "flashcards": flashcards_list,
                 "mapa_mental": mindmap_obj,
@@ -1556,4 +1556,4 @@ async def chat_tutor(req: ChatMessageRequest):
         raise HTTPException(status_code=500, detail="A IA do Tutor falhou ao processar a resposta.")
     
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
