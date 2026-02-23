@@ -4,7 +4,8 @@ for /f "delims=" %i in ('dir "G:\PROJETOS-CODER\SITES\agente-edital" /b /s ^| fi
 substituir localhost:8001 por https://agente-edital.tecnopriv.top/api em todos arquivos
 grep -rl "localhost:8001" . | xargs sed -i 's|http://localhost:8001|https://agente-edital.tecnopriv.top/api|g'
 
-
+pip freeze > requirements.txt
+pip install fastapi uvicorn python-dotenv python-multipart passlib[bcrypt] python-jose[cryptography] sqlalchemy asyncpg openai pydantic
 
 Para garantir que sua VPS fique **segura, estável e fácil de manter** no futuro, preparei um checklist de "Blindagem e Manutenção".
 
@@ -181,7 +182,7 @@ docker-compose up -d
 python migrate.py
 
 
-
+para ignorar atualização local VPS: git stash
 
 
 

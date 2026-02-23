@@ -479,12 +479,21 @@ export default function LessonContent({ result }) {
                    </ReactMarkdown>
                 </div>
                 {!!aulaTeorica?.comparativo && (
-                  <><h3>4. Comparativo</h3><p>{safeString(aulaTeorica?.comparativo)}</p></>
+                  <><h3>4. Comparativo</h3><div><ReactMarkdown>{safeString(aulaTeorica?.comparativo)}</ReactMarkdown></div></>
                 )}
                 {!!aulaTeorica?.exemplo_pratico && (
                   <>
                     <h3>5. Exemplo Prático Resolvido</h3>
-                    <div className="code-block" style={{background: '#7a7979', color: '#f8f8f2', padding: '15px', borderRadius: '6px', overflowX: 'auto'}}>
+                    <div style={{
+                      background: '#f8fafc', 
+                      color: '#334155', 
+                      padding: '20px', 
+                      borderRadius: '8px', 
+                      borderLeft: '5px solid #3b82f6',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                      lineHeight: '1.6',
+                      overflowX: 'auto'
+                    }}>
                       <ReactMarkdown>{safeString(aulaTeorica?.exemplo_pratico)}</ReactMarkdown>
                     </div>
                   </>
@@ -499,7 +508,10 @@ export default function LessonContent({ result }) {
                   <div className="subCardTitle">{safeString(t?.topico)}</div>
                   <div className="subCardContent">{safeString(t?.explicacao)}</div>
                   {!!t?.exemplo_pratico && (
-                    <div className="subCardEx"><strong>Exemplo:</strong> {safeString(t?.exemplo_pratico)}</div>
+                    <div className="subCardEx" style={{ marginTop: '15px', padding: '15px', background: '#f1f5f9', borderRadius: '6px', borderLeft: '3px solid #64748b' }}>
+                      <strong style={{ color: '#0f172a', display: 'block', marginBottom: '8px' }}>💡 Exemplo Prático:</strong> 
+                      <ReactMarkdown>{safeString(t?.exemplo_pratico)}</ReactMarkdown>
+                    </div>
                   )}
                   {!!t?.pegadinha_tipica && (
                     <div className="warningBox">⚠️ <strong>Cuidado:</strong> {safeString(t?.pegadinha_tipica)}</div>

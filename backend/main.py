@@ -988,7 +988,7 @@ async def agent_researcher(
 
     prompt = f"""
 Você é um PESQUISADOR SÊNIOR ESPECIALISTA EM {area}.
-Tarefa: Gerar insumos técnicos de alto nível para a aula de "{titulo}".
+Tarefa: Gerar insumos técnicos de ALTO NÍVEL e EXTREMA PROFUNDIDADE para a aula de "{titulo}".
 
 DIRETRIZES: {guidelines}
 FOCO DO APROFUNDAMENTO: {deep_focus}
@@ -996,10 +996,13 @@ FOCO DO APROFUNDAMENTO: {deep_focus}
 MÓDULO ATUAL:
 {modulo_json}
 
-⚠️ REGRA CRÍTICA DE SOBREVIVÊNCIA:
-O campo "subtemas_aprofundados" É OBRIGATÓRIO e deve conter MÍNIMO 3 ITENS.
-Se o tema for básico, aprofunde em: Histórico, Comparação Internacional, Divergências ou Casos de Borda (Corner Cases).
-NUNCA retorne lista vazia.
+⚠️ REGRAS CRÍTICAS DE SOBREVIVÊNCIA E ADAPTAÇÃO:
+1. O campo "subtemas_aprofundados" É OBRIGATÓRIO (mínimo 3 itens).
+2. PROIBIDO HISTÓRICO: A palavra "Evolução" e "História" são estritamente proibidas.
+3. ADAPTAÇÃO AO DOMÍNIO ({area}): 
+   - Se for TI/Exatas: Mostre a matemática, código, bits, portas e comandos exatos.
+   - Se for DIREITO/HUMANAS: NÃO USE CÓDIGO OU MATEMÁTICA. Aprofunde em Súmulas (STF/STJ), Jurisprudência, exceções da Lei Seca, conflitos de normas e correntes doutrinárias.
+   - Se for SAÚDE/OUTROS: Use a linguagem técnica padrão da respectiva ciência.
 
 ESTRUTURA DO JSON DE SAÍDA:
 {{
@@ -1009,19 +1012,19 @@ ESTRUTURA DO JSON DE SAÍDA:
     {{ "componente_pai": "...", "relacao": "...", "componente_filho": "...", "contexto": "..." }}
   ],
   "correlacoes_entre_partes": [
-    {{ "parte_a": "...", "parte_b": "...", "explicacao": "..." }}
+    {{ "parte_a": "...", "parte_b": "...", "explicacao": "Mecânica exata de como A interage com B no nível lógico ou jurídico." }}
   ],
   "subtemas_aprofundados": [
     {{
-      "subtema": "Título do Tópico Avançado (ex: Teoria X vs Teoria Y)",
+      "subtema": "NOME DO TÓPICO - DEVE SER UM MECANISMO INTERNO, CASO DE BORDA OU DIVERGÊNCIA (NUNCA HISTÓRIA)",
       "natureza": "teorica|pratica|jurisprudencia",
-      "conteudo_denso": "Explicação técnica detalhada de no mínimo 4 linhas.",
+      "conteudo_denso": "Explicação técnica cirúrgica, detalhando as regras lógicas, arquiteturais ou jurídicas (leis/súmulas) do motor interno. Mínimo de 4 linhas.",
       "laboratorio_pratico": {{
-        "cenario": "Situação problema.",
-        "resolucao": "Solução técnica.",
-        "resultado_esperado": "Conclusão."
+        "cenario": "Situação problema de alta complexidade (Caso Concreto se for Direito).",
+        "resolucao": "Solução técnica demonstrando o raciocínio passo a passo na linguagem da área (comandos se TI, argumentação jurídica se Direito).",
+        "resultado_esperado": "Prova física/lógica/legal do resultado."
       }},
-      "pontos_de_atencao": ["Ponto 1", "Ponto 2"]
+      "pontos_de_atencao": ["Exceção à regra 1", "Pegadinha clássica 2"]
     }}
   ]
 }}
@@ -1045,57 +1048,58 @@ async def agent_professor(
     example_format = context_instructions.get("formato_exemplo", "Caso prático.")
 
     prompt = f"""
-Você é um PROFESSOR DE ELITE em {area}.
-Sua aula deve ser completa: Introdução, Conceitos, Termos Técnicos e Prática.
+Você é um PROFESSOR DE ELITE especialista em concursos na área de {area}.
+Sua missão é dar uma aula definitiva. Bancas de alto nível cobram a exceção, o detalhe e como o conceito funciona na prática extrema.
 
-ESTILO: {teaching_style}
-FORMATO EXEMPLO: {example_format}
+ESTILO: {teaching_style} Aprofunde na anatomia técnica ou jurídica do tema.
+FORMATO DO EXEMPLO: {example_format}
 
-MÓDULO: {titulo}
+MÓDULO ATUAL: {titulo}
 BASE DE PESQUISA: {research_summary}
 
-MISSÃO - GERE O JSON COM ESTES CAMPOS:
-1. "aula_teorica":
-   - "introducao_contextual": (NOVO) Um parágrafo introdutório situando o aluno no tema da semana.
-   - "termos_tecnicos": (NOVO) Lista com 3 a 12 termos técnicos essenciais e suas definições curtas com exemplos.
-   - "conceito_simplificado": Analogia do cotidiano.
-   - "como_funciona": Explicação estruturada e detalhada do mecanismo.
+REGRAS CRÍTICAS DE DIDÁTICA E ADAPTAÇÃO:
+1. RIGOR DA ÁREA ({area}): 
+   - Se for TI/Exatas: Mostre cálculos (CIDR, IPs, etc), códigos e protocolos.
+   - Se for DIREITO: NUNCA crie códigos de programação. Cite expressamente o texto da Lei Seca, Súmulas (STF/STJ) e resolva casos concretos.
+2. FORMATO DO EXEMPLO PRÁTICO: O campo "exemplo_pratico" será exibido num bloco de destaque no site. Use a linguagem estrita da área (Código/Terminal para TI; Estudo de Caso Hipotético resolvido para Direito). NUNCA invente matemática para explicar Humanas.
 
-RETORNE APENAS JSON:
+MISSÃO - GERE APENAS O JSON NO FORMATO EXATO ABAIXO:
 {{
   "titulo": "{titulo}",
-  "visao_geral": "Resumo executivo do módulo.",
-  "referencia_bibliografica": "Fontes de autoridade em {area}.",
+  "visao_geral": "Resumo técnico executivo do módulo, indo direto ao ponto sobre o problema que este tema resolve.",
+  "referencia_bibliografica": "Fontes de autoridade canônicas em {area}.",
   "topicos_explicados": [
     {{
-      "topico": "Nome",
-      "explicacao": "Explicação.",
-      "exemplo_pratico": "{example_format}",
-      "pegadinha_tipica": "Erro comum."
+      "topico": "Nome do Subtópico",
+      "explicacao": "Explicação nível Sênior. Desmonte o conceito usando os termos técnicos, Súmulas (se Direito) ou protocolos (se TI).",
+      "exemplo_pratico": "Apresente a aplicação pura (comandos se TI, ou a resolução de um caso concreto passo a passo se Direito).",
+      "pegadinha_tipica": "Como as bancas exploram as exceções para induzir ao erro."
     }}
   ],
   "aula_teorica": {{
-    "introducao_contextual": "Texto introdutório explicando o que é este módulo e por que ele é importante.",
+    "introducao_contextual": "Qual problema técnico, social ou arquitetural forçou a criação deste conceito?",
     "termos_tecnicos": [
-       {{ "termo": "Termo X", "definicao": "Significado..." }}
+       {{ "termo": "Termo Técnico Exato", "definicao": "Definição direta, cirúrgica e técnica/jurídica." }}
     ],
-    "definicao_chave": "Definição central.",
-    "conceito_simplificado": "Analogia didática.",
-    "conceito_tecnico": "Definição formal.",
-    "como_funciona": "Fluxo lógico do funcionamento.",
-    "comparativo": "Comparação X vs Y.",
-    "exemplo_pratico": "Caso resolvido: {example_format}"
+    "definicao_chave": "Definição central e irrefutável.",
+    "conceito_simplificado": "Analogia brilhante e didática para ancoragem rápida.",
+    "conceito_tecnico": "Definição formal, densa e repleta dos jargões canônicos da área.",
+    "como_funciona": "O MOTOR INTERNO. Detalhe os componentes, prazos, leis, cálculos ou arquiteturas interagindo passo a passo. Use Markdown.",
+    "comparativo": "Contraste técnico direto: X vs Y focando nas diferenças de regras ou performance. Use Markdown (listas e negrito).",
+    "exemplo_pratico": "Apresente a resolução EXATA (comandos de terminal/código para TI; Caso Concreto e argumentação legal para Direito)."
   }},
   "validacoes_e_checkpoints": [
-    {{ "checkpoint": "Verificar X", "como_validar": ["Passo 1", "Passo 2"] }}
+    {{ "checkpoint": "O que validar?", "como_validar": ["Critério técnico ou legal 1", "Passo de verificação 2"] }}
   ],
   "criterios_de_decisao": [
-     {{ "decisao": "A ou B?", "criterios": ["..."], "risco_de_erro": "..." }}
+     {{ "decisao": "Usar X ou Y? (Cenário de bifurcação)", "criterios": ["Critério que força a escolha"], "risco_de_erro": "O impacto sistêmico ou jurídico." }}
   ],
-  "confusoes_classicas_de_prova": ["..."],
-  "erros_comuns": ["..."],
-  "checklist_de_revisao": ["..."],
-  "limites_do_escopo": ["..."],
+  "confusoes_classicas_de_prova": [
+    "Detalhe técnico A sendo confundido com B porque a banca inverte a lógica X."
+  ],
+  "erros_comuns": ["Erro prático de interpretação, implementação ou cálculo."],
+  "checklist_de_revisao": ["A lógica ou regra principal está clara?"],
+  "limites_do_escopo": ["Onde este conceito fisicamente ou juridicamente QUEBRA e para de ser aplicável."],
   "glosario": [] 
 }}
 """
@@ -1111,28 +1115,29 @@ async def agent_deepener_como_funciona(modulo_obj: Dict[str, Any], area: str, re
     base_json = json.dumps(base, ensure_ascii=False)
 
     prompt = f"""
-Você é um revisor técnico especialista em concursos.
+Você é um REVISOR TÉCNICO SÊNIOR e PROFESSOR DE ELITE especialista em concursos.
+Sua missão é reescrever a seção "aula_teorica.como_funciona" elevando a profundidade técnica, mas mantendo uma didática impecável, fluida e cativante.
 
 Base única (módulo + dossiê + aula atual):
 {base_json}
 
 TAREFA:
-Reescreva SOMENTE "aula_teorica.como_funciona" para ficar mais aprofundado e conectar as partes.
+Reescreva SOMENTE "aula_teorica.como_funciona" conectando as partes de forma lógica e aprofundada. O texto deve parecer uma explicação de um especialista apaixonado pelo tema, e NÃO um questionário robótico preenchido.
 
-REGRAS:
-- Não invente termos além de "termos_do_edital" e "termos_canonicos".
-- Use 3+ evidências literais: Trecho do edital: "..."
-- Se existir "mapa_estrutural", explique explicitamente como os componentes se correlacionam.
-- Em CADA uma das 6 seções inclua:
-  Porque e exemplo: ...
-  Limitação e exemplo: ...
-  Cenário de falha e exemplo: ...
-- No "Fluxo passo a passo", cada passo deve conter:
-  O que é + O que acontece + Por quê + Critério + Validação + Se remover
-- Incluir 4+ trade-offs e 4+ corner cases e 5+ pegadinhas, Explicação de cada um com exemplos.
+REGRAS CRÍTICAS DE CONTEÚDO E ADAPTAÇÃO ({area}):
+1. Limite de Vocabulário: Não invente termos além de "termos_do_edital" e "termos_canonicos".
+2. Evidências Literais: Insira organicamente no texto 3+ evidências usando exatamente o formato: (Trecho do edital/lei: "...").
+3. Correlações: Explique explicitamente e com fluidez como os componentes interagem e dependem uns dos outros no mundo real.
+4. Densidade: O texto final deve incluir obrigatoriamente 4+ trade-offs práticos (ou conflitos de normas), 4+ corner cases (casos de borda) e 5+ pegadinhas clássicas de prova, sempre explicando o contexto e dando exemplos.
+5. Adaptação Dinâmica: NUNCA crie analogias de programação para assuntos de Humanas/Direito. Se for Direito, o "como funciona" é a mecânica da lei, os prazos, o rito processual e as Súmulas. Se for TI, são os protocolos, cálculos e bits.
 
-Retorne APENAS JSON:
-{{ "como_funciona": "texto final" }}
+REGRAS CRÍTICAS DE ESTILO E DIDÁTICA (ANTI-ROBÔ):
+- PROIBIDO usar marcadores repetitivos ou rótulos artificiais (NUNCA escreva "Porque e exemplo:", "Limitação e exemplo:", "Cenário de falha:", "O que é:"). 
+- A explicação deve cobrir as 6 seções obrigatórias (Visão de mecanismo, Componentes, Fluxo, Regras/Exceções, Trade-offs/Conflitos, Pegadinhas) organizadas com subtítulos limpos em Markdown (`###`).
+- No "Fluxo passo a passo", conte uma história técnica ou jurídica focada na causalidade (o que causa o quê e por quê).
+
+Retorne APENAS JSON estrito no formato:
+{{ "como_funciona": "texto final completo e formatado em Markdown" }}
 """
     return await get_json_response(prompt, model, temp=0.2)
 
