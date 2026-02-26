@@ -1158,3 +1158,35 @@ body {
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Força o negrito que o Tailwind/Reset remove por padrão */
+.markdown-format strong,
+.markdown-format b {
+  font-weight: 800 !important; /* 800 deixa o negrito bem forte e legível */
+  color: #0f172a !important; /* Deixa o texto em negrito ligeiramente mais escuro para destacar */
+}
+
+/* Força o itálico */
+.markdown-format em,
+.markdown-format i {
+  font-style: italic !important;
+}
+
+/* Garante que as listas tenham as "bolinhas" (bullets) normais */
+.markdown-format ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin-bottom: 1rem !important;
+}
+
+/* Garante que as listas numéricas fiquem corretas */
+.markdown-format ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin-bottom: 1rem !important;
+}
+
+/* Espaçamento correto entre parágrafos de texto */
+.markdown-format p {
+  margin-bottom: 0.75rem !important;
+}
