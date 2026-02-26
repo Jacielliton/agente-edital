@@ -67,8 +67,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(String, default="user") # 'admin' ou 'user'
-    api_key = Column(String, nullable=True)          # <--- NOVO: Chave da IA
-    preferred_model = Column(String, nullable=True)  # <--- NOVO: Modelo Preferido
+    api_key = Column(String, nullable=True)          # Chave da IA
+    preferred_model = Column(String, nullable=True)  # Modelo Preferido
 
 # ============================================================================
 # 3. SEGURANÇA (JWT & HASH)
@@ -89,7 +89,6 @@ def get_password_hash(password):
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    # Atualizado para o padrão moderno do Python para evitar o DeprecationWarning
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -104,14 +103,14 @@ class EssayCorrectionRequest(BaseModel):
     comando: str
     aspectos: List[Dict[str, Any]]
     resposta_aluno: str
-    model: Optional[str] = "stepfun/step-3.5-flash:free"
+    model: Optional[str] = "google/gemini-2.5-flash-lite"
     api_key: Optional[str] = None
 
 class GenerateEssayRequest(BaseModel):
     area: str
     aula_titulo: str
     lesson_content: Dict[str, Any]
-    model: Optional[str] = "stepfun/step-3.5-flash:free"
+    model: Optional[str] = "google/gemini-2.5-flash-lite"
     api_key: Optional[str] = None
 
 class ChatMessageRequest(BaseModel):
@@ -119,7 +118,7 @@ class ChatMessageRequest(BaseModel):
     aula_titulo: str
     mensagem: str
     historico: List[Dict[str, str]] = []
-    model: Optional[str] = "stepfun/step-3.5-flash:free"
+    model: Optional[str] = "google/gemini-2.5-flash-lite"
     api_key: Optional[str] = None
     
 class UserLogin(BaseModel):
@@ -137,7 +136,6 @@ class UserCreate(BaseModel):
     password: str
     role: str = "user"
     
-# Novos Schemas de Configuração do Usuário
 class UserSettingsUpdate(BaseModel):
     api_key: Optional[str] = None
     preferred_model: Optional[str] = None
@@ -146,7 +144,6 @@ class UserSettingsResponse(BaseModel):
     api_key: Optional[str] = None
     preferred_model: Optional[str] = None
 
-# Dependência para pegar o usuário logado
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=401,
@@ -154,17 +151,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # CORREÇÃO 2: Limpa possíveis aspas residuais enviadas pelo localStorage do frontend
     clean_token = token.replace('"', '').replace("'", "")
     
     try:
         payload = jwt.decode(clean_token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
-            print("⚠️ [Auth] Token validado, mas não possui a chave 'sub' (email).")
             raise credentials_exception
     except JWTError as e:
-        # LOG IMPORTANTE: Vai mostrar no terminal exatamente por que rejeitou
         print(f"⚠️ [Auth] Falha no Token JWT: {e} | Início do token: {clean_token[:15]}...")
         raise credentials_exception
         
@@ -172,7 +166,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     user = result.scalars().first()
     
     if user is None:
-        print(f"⚠️ [Auth] O token aponta para o email '{email}', mas este usuário não existe no DB!")
         raise credentials_exception
         
     return user
@@ -214,8 +207,8 @@ def get_openrouter_client():
         _CLIENT = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
     return _CLIENT
 
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openrouter/aurora-alpha")
-AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "google/gemini-2.5-flash-lite")
+AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "google/gemini-2.5-flash-lite,google/gemini-2.5-flash").split(",") if m.strip()]
 
 # ============================================================================
 # 6. LIFESPAN (CICLO DE VIDA & INICIALIZAÇÃO)
@@ -229,29 +222,16 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         print("✅ Banco conectado e tabelas verificadas.")
 
-        # Criar Usuários Padrão
         async with AsyncSessionLocal() as db:
-            # Admin
             result = await db.execute(select(User).filter(User.email == "admin@admin.com"))
             if not result.scalars().first():
-                print("👤 Criando usuário ADMIN padrão (admin@admin.com / admin123)")
-                admin_user = User(
-                    email="admin@admin.com",
-                    hashed_password=get_password_hash("admin123"),
-                    role="admin"
-                )
+                admin_user = User(email="admin@admin.com", hashed_password=get_password_hash("admin123"), role="admin")
                 db.add(admin_user)
                 await db.commit()
             
-            # User Comum
             result_user = await db.execute(select(User).filter(User.email == "user@user.com"))
             if not result_user.scalars().first():
-                print("👤 Criando usuário USER padrão (user@user.com / user123)")
-                normal_user = User(
-                    email="user@user.com",
-                    hashed_password=get_password_hash("user123"),
-                    role="user"
-                )
+                normal_user = User(email="user@user.com", hashed_password=get_password_hash("user123"), role="user")
                 db.add(normal_user)
                 await db.commit()
 
@@ -265,7 +245,6 @@ async def lifespan(app: FastAPI):
 # 7. APP FASTAPI & ROTAS
 # ============================================================================
 
-# !!! AQUI ESTAVA O ERRO: O app deve ser criado ANTES de ser usado !!!
 app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
@@ -275,14 +254,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- ROTAS DE AUTENTICAÇÃO ---
-
 @app.post("/auth/register")
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.email == user.email))
-    if result.scalars().first():
-        raise HTTPException(status_code=400, detail="Email já cadastrado")
-    
+    if result.scalars().first(): raise HTTPException(status_code=400, detail="Email já cadastrado")
     hashed_pw = get_password_hash(user.password)
     new_user = User(email=user.email, hashed_password=hashed_pw, role=user.role)
     db.add(new_user)
@@ -293,33 +268,18 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 async def login(form_data: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.email == form_data.email))
     user = result.scalars().first()
-    
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
-    
     token_data = {"sub": user.email, "role": user.role}
     access_token = create_access_token(token_data)
-    
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer", 
-        "role": user.role,
-        "email": user.email
-    }
-
-# ============================================================================
-# 5. ENDPOINTS DE CONFIGURAÇÃO E BANCO DE DADOS
-# ============================================================================
+    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "email": user.email}
 
 def update_env_file(path: str, updates: dict) -> None:
-    """Atualiza chaves no arquivo .env preservando comentários."""
     try:
         p = path
         lines = []
         if os.path.exists(p):
-            with open(p, "r", encoding="utf-8") as f:
-                lines = f.read().splitlines()
-        
+            with open(p, "r", encoding="utf-8") as f: lines = f.read().splitlines()
         kv = {}
         out_lines = []
         for line in lines:
@@ -328,10 +288,8 @@ def update_env_file(path: str, updates: dict) -> None:
                 continue
             k, v = line.split("=", 1)
             kv[k.strip()] = v
-            
         for k, v in updates.items():
             if v is not None: kv[k] = v
-        
         final_content = []
         written = set()
         for line in lines:
@@ -342,13 +300,10 @@ def update_env_file(path: str, updates: dict) -> None:
                     written.add(k)
                 else: final_content.append(line)
             else: final_content.append(line)
-        
         for k, v in kv.items():
             if k not in written: final_content.append(f"{k}={v}")
-            
         with open(p, "w", encoding="utf-8") as f:
             f.write("\n".join(final_content) + "\n")
-            
     except Exception as e:
         print(f"Erro ao salvar .env: {e}")
         raise HTTPException(status_code=500, detail=f"Falha ao atualizar .env: {e}")
@@ -368,18 +323,13 @@ async def set_config(cfg: ConfigRequest):
         cleaned = [m.strip() for m in cfg.available_models if isinstance(m, str) and m.strip()]
         updates["AVAILABLE_MODELS"] = ",".join(cleaned)
     if cfg.token: updates["OPENROUTER_API_KEY"] = cfg.token.strip()
-
     if updates:
         update_env_file(ENV_FILE_PATH, updates)
         load_dotenv(override=True)
         global DEFAULT_MODEL, AVAILABLE_MODELS
-        DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openrouter/aurora-alpha")
+        DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "google/gemini-2.5-flash-lite")
         AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
     return {"ok": True, "updated": list(updates.keys())}
-
-# --- ENDPOINTS DB ---
-
-# --- ROTAS DE PLANOS (DB) ---
 
 @app.post("/plans", status_code=201)
 async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
@@ -391,136 +341,89 @@ async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
         return {"ok": True, "id": new_plan.id}
     except Exception as e:
         await db.rollback()
-        print(f"Erro DB: {e}")
         raise HTTPException(status_code=500, detail="Erro ao salvar no banco.")
 
 @app.get("/plans", response_model=List[PlanSummaryResponse])
 async def list_plans(db: AsyncSession = Depends(get_db)):
-    try:
-        result = await db.execute(select(StoredPlan).order_by(desc(StoredPlan.created_at)))
-        return result.scalars().all()
-    except Exception as e:
-        print(f"Erro DB: {e}")
-        return []
+    result = await db.execute(select(StoredPlan).order_by(desc(StoredPlan.created_at)))
+    return result.scalars().all()
 
 @app.get("/plans/{plan_id}")
 async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
-    try:
-        result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
-        plan = result.scalars().first()
-        if not plan: raise HTTPException(status_code=404, detail="Plano não encontrado")
-        return plan.content
-    except Exception as e:
-        print(f"Erro DB: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao buscar dados.")
+    result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+    plan = result.scalars().first()
+    if not plan: raise HTTPException(status_code=404, detail="Plano não encontrado")
+    return plan.content
     
 @app.delete("/plans/{plan_id}")
 async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
-    """Remove um plano (Ação de Admin)."""
-    try:
-        result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
-        plan = result.scalars().first()
-        if not plan:
-            raise HTTPException(status_code=404, detail="Plano não encontrado")
-        
-        await db.delete(plan)
-        await db.commit()
-        return {"ok": True, "message": "Plano deletado com sucesso"}
-    except Exception as e:
-        await db.rollback()
-        print(f"Erro DB: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao deletar plano.")
+    result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+    plan = result.scalars().first()
+    if not plan: raise HTTPException(status_code=404, detail="Plano não encontrado")
+    await db.delete(plan)
+    await db.commit()
+    return {"ok": True, "message": "Plano deletado com sucesso"}
 
 # ============================================================================
 # 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)
 # ============================================================================
 
 def clean_response(text: str) -> str:
-    """Remove <think> and markdown fences to improve JSON parse."""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = text.replace("```json", "").replace("```", "").strip()
     return text
 
 def try_parse_json_loose(text: str) -> Any:
-    """
-    Tolerant JSON parsing:
-    - try json.loads
-    - else extract first {...} or [...] block and parse
-    """
-    try:
-        return json.loads(text)
+    text = text.strip()
+    try: 
+        return json.loads(text, strict=False)
     except Exception:
-        m = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if m:
-            return json.loads(m.group(0))
-        m = re.search(r"\[.*\]", text, flags=re.DOTALL)
-        if m:
-            return json.loads(m.group(0))
-        raise
+        text_no_trailing = re.sub(r',\s*([\]}])', r'\1', text)
+        try:
+            return json.loads(text_no_trailing, strict=False)
+        except Exception:
+            m = re.search(r"\{.*\}|\[.*\]", text_no_trailing, flags=re.DOTALL)
+            if m:
+                try: 
+                    return json.loads(m.group(0), strict=False)
+                except Exception:
+                    pass
+            raise
 
-def clamp_text(s: str, max_len: int) -> str:
-    return (s or "")[:max_len]
+def clamp_text(s: str, max_len: int) -> str: return (s or "")[:max_len]
+
+# NOVO: Vacina anti-erros de lista
+def ensure_dict(val: Any) -> Dict[str, Any]:
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict):
+        return val[0]
+    return {}
 
 def normalize_terms(terms: Any) -> List[str]:
-    if not isinstance(terms, list):
-        return []
+    if not isinstance(terms, list): return []
     out: List[str] = []
     for t in terms:
-        if isinstance(t, str) and t.strip():
-            out.append(t.strip())
+        if isinstance(t, str) and t.strip(): out.append(t.strip())
     return out
 
-def ensure_list(val: Any) -> List[Any]:
-    """Ensure value is a list; otherwise return empty list."""
-    return val if isinstance(val, list) else []
+def ensure_list(val: Any) -> List[Any]: return val if isinstance(val, list) else []
 
-def ensure_str(val: Any) -> str:
-    return val if isinstance(val, str) else ""
+def ensure_str(val: Any) -> str: return val if isinstance(val, str) else ""
 
 def normalize_modules(mods: Any) -> List[Dict[str, Any]]:
-    """
-    Normalize modules from architect.
-    Accepts:
-      - list[str] (legacy)
-      - list[dict] (new)
-    """
-    if not isinstance(mods, list) or not mods:
-        return [{
-            "titulo": "Análise Geral",
-            "tipo": "conceito",
-            "ancoras_detectadas": [],
-            "subtopicos": [],
-            "regra_de_escopo": ""
-        }]
-
-    # legacy: list of strings
+    if not isinstance(mods, list) or not mods: return [{"titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""}]
     if all(isinstance(m, str) for m in mods):
         out = []
         for m in mods:
             if isinstance(m, str) and m.strip():
-                out.append({
-                    "titulo": m.strip(),
-                    "tipo": "conceito",
-                    "ancoras_detectadas": [],
-                    "subtopicos": [],
-                    "regra_de_escopo": ""
-                })
-        return out or [{
-            "titulo": "Análise Geral",
-            "tipo": "conceito",
-            "ancoras_detectadas": [],
-            "subtopicos": [],
-            "regra_de_escopo": ""
-        }]
-
-    # new: list of objects
+                out.append({"titulo": m.strip(), "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""})
+        return out or [{"titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""}]
     out: List[Dict[str, Any]] = []
     for m in mods:
-        if not isinstance(m, dict):
-            continue
+        if not isinstance(m, dict): continue
         titulo = (m.get("titulo") or m.get("nome") or m.get("title") or "").strip()
-        if not titulo:
-            continue
+        if not titulo: continue
         out.append({
             "titulo": titulo,
             "tipo": m.get("tipo") or "conceito",
@@ -528,213 +431,85 @@ def normalize_modules(mods: Any) -> List[Dict[str, Any]]:
             "subtopicos": ensure_list(m.get("subtopicos")),
             "regra_de_escopo": ensure_str(m.get("regra_de_escopo")),
         })
-    return out or [{
-        "titulo": "Análise Geral",
-        "tipo": "conceito",
-        "ancoras_detectadas": [],
-        "subtopicos": [],
-        "regra_de_escopo": ""
-    }]
+    return out or [{"titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""}]
 
 def validate_como_funciona(como: str) -> Dict[str, Any]:
-    """
-    Objective checks for 'aula_teorica.como_funciona' depth.
-    Focus on:
-      - required section headers
-      - anchoring via "Trecho do edital:"
-      - causal/decision/validation markers
-    """
     como = (como or "").strip()
-
-    required_headers = [
-        "1) Visão de mecanismo",
-        "2) Componentes/partes envolvidas",
-        "3) Fluxo passo a passo (com POR QUÊ de cada passo)",
-        "4) Regras/condições e exceções (corner cases)",
-        "5) Trade-offs/impactos (performance, custo, risco)",
-        "6) Pegadinhas típicas de prova (ligadas ao edital)",
-    ]
-    missing = [h for h in required_headers if h not in como]
-
-    has_trecho = "Trecho do edital:" in como
-    criteria_count = len(re.findall(r"\bCrit[eé]rio\s*:", como, flags=re.IGNORECASE))
-    valid_count = len(re.findall(r"\bValida[cç][aã]o\s*:", como, flags=re.IGNORECASE))
-    remove_count = len(re.findall(r"\bSe remover\s*:", como, flags=re.IGNORECASE))
-    limit_count = len(re.findall(r"\bLimita[cç][aã]o\s*:", como, flags=re.IGNORECASE))
-    failure_count = len(re.findall(r"\bFalha comum\s*:", como, flags=re.IGNORECASE))
-    scenario_count = len(re.findall(r"\bCen[aá]rio de falha\s*:", como, flags=re.IGNORECASE))
-    because_count = len(re.findall(r"\bPorque\s*:", como, flags=re.IGNORECASE))
-
-    ok_len = len(como) >= 1400
-    ok_depth = (
-        criteria_count >= 5 and valid_count >= 3 and remove_count >= 3 and
-        limit_count >= 2 and failure_count >= 3 and (scenario_count >= 2 or because_count >= 2)
-    )
-
-    return {
-        "ok": (not missing) and has_trecho and ok_len and ok_depth,
-        "missing_headers": missing,
-        "has_trecho": has_trecho,
-        "len": len(como),
-        "criteria_count": criteria_count,
-        "valid_count": valid_count,
-        "remove_count": remove_count,
-        "limit_count": limit_count,
-        "failure_count": failure_count,
-        "scenario_count": scenario_count,
-        "because_count": because_count,
-    }
+    required_keywords = ["Visão", "Componentes", "Fluxo", "Regras", "Trade-offs", "Pegadinhas"]
+    missing = [kw for kw in required_keywords if not re.search(kw, como, flags=re.IGNORECASE)]
+    has_trecho = bool(re.search(r"Trecho do edital:|Trecho da lei:|Trecho do edital/lei:", como, flags=re.IGNORECASE))
+    ok_len = len(como) >= 1000
+    ok = (len(missing) <= 1) and has_trecho and ok_len
+    return {"ok": ok, "missing_headers": missing, "has_trecho": has_trecho, "len": len(como)}
 
 def detect_suspect_tools(text: str, allowed_terms: List[str]) -> List[str]:
-    """
-    Detect common tools/libs that might be invented.
-    If not present in allowed_terms (edital + canonical terms), flag them.
-    """
-    candidates = [
-        "pandas", "numpy", "matplotlib", "seaborn", "scikit", "sklearn", "jupyter",
-        "rstudio", "ggplot", "power bi", "tableau", "spark", "hadoop",
-    ]
+    candidates = ["pandas", "numpy", "matplotlib", "seaborn", "scikit", "sklearn", "jupyter", "rstudio", "ggplot", "power bi", "tableau", "spark", "hadoop"]
     allowed = {t.lower() for t in (allowed_terms or [])}
     lower = (text or "").lower()
     return [c for c in candidates if (c in lower and c.lower() not in allowed)]
 
 def extract_choice_letter(val: Any) -> Optional[str]:
-    """
-    Normalize 'resposta_correta' to a single letter A-F.
-    Handles inputs like 'A', 'A)', 'Alternativa C', 'Letra: D', etc.
-    """
-    if val is None:
-        return None
+    if val is None: return None
     s = str(val).strip().upper()
-    if not s:
-        return None
+    if not s: return None
     m = re.search(r"\b([A-F])\b", s)
-    if m:
-        return m.group(1)
-    # fallback: first char
+    if m: return m.group(1)
     ch = s[0]
     return ch if ch in "ABCDEF" else None
 
 def normalize_wrong_reasons(val: Any) -> Dict[str, str]:
-    """
-    Normalize 'por_que_as_outras_estao_erradas' to a dict letter->reason.
-    Accepts:
-      - dict with keys like 'B', 'B)', 'B:' etc
-      - list of strings like ['B: ...', 'C: ...']
-    """
     out: Dict[str, str] = {}
-
     if isinstance(val, dict):
         for k, v in val.items():
             key = str(k).strip().upper()
             m = re.match(r"^([A-F])", key)
-            if not m:
-                continue
-            letter = m.group(1)
-            out[letter] = str(v) if v is not None else ""
+            if not m: continue
+            out[m.group(1)] = str(v) if v is not None else ""
         return out
-
     if isinstance(val, list):
         for item in val:
             s = str(item).strip()
             m = re.match(r"^\s*([A-F])\s*[\)\.\-:]\s*(.*)$", s, flags=re.IGNORECASE)
-            if m:
-                out[m.group(1).upper()] = m.group(2).strip()
-        return out
-
+            if m: out[m.group(1).upper()] = m.group(2).strip()
     return out
 
 def sanitize_lesson(lesson: Dict[str, Any]) -> Dict[str, Any]:
-    """Limpa e garante a tipagem da aula, permitindo os novos campos."""
-    if not isinstance(lesson, dict):
-        return {}
-
-    # Garantir listas
-    for key in ["topicos_explicados", "micro_mecanismos", "criterios_de_decisao", 
-                "validacoes_e_checkpoints", "confusoes_classicas_de_prova", 
-                "erros_comuns", "checklist_de_revisao", "limites_do_escopo", "glosario"]:
+    if not isinstance(lesson, dict): return {}
+    for key in ["topicos_explicados", "micro_mecanismos", "criterios_de_decisao", "validacoes_e_checkpoints", "confusoes_classicas_de_prova", "erros_comuns", "checklist_de_revisao", "limites_do_escopo", "glosario"]:
         lesson[key] = ensure_list(lesson.get(key))
-
-    # Garantir strings
     for key in ["titulo", "visao_geral", "referencia_bibliografica"]:
         lesson[key] = ensure_str(lesson.get(key))
-
-    # Tratar AULA TEÓRICA e seus subcampos
     aula_teorica = lesson.get("aula_teorica")
     if not isinstance(aula_teorica, dict):
         aula_teorica = {}
         lesson["aula_teorica"] = aula_teorica
-    
-    # NOVOS CAMPOS ADICIONADOS AQUI:
-    # "introducao_contextual" (string)
-    # "termos_tecnicos" (lista de objetos)
-    
-    # Strings simples dentro da aula teórica
-    teorica_str_keys = [
-        "introducao_contextual", # <--- NOVO
-        "definicao_chave", 
-        "conceito_simplificado", 
-        "conceito_tecnico", 
-        "como_funciona", 
-        "comparativo", 
-        "exemplo_pratico"
-    ]
-    for k in teorica_str_keys:
-        aula_teorica[k] = ensure_str(aula_teorica.get(k))
-
-    # Listas dentro da aula teórica
-    teorica_list_keys = [
-        "termos_tecnicos" # <--- NOVO
-    ]
-    for k in teorica_list_keys:
-        aula_teorica[k] = ensure_list(aula_teorica.get(k))
-
+    teorica_str_keys = ["introducao_contextual", "definicao_chave", "conceito_simplificado", "conceito_tecnico", "como_funciona", "comparativo", "exemplo_pratico"]
+    for k in teorica_str_keys: aula_teorica[k] = ensure_str(aula_teorica.get(k))
+    teorica_list_keys = ["termos_tecnicos"]
+    for k in teorica_list_keys: aula_teorica[k] = ensure_list(aula_teorica.get(k))
     return lesson
 
 def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
-    """Normalize quiz list and question fields so frontend never breaks."""
     quiz_list = ensure_list(quiz)
     out: List[Dict[str, Any]] = []
     for q in quiz_list:
-        if not isinstance(q, dict):
-            continue
-
-        alternativas = q.get("alternativas")
-        if not isinstance(alternativas, list):
-            alternativas = []
-        q["alternativas"] = alternativas
-
-        # normalize correct letter
+        if not isinstance(q, dict): continue
+        q["alternativas"] = ensure_list(q.get("alternativas"))
         q["resposta_correta"] = extract_choice_letter(q.get("resposta_correta")) or ""
-
-        # normalize comments
-        if "comentario_da_correta" not in q and "comentario" in q:
-            q["comentario_da_correta"] = q.get("comentario")
-        if "comentario" not in q and "comentario_da_correta" in q:
-            q["comentario"] = q.get("comentario_da_correta")
-
-        # normalize wrong reasons
+        if "comentario_da_correta" not in q and "comentario" in q: q["comentario_da_correta"] = q.get("comentario")
+        if "comentario" not in q and "comentario_da_correta" in q: q["comentario"] = q.get("comentario_da_correta")
         q["por_que_as_outras_estao_erradas"] = normalize_wrong_reasons(q.get("por_que_as_outras_estao_erradas"))
-
-        # normalize strings
         for k in ["enunciado", "topico_relacionado", "comentario_da_correta", "comentario"]:
-            if k in q:
-                q[k] = ensure_str(q.get(k))
-
+            if k in q: q[k] = ensure_str(q.get(k))
         out.append(q)
     return out
 
 async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None) -> Any:
-    """Call OpenRouter and return JSON with retries, using user API key if provided."""
-    
-    # Se o usuário mandou a chave dele, cria um cliente exclusivo para ele
     if api_key and api_key.strip():
         client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key.strip())
     else:
-        # Senão, usa o cliente padrão do sistema
         client = get_openrouter_client()
-        if not client:
-            raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY não encontrado no ambiente (.env).")
+        if not client: raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY não encontrado no ambiente (.env).")
 
     tentativa = 0
     max_tentativas = 5
@@ -743,7 +518,6 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
     while tentativa < max_tentativas:
         try:
             print(f"   ...Conectando ao Modelo {model_name} (Tentativa {tentativa+1})...")
-
             response = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=(model_name or DEFAULT_MODEL),
@@ -751,100 +525,98 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
                     {
                         "role": "system",
                         "content": (
-                            "You are a strict JSON generator. "
-                            "Return ONLY valid JSON. No markdown. No commentary. "
-                            "If something is missing from the provided context, state that limitation inside the JSON."
+                            "Você é um sistema que responde ÚNICA e EXCLUSIVAMENTE em formato JSON estruturado e válido.\n"
+                            "REGRAS VITAIS:\n"
+                            "1. NÃO use formatação markdown como ```json antes ou depois.\n"
+                            "2. NÃO retorne NENHUM texto fora do JSON.\n"
+                            "3. ATENÇÃO CRÍTICA: Escape corretamente TODAS as aspas duplas internas com \\\" e quebras de linha com \\n.\n"
+                            "4. Certifique-se de fechar corretamente todas as chaves e colchetes no final."
                         ),
                     },
                     {"role": "user", "content": prompt},
                 ],
                 temperature=temp,
+                max_tokens=8192
             )
-
             raw_content = response.choices[0].message.content or ""
             cleaned_content = clean_response(raw_content)
             return try_parse_json_loose(cleaned_content)
-
         except Exception as e:
             last_error = str(e)
             print(f"❌ Erro na chamada AI: {last_error}")
-
             if "429" in last_error or "401" in last_error:
-                print("⚠️ Rate Limit ou Chave Inválida detectado. Aguardando...")
                 await asyncio.sleep(6 + (tentativa * 4))
             else:
                 await asyncio.sleep(2 + (tentativa * 2))
-
             tentativa += 1
 
-    raise HTTPException(status_code=503, detail=f"O modelo falhou após várias tentativas. Verifique sua Chave de API. Erro: {last_error}")
+    raise HTTPException(status_code=503, detail=f"O modelo falhou após várias tentativas. Erro: {last_error}")
 
 # ============================================================================
-# 7. AGENTS
+# 7. AGENTS (OTIMIZADOS PARA GEMINI FLASH-LITE)
 # ============================================================================
-# Adicione api_key: Optional[str] = None na assinatura
+
 async def agent_essay_generator(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     titulo = modulo_obj.get("titulo", "Módulo")
     print(f"--- ✍️  Discursiva: Criando prova CESPE para '{titulo}'... ---")
     lesson_text = json.dumps(lesson_content, ensure_ascii=False)
 
     prompt = f"""
-Atue como um EXAMINADOR SÊNIOR DA BANCA CESPE/CEBRASPE.
-Sua missão é criar UMA questão discursiva (estudo de caso ou redação técnica) focada nos conceitos críticos desta aula.
+Atue como EXAMINADOR SÊNIOR da banca CESPE/CEBRASPE na área de {area}.
+Sua missão ÚNICA é criar uma questão discursiva focada na aula abaixo.
 
 AULA:
 {lesson_text}
 
-DIRETRIZES DA QUESTÃO CESPE:
-1. "texto_motivador": Um cenário hipotético, estudo de caso prático ou texto base sobre o tema.
-2. "comando": A instrução principal (ex: "Considerando a situação hipotética acima, redija um texto dissertativo abordando necessariamente os tópicos a seguir:").
-3. "aspectos": 2 a 3 tópicos específicos que o candidato DEVE abordar. Cada aspecto deve ter seu "valor_maximo" em pontos. A soma total deve ser exatamente 10.0 pontos.
+DIRETRIZES DE CRIAÇÃO:
+- DIREITO: Crie "Estudo de Caso" (crime, conflito contratual, etc).
+- TI/EXATAS: Crie cenário de incidente em produção ou falha de arquitetura.
+- OUTROS: Situação problema prática da profissão.
+- Aspectos: 2 a 3 tópicos obrigatórios para o candidato responder. A soma do "valor_maximo" DEVE ser 10.0.
 
-RETORNE APENAS JSON NESTE FORMATO EXATO:
+RETORNE APENAS ESTE JSON EXATO (SEM NENHUM TEXTO ADICIONAL):
 {{
   "discursiva": {{
-    "texto_motivador": "...",
-    "comando": "...",
+    "texto_motivador": "Descrição detalhada do cenário hipotético.",
+    "comando": "Considerando a situação hipotética, redija um texto abordando:",
     "aspectos": [
-      {{ "aspecto": "1. Primeiro conceito a explicar...", "valor_maximo": 4.0 }},
-      {{ "aspecto": "2. Segundo conceito...", "valor_maximo": 6.0 }}
+      {{ "aspecto": "1. Primeiro ponto...", "valor_maximo": 4.0 }},
+      {{ "aspecto": "2. Segundo ponto...", "valor_maximo": 6.0 }}
     ]
   }}
 }}
 """
-    # Mude a linha de retorno para enviar a api_key
     return await get_json_response(prompt, model, temp=0.3, api_key=api_key)
 
 async def agent_essay_corrector(req: EssayCorrectionRequest) -> Dict[str, Any]:
     print("--- 📝 Corretor: Avaliando Discursiva do Aluno... ---")
     prompt = f"""
-Atue como um EXAMINADOR RIGOROSO DA BANCA CESPE/CEBRASPE.
-Sua missão é corrigir a redação de um candidato.
+Atue como CORRETOR RIGOROSO CESPE/CEBRASPE.
 
-=== DADOS DA QUESTÃO ===
-TEXTO MOTIVADOR: {req.texto_motivador}
-COMANDO: {req.comando}
-ASPECTOS COBRADOS: {json.dumps(req.aspectos, ensure_ascii=False)}
+DADOS DA QUESTÃO:
+Motivador: {req.texto_motivador}
+Comando: {req.comando}
+Aspectos: {json.dumps(req.aspectos, ensure_ascii=False)}
 
-=== RESPOSTA DO CANDIDATO ===
+RESPOSTA DO CANDIDATO:
 {req.resposta_aluno}
 
-DIRETRIZES DE CORREÇÃO (ESTILO CESPE):
-1. Avalie o CONTEÚDO TÉCNICO de cada aspecto. Desconte pontos severamente se a resposta for rasa ou incorreta.
-2. Atribua a "nota_atribuida" para cada aspecto (não ultrapassando o valor máximo).
-3. Analise a Estrutura Textual, Coesão e Gramática (deduza décimos da nota final se houver falhas graves).
+DIRETRIZES:
+1. Avalie o conteúdo técnico. Desconte se for raso.
+2. Dê uma nota exata para cada aspecto (nunca maior que o valor_maximo).
+3. Avalie gramática e coesão separadamente.
 
-RETORNE APENAS JSON NESTE FORMATO EXATO:
+RETORNE APENAS ESTE JSON EXATO:
 {{
   "nota_final": 8.5,
   "avaliacoes_aspectos": [
     {{
-      "aspecto": "Nome do Aspecto",
+      "aspecto": "Nome exato do Aspecto",
       "nota_atribuida": 3.5,
-      "comentario": "Justificativa direta do porquê o candidato ganhou ou perdeu pontos."
+      "comentario": "Justificativa direta do ponto."
     }}
   ],
-  "erros_gramaticais": "Apontamento de erros de português e clareza textual.",
+  "erros_gramaticais": "Apontamento de erros de português.",
   "feedback_geral": "Parecer final da banca."
 }}
 """
@@ -853,32 +625,25 @@ RETORNE APENAS JSON NESTE FORMATO EXATO:
 async def agent_lesson_tutor(req: ChatMessageRequest) -> Dict[str, Any]:
     print(f"--- 💬 Tutor: Respondendo dúvida da área de '{req.area}'... ---")
     
-    # Prepara o histórico recente para dar contexto à IA (pega as últimas 4 mensagens)
     hist_text = ""
     if req.historico:
-        hist_text = "HISTÓRICO RECENTE DA CONVERSA:\n"
+        hist_text = "HISTÓRICO RECENTE:\n"
         for msg in req.historico[-4:]:
-            role = "Aluno" if msg.get("role") == "user" else "Você (Tutor)"
+            role = "Aluno" if msg.get("role") == "user" else "Tutor"
             hist_text += f"{role}: {msg.get('content')}\n"
 
     prompt = f"""
-Atue como um Professor Tutor altamente didático, encorajador e SUPER ESPECIALISTA na área de: {req.area}.
-
-O aluno está estudando um edital ou curso completo dessa área e pode te fazer perguntas amplas, profundas ou correlacionadas a diversos tópicos (não apenas um assunto isolado). 
-Você domina todos os conceitos de {req.area} e deve ajudá-lo de forma completa.
+Atue como Professor Tutor Especialista em {req.area}.
+Responda de forma DIRETIVA, CLARA e AMIGÁVEL.
 
 {hist_text}
 
-DÚVIDA ATUAL DO ALUNO:
+DÚVIDA DO ALUNO:
 {req.mensagem}
 
-Responda DIRETAMENTE à dúvida do aluno. 
-Use um tom amigável, utilize analogias se necessário e formate o texto de forma fácil de ler. 
-NÃO invente informações fora do escopo de conhecimento técnico e científico desta área.
-
-RETORNE APENAS JSON NESTE FORMATO EXATO:
+RETORNE APENAS ESTE JSON EXATO:
 {{
-  "resposta": "Sua resposta didática aqui (pode usar formatação markdown como negrito e listas)."
+  "resposta": "Sua explicação detalhada aqui, usando formatação markdown (negrito, listas) para facilitar a leitura."
 }}
 """
     return await get_json_response(prompt, req.model, temp=0.4, api_key=req.api_key)
@@ -886,84 +651,51 @@ RETORNE APENAS JSON NESTE FORMATO EXATO:
 async def agent_instruction_designer(text: str, area: str, model: str) -> Dict[str, Any]:
     print(f"--- 🎨 Designer Instrucional: Definindo estratégia para '{area}'... ---")
     
-    # O prompt agora ensina a IA a se comportar diferente dependendo da área
     prompt = f"""
-Você é um DESIGNER INSTRUCIONAL SÊNIOR focado em ENSINO DE ALTA PERFORMANCE.
-Analise o texto e defina a estratégia de ensino.
+Atue como DESIGNER INSTRUCIONAL SÊNIOR.
+Analise o texto e defina regras didáticas claras.
 
 TEXTO BASE:
 {clamp_text(text, 5000)}
 
-ÁREA IDENTIFICADA: {area}
+ÁREA: {area}
 
-PROBLEMA A RESOLVER:
-Os alunos reclamam que o conteúdo é muito técnico e difícil.
-Sua missão é garantir que o professor explique o "Bê-á-bá" (conceito simples) ANTES de entrar no aprofundamento técnico.
-
-GERE DIRETRIZES ADAPTADAS À ÁREA:
-- Se for DIREITO: Foco em Jurisprudência, Súmulas e Divergência Doutrinária.
-- Se for TI/ENGENHARIA: Foco em "Como funciona por baixo do capô", Performance, Segurança e Boas Práticas.
-- Se for SAÚDE: Foco em Fisiopatologia, Protocolos Clínicos e Estudos de Caso.
-- Se for EXATAS: Foco em Resolução passo a passo e Aplicação no mundo real.
-
-RETORNE APENAS JSON:
+RETORNE APENAS ESTE JSON EXATO:
 {{
-  "diretrizes_pesquisador": "Instrução técnica específica para a área (ex: 'Busque documentação oficial e PEPs' para Python, ou 'Busque Súmulas' para Direito).",
-  "diretrizes_professor": "Instrução didática (ex: 'Use analogias com carros' ou 'Use metáforas do corpo humano').",
-  "formato_exemplo": "Como deve ser o exemplo (ex: 'Snippet de código comentado', 'Caso clínico', 'Narrativa jurídica').",
-  "foco_aprofundamento": "O que separa o júnior do sênior nesta área (ex: 'Otimização de memória', 'Teses minoritárias')."
+  "diretrizes_pesquisador": "Regra técnica curta (ex: 'Foque em Súmulas STF' ou 'Foque em arquitetura de software').",
+  "diretrizes_professor": "Regra didática curta (ex: 'Use analogias do cotidiano').",
+  "formato_exemplo": "Como dar exemplos (ex: 'Caso clínico detalhado', 'Snippet de código comentado').",
+  "foco_aprofundamento": "Tema avançado (ex: 'Jurisprudência divergente' ou 'Otimização de memória')."
 }}
 """
     return await get_json_response(prompt, model, temp=0.3)
 
-
-# ============================================================================
-# AGENTS ATUALIZADOS - ESTRUTURA SEMANAL & APROFUNDAMENTO OBRIGATÓRIO
-# ============================================================================
-
 async def agent_architect(text: str, model: str) -> Dict[str, Any]:
-    """
-    Arquiteto v3: Organiza o conteúdo em 'SEMANAS DE ESTUDO' (Módulos Sequenciais).
-    """
     print("--- 🏛️  Arquiteto: Organizando cronograma em Semanas/Módulos... ---")
     prompt = f"""
-Você é um COORDENADOR PEDAGÓGICO de Concursos.
-Sua missão é pegar o edital abaixo e organizá-lo em uma TRILHA DE APRENDIZAGEM SEQUENCIAL (Semanas).
+Atue como COORDENADOR PEDAGÓGICO.
+Agrupe o edital abaixo em MÓDULOS SEMANAIS COESOS.
 
-TEXTO DO EDITAL:
----
+EDITAL:
 {clamp_text(text, 12000)}
----
 
-DIRETRIZES DE ORGANIZAÇÃO (CRUCIAL):
-1. Não quebre o conteúdo em micro-tópicos irrelevantes.
-2. Agrupe assuntos conexos para formar uma "Semana de Estudo" completa.
-   - Exemplo: Junte "Organização Administrativa" + "Administração Direta/Indireta" no Módulo 1.
-   - Exemplo: "Licitações" é denso, pode ser um módulo sozinho ou dividido em dois se for muito grande.
-3. O título do módulo deve refletir o tema da semana (ex: "Semana 1: Organização do Estado", "Semana 2: Atos Administrativos").
+REGRAS:
+1. Agrupe tópicos relacionados em Grandes Semanas (ex: "Semana 1: Licitações").
+2. Não faça módulos micro fragmentados.
 
-TAREFAS:
-1. Identifique a "area_conhecimento".
-2. Crie os "modulos". CADA MÓDULO SERÁ UMA AULA/SEMANA NO SISTEMA.
-3. Para cada módulo, liste as "ancoras_detectadas" (leis, doutrinas).
-
-RETORNE APENAS JSON:
+RETORNE APENAS ESTE JSON EXATO:
 {{
-  "area_conhecimento": "Direito Administrativo (exemplo)",
-  "resumo_objetivo": "Resumo do que será conquistado ao final.",
+  "area_conhecimento": "Nome da Área Principal",
+  "resumo_objetivo": "Resumo de 2 linhas do curso.",
   "modulos": [
     {{
-      "titulo": "Semana 1: [Nome do Grande Tema]",
+      "titulo": "Semana 1: Nome do Tema Maior",
       "tipo": "conceito",
       "ancoras_detectadas": ["Lei X", "Doutrina Y"],
       "subtopicos": [
-        {{
-          "nome": "Tópico específico (ex: Desconcentração)",
-          "origem": "edital",
-          "nota": "Foco na diferença entre X e Y"
-        }}
+        {{ "nome": "Subtópico 1", "origem": "edital", "nota": "Foco específico" }}
       ],
-      "regra_de_escopo": "Estudar apenas X e Y, ignorar Z por enquanto."
+      "regra_de_escopo": "Limite do que estudar aqui."
     }}
   ]
 }}
@@ -980,51 +712,50 @@ async def agent_researcher(
 ) -> Dict[str, Any]:
     
     titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 🔎 Pesquisador v8 (Deep Fix): Aprofundando '{titulo}'... ---")
+    print(f"--- 🔎 Pesquisador: Aprofundando '{titulo}'... ---")
 
     modulo_json = json.dumps(modulo_obj, ensure_ascii=False)
-    guidelines = context_instructions.get("diretrizes_pesquisador", "Foco técnico profundo.")
-    deep_focus = context_instructions.get("foco_aprofundamento", "Nuances e complexidade.")
+    guidelines = context_instructions.get("diretrizes_pesquisador", "Foco técnico rigoroso.")
+    deep_focus = context_instructions.get("foco_aprofundamento", "Nuances do tema.")
 
     prompt = f"""
-Você é um PESQUISADOR SÊNIOR ESPECIALISTA EM {area}.
-Tarefa: Gerar insumos técnicos de ALTO NÍVEL e EXTREMA PROFUNDIDADE para a aula de "{titulo}".
+Atue como PESQUISADOR TÉCNICO SÊNIOR em {area}.
+Gere o mapa estrutural detalhado para a aula "{titulo}".
 
 DIRETRIZES: {guidelines}
-FOCO DO APROFUNDAMENTO: {deep_focus}
+FOCO: {deep_focus}
+MÓDULO: {modulo_json}
 
-MÓDULO ATUAL:
-{modulo_json}
+REGRAS CRÍTICAS DE PROFUNDIDADE E DOMÍNIO:
+1. GERE no mínimo 3 itens longos e exaustivos em "subtemas_aprofundados".
+2. Não cite um termo técnico sem explicá-lo brevemente. Se citar conceitos (ex: "Poder Discricionário", "Programação Orientada a Objetos", "Equação de 2º Grau", "Revolução Industrial"), garanta que a explicação do mecanismo esteja presente.
+3. Adapte ao domínio ({area}):
+   - TI/Exatas/Lógica: Use fórmulas, trechos de código, arquitetura, teoremas.
+   - Direito/Humanas: Use leis, jurisprudência, doutrina, correntes.
+   - Biológicas/Saúde: Fisiopatologia, vias metabólicas, protocolos.
+   - Linguagens: Regras gramaticais, sintaxe, escolas literárias.
 
-⚠️ REGRAS CRÍTICAS DE SOBREVIVÊNCIA E ADAPTAÇÃO:
-1. O campo "subtemas_aprofundados" É OBRIGATÓRIO (mínimo 3 itens).
-2. PROIBIDO HISTÓRICO: A palavra "Evolução" e "História" são estritamente proibidas.
-3. ADAPTAÇÃO AO DOMÍNIO ({area}): 
-   - Se for TI/Exatas: Mostre a matemática, código, bits, portas e comandos exatos.
-   - Se for DIREITO/HUMANAS: NÃO USE CÓDIGO OU MATEMÁTICA. Aprofunde em Súmulas (STF/STJ), Jurisprudência, exceções da Lei Seca, conflitos de normas e correntes doutrinárias.
-   - Se for SAÚDE/OUTROS: Use a linguagem técnica padrão da respectiva ciência.
-
-ESTRUTURA DO JSON DE SAÍDA:
+RETORNE APENAS ESTE JSON EXATO:
 {{
-  "meta_modulo": {{ ...copie input... }},
+  "meta_modulo": {modulo_json},
   "termos_chave": ["termo1", "termo2"], 
   "mapa_estrutural": [
-    {{ "componente_pai": "...", "relacao": "...", "componente_filho": "...", "contexto": "..." }}
+    {{ "componente_pai": "Pai", "relacao": "divide-se em", "componente_filho": "Filho", "contexto": "Info detalhada." }}
   ],
   "correlacoes_entre_partes": [
-    {{ "parte_a": "...", "parte_b": "...", "explicacao": "Mecânica exata de como A interage com B no nível lógico ou jurídico." }}
+    {{ "parte_a": "A", "parte_b": "B", "explicacao": "Explicação técnica e profunda de como interagem na prática." }}
   ],
   "subtemas_aprofundados": [
     {{
-      "subtema": "NOME DO TÓPICO - DEVE SER UM MECANISMO INTERNO, CASO DE BORDA OU DIVERGÊNCIA (NUNCA HISTÓRIA)",
+      "subtema": "Nome Técnico (NÃO USAR HISTÓRIA)",
       "natureza": "teorica|pratica|jurisprudencia",
-      "conteudo_denso": "Explicação técnica cirúrgica, detalhando as regras lógicas, arquiteturais ou jurídicas (leis/súmulas) do motor interno. Mínimo de 4 linhas.",
+      "conteudo_denso": "Explicação EXAUSTIVA. OBRIGATÓRIO usar 3 marcações internas em negrito no texto para forçar a profundidade: **Fundamento Teórico:** [explicar a base], **Mecanismo na Prática:** [como funciona a engrenagem], e **Limitações/Restrições:** [onde falha ou exceções].",
       "laboratorio_pratico": {{
-        "cenario": "Situação problema de alta complexidade (Caso Concreto se for Direito).",
-        "resolucao": "Solução técnica demonstrando o raciocínio passo a passo na linguagem da área (comandos se TI, argumentação jurídica se Direito).",
-        "resultado_esperado": "Prova física/lógica/legal do resultado."
+        "cenario": "Problema prático ou caso concreto difícil.",
+        "resolucao": "Solução passo a passo, detalhando o porquê.",
+        "resultado_esperado": "O resultado final comprovado."
       }},
-      "pontos_de_atencao": ["Exceção à regra 1", "Pegadinha clássica 2"]
+      "pontos_de_atencao": ["Exceção técnica 1", "Risco de implementação/interpretação 2"]
     }}
   ]
 }}
@@ -1040,131 +771,131 @@ async def agent_professor(
 ) -> Dict[str, Any]:
 
     titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 👨‍🏫 Professor v8 (Completo): Ministrando '{titulo}'... ---")
+    print(f"--- 👨‍🏫 Professor: Ministrando '{titulo}'... ---")
 
     research_summary = json.dumps(research_data, ensure_ascii=False)
-    
     teaching_style = context_instructions.get("diretrizes_professor", "Didático e progressivo.")
     example_format = context_instructions.get("formato_exemplo", "Caso prático.")
 
     prompt = f"""
-Você é um PROFESSOR DE ELITE especialista em concursos na área de {area}.
-Sua missão é dar uma aula definitiva. Bancas de alto nível cobram a exceção, o detalhe e como o conceito funciona na prática extrema.
+Atue como PROFESSOR DE ELITE em {area}. Aprofunde exaustivamente cada conceito.
 
-ESTILO: {teaching_style} Aprofunde na anatomia técnica ou jurídica do tema.
-FORMATO DO EXEMPLO: {example_format}
+ESTILO: {teaching_style}
+EXEMPLO: {example_format}
+TEMA: {titulo}
+PESQUISA: {research_summary}
 
-MÓDULO ATUAL: {titulo}
-BASE DE PESQUISA: {research_summary}
+REGRAS DE CONTEÚDO E PROFUNDIDADE:
+1. Adapte à área ({area}): TI exige código/comandos; DIREITO exige Casos e Súmulas.
+2. REGRA DE OURO DIDÁTICA: Se você introduzir ou citar um termo técnico, jargão, regra ou conceito subordinado, VOCÊ É OBRIGADO A EXPLICÁ-LO IMEDIATAMENTE. Não deixe pontas soltas.
+3. Na seção `como_funciona`, USE OBRIGATORIAMENTE ESTES 6 SUBTÍTULOS EM MARKDOWN (###) e siga RIGOROSAMENTE a micro-estrutura exigida abaixo de cada um:
+   ### Visão de Mecanismo
+   (Escreva 2 parágrafos. O segundo DEVE conter uma aplicação prática complexa do dia a dia da área).
+   ### Componentes e Interações
+   (Vá direto para bullet points. Para cada item: **[Nome do Componente]:** [Definição técnica]. **Interação:** [Como aciona/limita o próximo componente]).
+   ### Fluxo Passo a Passo
+   (Lista numerada. Para CADA passo: 1. **[Etapa]:** [Ação técnica/jurídica]. **Exemplo Prático:** [Cenário real rápido ilustrando o passo]).
+   ### Regras e Exceções
+   (Lista detalhada: Mostre a **Regra Geral** e no mínimo 2 **Exceções Críticas** justificadas).
+   ### Trade-offs (ou Conflitos de Normas)
+   (Aprofunde em 2 conflitos reais, ex: "Performance vs Segurança" ou "Princípio A vs B", mostrando como resolver na prática).
+   ### Pegadinhas Clássicas
+   (Liste 3 pegadinhas no formato: - **A Casca de Banana:** [Frase falsa comum em provas] - **A Realidade:** [A correção técnica]).
+   *Insira organicamente pelo menos 1 citação no formato: (Trecho do edital/lei/documentação: "...").*
 
-REGRAS CRÍTICAS DE DIDÁTICA E ADAPTAÇÃO:
-1. RIGOR DA ÁREA ({area}): 
-   - Se for TI/Exatas: Mostre cálculos (CIDR, IPs, etc), códigos e protocolos.
-   - Se for DIREITO: NUNCA crie códigos de programação. Cite expressamente o texto da Lei Seca, Súmulas (STF/STJ) e resolva casos concretos.
-2. FORMATO DO EXEMPLO PRÁTICO: O campo "exemplo_pratico" será exibido num bloco de destaque no site. Use a linguagem estrita da área (Código/Terminal para TI; Estudo de Caso Hipotético resolvido para Direito). NUNCA invente matemática para explicar Humanas.
-
-MISSÃO - GERE APENAS O JSON NO FORMATO EXATO ABAIXO:
+RETORNE APENAS ESTE JSON EXATO:
 {{
   "titulo": "{titulo}",
-  "visao_geral": "Resumo técnico executivo do módulo, indo direto ao ponto sobre o problema que este tema resolve.",
-  "referencia_bibliografica": "Fontes de autoridade canônicas em {area}.",
+  "visao_geral": "Resumo de 3 linhas sobre o módulo e sua importância prática.",
+  "referencia_bibliografica": "Fontes principais (Lei, autor, documentação oficial).",
   "topicos_explicados": [
     {{
       "topico": "Nome do Subtópico",
-      "explicacao": "Explicação nível Sênior. Desmonte o conceito usando os termos técnicos, Súmulas (se Direito) ou protocolos (se TI).",
-      "exemplo_pratico": "Apresente a aplicação pura (comandos se TI, ou a resolução de um caso concreto passo a passo se Direito).",
-      "pegadinha_tipica": "Como as bancas exploram as exceções para induzir ao erro."
+      "explicacao": "Explicação EXAUSTIVA e nível Sênior. Se citar um termo, defina-o detalhadamente no mesmo parágrafo.",
+      "exemplo_pratico": "Exemplo direto e prático (comando, código, cálculo ou caso detalhado).",
+      "pegadinha_tipica": "Como as bancas tentam confundir o aluno com detalhes mínimos."
     }}
   ],
   "aula_teorica": {{
-    "introducao_contextual": "Qual problema técnico, social ou arquitetural forçou a criação deste conceito?",
+    "introducao_contextual": "O problema prático/histórico que forçou a criação disso.",
     "termos_tecnicos": [
-       {{ "termo": "Termo Técnico Exato", "definicao": "Definição direta, cirúrgica e técnica/jurídica." }}
+       {{ "termo": "Termo", "definicao": "Definição direta e completa." }}
     ],
-    "definicao_chave": "Definição central e irrefutável.",
-    "conceito_simplificado": "Analogia brilhante e didática para ancoragem rápida.",
-    "conceito_tecnico": "Definição formal, densa e repleta dos jargões canônicos da área.",
-    "como_funciona": "O MOTOR INTERNO. Detalhe os componentes, prazos, leis, cálculos ou arquiteturas interagindo passo a passo. Use Markdown.",
-    "comparativo": "Contraste técnico direto: X vs Y focando nas diferenças de regras ou performance. Use Markdown (listas e negrito).",
-    "exemplo_pratico": "Apresente a resolução EXATA (comandos de terminal/código para TI; Caso Concreto e argumentação legal para Direito)."
+    "definicao_chave": "A regra principal e incontestável.",
+    "conceito_simplificado": "Uma analogia excelente para leigos.",
+    "conceito_tecnico": "Jargão puro e denso. Se listar subtipos aqui, explique a diferença entre eles.",
+    "como_funciona": "O TEXTO GIGANTE E PROFUNDO CONTENDO OS 6 SUBTÍTULOS MARKDOWN EXIGIDOS NA ESTRUTURA EXATA.",
+    "comparativo": "Contraste técnico: X vs Y. PROIBIDO USAR TABELAS. Estruture em bullet points focados em CRITÉRIOS. Exemplo: '- **Critério (Performance/Regra):** X faz [isso], enquanto Y faz [aquilo].'",
+    "exemplo_pratico": "A demonstração prática final e completa."
   }},
   "validacoes_e_checkpoints": [
-    {{ "checkpoint": "O que validar?", "como_validar": ["Critério técnico ou legal 1", "Passo de verificação 2"] }}
+    {{ "checkpoint": "Nome da checagem", "como_validar": ["Critério 1", "Critério 2"] }}
   ],
   "criterios_de_decisao": [
-     {{ "decisao": "Usar X ou Y? (Cenário de bifurcação)", "criterios": ["Critério que força a escolha"], "risco_de_erro": "O impacto sistêmico ou jurídico." }}
+     {{ "decisao": "Usar X ou Y?", "criterios": ["Critério técnico 1"], "risco_de_erro": "Impacto real do erro." }}
   ],
-  "confusoes_classicas_de_prova": [
-    "Detalhe técnico A sendo confundido com B porque a banca inverte a lógica X."
-  ],
-  "erros_comuns": ["Erro prático de interpretação, implementação ou cálculo."],
-  "checklist_de_revisao": ["A lógica ou regra principal está clara?"],
-  "limites_do_escopo": ["Onde este conceito fisicamente ou juridicamente QUEBRA e para de ser aplicável."],
-  "glosario": [] 
+  "confusoes_classicas_de_prova": ["A banca inverte X com Y nesta situação específica."],
+  "erros_comuns": ["Erro comum na aplicação prática."],
+  "checklist_de_revisao": ["Conceito A compreendido nas suas exceções?"],
+  "limites_do_escopo": ["Onde esse conceito quebra ou deixa de funcionar."]
 }}
 """
     return await get_json_response(prompt, model, temp=0.35)
 
 
 async def agent_deepener_como_funciona(modulo_obj: Dict[str, Any], area: str, research_data: Dict[str, Any], lesson: Dict[str, Any], model: str) -> Dict[str, Any]:
-    """Rewrite only aula_teorica.como_funciona to maximize depth and correlation between parts."""
     titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 🧠 Aprofundador: Reescrevendo 'como_funciona' de '{titulo}'... ---")
+    print(f"--- 🧠 Aprofundador: Revisando 'como_funciona' de '{titulo}'... ---")
 
     base = {"modulo": modulo_obj, "research_data": research_data, "lesson": lesson}
     base_json = json.dumps(base, ensure_ascii=False)
 
     prompt = f"""
-Você é um REVISOR TÉCNICO SÊNIOR e PROFESSOR DE ELITE especialista em concursos.
-Sua missão é reescrever a seção "aula_teorica.como_funciona" elevando a profundidade técnica, mas mantendo uma didática impecável, fluida e cativante.
+Atue como REVISOR TÉCNICO SÊNIOR.
+Reescreva SOMENTE a seção "como_funciona" para TRIPLICAR a profundidade e o nível de detalhe.
 
-Base única (módulo + dossiê + aula atual):
+BASE DE DADOS:
 {base_json}
 
-TAREFA:
-Reescreva SOMENTE "aula_teorica.como_funciona" conectando as partes de forma lógica e aprofundada. O texto deve parecer uma explicação de um especialista apaixonado pelo tema, e NÃO um questionário robótico preenchido.
+REGRAS DE APROFUNDAMENTO:
+1. EXPANSAO DE CONCEITOS: Se o texto original apenas cita um conceito, a sua reescrita DEVE explicar o que é e como se aplica no mundo real.
+2. Na seção `como_funciona`, USE OBRIGATORIAMENTE ESTES 6 SUBTÍTULOS EM MARKDOWN (###) e siga RIGOROSAMENTE a micro-estrutura exigida abaixo de cada um:
+   ### Visão de Mecanismo
+   (Escreva 2 parágrafos. O segundo DEVE conter uma aplicação prática complexa do dia a dia da área).
+   ### Componentes e Interações
+   (Vá direto para bullet points. Para cada item: **[Nome do Componente]:** [Definição técnica]. **Interação:** [Como aciona/limita o próximo componente]).
+   ### Fluxo Passo a Passo
+   (Lista numerada. Para CADA passo: 1. **[Etapa]:** [Ação técnica/jurídica]. **Exemplo Prático:** [Cenário real rápido ilustrando o passo]).
+   ### Regras e Exceções
+   (Lista detalhada: Mostre a **Regra Geral** e no mínimo 2 **Exceções Críticas** justificadas).
+   ### Trade-offs (ou Conflitos de Normas)
+   (Aprofunde em 2 conflitos reais, ex: "Performance vs Segurança" ou "Princípio A vs B", mostrando como resolver na prática).
+   ### Pegadinhas Clássicas
+   (Liste 3 pegadinhas no formato: - **A Casca de Banana:** [Frase falsa comum em provas] - **A Realidade:** [A correção técnica]).
+   *Insira organicamente pelo menos 1 citação no formato: (Trecho do edital/lei/documentação: "...").*
+3. NUNCA use tabelas. 
 
-REGRAS CRÍTICAS DE CONTEÚDO E ADAPTAÇÃO ({area}):
-1. Limite de Vocabulário: Não invente termos além de "termos_do_edital" e "termos_canonicos".
-2. Evidências Literais: Insira organicamente no texto 3+ evidências usando exatamente o formato: (Trecho do edital/lei: "...").
-3. Correlações: Explique explicitamente e com fluidez como os componentes interagem e dependem uns dos outros no mundo real.
-4. Densidade: O texto final deve incluir obrigatoriamente 4+ trade-offs práticos (ou conflitos de normas), 4+ corner cases (casos de borda) e 5+ pegadinhas clássicas de prova, sempre explicando o contexto e dando exemplos.
-5. Adaptação Dinâmica: NUNCA crie analogias de programação para assuntos de Humanas/Direito. Se for Direito, o "como funciona" é a mecânica da lei, os prazos, o rito processual e as Súmulas. Se for TI, são os protocolos, cálculos e bits.
-
-REGRAS CRÍTICAS DE ESTILO E DIDÁTICA (ANTI-ROBÔ):
-- PROIBIDO usar marcadores repetitivos ou rótulos artificiais (NUNCA escreva "Porque e exemplo:", "Limitação e exemplo:", "Cenário de falha:", "O que é:"). 
-- A explicação deve cobrir as 6 seções obrigatórias (Visão de mecanismo, Componentes, Fluxo, Regras/Exceções, Trade-offs/Conflitos, Pegadinhas) organizadas com subtítulos limpos em Markdown (`###`).
-- No "Fluxo passo a passo", conte uma história técnica ou jurídica focada na causalidade (o que causa o quê e por quê).
-
-Retorne APENAS JSON estrito no formato:
-{{ "como_funciona": "texto final completo e formatado em Markdown" }}
+RETORNE APENAS ESTE JSON EXATO:
+{{ "como_funciona": "Texto formatado em Markdown com os 6 subtítulos, com profundidade exaustiva e seguindo ESTRITAMENTE a micro-estrutura pedida..." }}
 """
     return await get_json_response(prompt, model, temp=0.2)
 
 
 async def agent_glossarist(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
-    titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 📖 Glossarista: Traduzindo termos de '{titulo}'... ---")
+    print(f"--- 📖 Glossarista: Traduzindo termos... ---")
     lesson_text = json.dumps(lesson_content, ensure_ascii=False)
 
     prompt = f"""
-Analise esta aula (fonte única):
----
+Extraia 5 a 10 termos TÉCNICOS cruciais desta aula.
 {lesson_text}
----
 
-TAREFA:
-- Identifique 5 a 10 termos/siglas IMPORTANTES que APAREÇAM literalmente no texto.
-- Para cada termo, retorne também um "trecho_origem" (frase curta copiada do texto) onde o termo aparece.
-- Não invente termos.
-
-Retorne APENAS JSON:
+RETORNE APENAS ESTE JSON EXATO:
 {{
   "glossario": [
     {{
-      "termo": "Termo literal do texto",
-      "definicao": "Definição curta e precisa",
-      "trecho_origem": "Trecho curto onde o termo aparece"
+      "termo": "Termo Técnico Exato",
+      "definicao": "Definição direta",
+      "trecho_origem": "Frase onde ele aparece no texto"
     }}
   ]
 }}
@@ -1173,33 +904,35 @@ Retorne APENAS JSON:
 
 
 async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson: Dict[str, Any], model: str) -> Dict[str, Any]:
-    titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 📝 Banca: Criando questões para '{titulo}'... ---")
+    print(f"--- 📝 Banca: Criando questões objetivas... ---")
     lesson_context = json.dumps(professor_lesson, ensure_ascii=False)
 
     prompt = f"""
-Atue como Banca Examinadora de Concurso.
+Atue como Banca Examinadora de Alto Nível ({area}).
+Com base SOMENTE no texto abaixo, crie 5 questões de múltipla escolha difíceis.
 
-BASE ESTRITA (aula ministrada):
+AULA:
 {lesson_context}
 
-Crie 5 QUESTÕES DIFÍCEIS para validar o conhecimento DESSA aula.
-Não cobre assuntos que não foram explicados no texto acima.
+REGRAS:
+1. PROIBIDO questões de decoreba direta (ex: "O que é X?").
+2. OBRIGATÓRIO: O "enunciado" DEVE ser uma SITUAÇÃO-PROBLEMA (Estudo de Caso, Incidente de TI, Conflito Jurídico) onde o candidato precise aplicar a teoria para resolver o problema.
+3. Gere exatamente 4 alternativas (A, B, C, D) e justifique tecnicamente cada erro.
 
-Retorne APENAS JSON:
+RETORNE APENAS ESTE JSON EXATO:
 {{
   "quiz": [
     {{
-      "enunciado": "Questão técnica complexa.",
+      "enunciado": "A situação-problema complexa aqui...",
       "alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],
-      "resposta_correta": "A",
-      "comentario_da_correta": "Justificativa técnica baseada na aula.",
+      "resposta_correta": "C",
+      "comentario_da_correta": "Explicação técnica do porquê C está certa.",
       "por_que_as_outras_estao_erradas": {{
-        "B": "por que B está errada",
-        "C": "por que C está errada",
-        "D": "por que D está errada"
+        "A": "Erro técnico da A",
+        "B": "Erro técnico da B",
+        "D": "Erro técnico da D"
       }},
-      "topico_relacionado": "qual topico_explicado isso testa"
+      "topico_relacionado": "Nome do tópico avaliado"
     }}
   ]
 }}
@@ -1207,27 +940,23 @@ Retorne APENAS JSON:
     return await get_json_response(prompt, model, temp=0.25)
 
 async def agent_mindmap(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
-    titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 🧠 Mapa Mental: Estruturando visualmente '{titulo}'... ---")
+    print(f"--- 🧠 Mapa Mental: Gerando código Mermaid... ---")
     lesson_text = json.dumps(lesson_content, ensure_ascii=False)
 
     prompt = f"""
-Atue como um Especialista em Aprendizagem Visual.
-Analise a aula abaixo:
+Gere um fluxograma Mermaid.js (graph TD) resumindo a aula abaixo.
 {lesson_text}
 
-Crie um código Mermaid.js (graph TD) que resuma visualmente os conceitos principais desta aula.
+REGRA CRÍTICA DE SINTAXE MERMAID:
+- NUNCA use parênteses (), colchetes [], chaves {{}}, aspas "" ou vírgulas ,, dentro do texto dos nós.
+- Use apenas letras, números e espaços simples dentro dos colchetes dos nós.
+- Exemplo CORRETO: A[Conceito Principal] --> B[Sub Topico];
 
-⚠️ REGRAS CRÍTICAS DE SINTAXE MERMAID (EVITE ERROS):
-1. NUNCA use parênteses (), vírgulas ,, aspas " ou colchetes [] dentro do texto dos nós.
-2. Use textos limpos e diretos. (Exemplo ERRADO: A[Gestão (BIA)]. Exemplo CORRETO: A[Gestao BIA]).
-3. NÃO use caracteres invisíveis ou "non-breaking spaces" para identação. Use espaços normais da barra de espaço.
-
-Retorne APENAS JSON estrito no formato:
+RETORNE APENAS ESTE JSON EXATO:
 {{
   "mapa_mental": {{
-    "titulo": "Título do Mapa (ex: Fluxo CI/CD)",
-    "codigo_mermaid": "graph TD;\\n  A[Conceito] --> B[Subconceito Detalhado];"
+    "titulo": "Título do Mapa",
+    "codigo_mermaid": "graph TD;\\n  A[Conceito Central] --> B[Sub Topico];"
   }}
 }}
 """
@@ -1235,24 +964,20 @@ Retorne APENAS JSON estrito no formato:
 
 
 async def agent_flashcards(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
-    titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 🃏 Flashcards: Extraindo revisão ativa de '{titulo}'... ---")
+    print(f"--- 🃏 Flashcards: Gerando cards de revisão... ---")
     lesson_text = json.dumps(lesson_content, ensure_ascii=False)
 
     prompt = f"""
-Atue como um Especialista em Repetição Espaçada (Anki).
-Analise a aula abaixo:
+Crie 3 a 5 Flashcards focados nos pontos mais decorebas ou pegadinhas da aula abaixo:
 {lesson_text}
 
-Crie de 3 a 5 Flashcards focados em "Active Recall" para os pontos mais difíceis, decorebas ou pegadinhas da aula.
-
-Retorne APENAS JSON estrito no formato:
+RETORNE APENAS ESTE JSON EXATO:
 {{
   "flashcards": [
     {{
-      "frente": "Pergunta curta e direta (ex: Qual a diferença entre TDD e BDD?)",
-      "verso": "Resposta exata e concisa.",
-      "dica": "Mnemônico ou dica de memorização (opcional)"
+      "frente": "Pergunta curta?",
+      "verso": "Resposta exata.",
+      "dica": "Dica mnemônica"
     }}
   ]
 }}
@@ -1260,9 +985,8 @@ Retorne APENAS JSON estrito no formato:
     return await get_json_response(prompt, model, temp=0.25)
 
 async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model: str) -> Dict[str, Any]:
-    print("--- 🎯 Estrategista v2: Criando plano baseado na realidade da aula... ---")
+    print("--- 🎯 Estrategista: Criando plano de revisão... ---")
     
-    # Extrair o que REALMENTE foi ensinado
     conteudo_real = []
     for m in modulos_data:
         if isinstance(m, dict):
@@ -1273,28 +997,25 @@ async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model:
     conteudo_texto = "\n".join(conteudo_real)
 
     prompt = f"""
-Você é um Mentor de Estudos.
-Crie um plano de estudos baseado EXCLUSIVAMENTE no conteúdo que foi gerado abaixo.
-
-CONTEÚDO GERADO NAS AULAS:
+Atue como Mentor de Alta Performance para Concursos/Certificações.
+Crie um Plano de Estudos ESTRATÉGICO em Markdown baseado SOMENTE nestes módulos:
 {conteudo_texto}
 
-ÁREA: {area}
+REGRAS CRÍTICAS:
+Para cada módulo, não apenas cite o que estudar, mas inclua OBRIGATORIAMENTE:
+1. **Foco de Ouro:** Onde o aluno deve gastar 80% do tempo.
+2. **Armadilha (O que NÃO focar):** O que é perfumaria e toma tempo à toa.
+3. **Métrica de Validação:** Como o aluno sabe que aprendeu (ex: 'Conseguir configurar X sem ler o manual', 'Acertar 80% das questões de Súmulas').
 
-REGRAS:
-1. O plano deve consolidar O QUE FOI DADO.
-2. Não invente tópicos que não estão na lista acima.
-3. Se organize em Semanas ou Dias, dependendo da densidade.
-4. Inclua uma seção de "Prática Recomendada" baseada na natureza da área (ex: se for TI, sugerir codar; se Direito, sugerir casos).
-
-Retorne APENAS JSON:
-{{ "plano_estudo": "Texto estruturado do plano (Markdown)." }}
+RETORNE APENAS ESTE JSON EXATO:
+{{
+  "plano_estudo": "Texto denso e estratégico em Markdown detalhando o plano de ataque para cada módulo."
+}}
 """
     return await get_json_response(prompt, model, temp=0.35)
 
-    
 # ============================================================================
-# 8. ROTA PRINCIPAL (/analyze)
+# 8. ROTA PRINCIPAL (/analyze) E ROTAS DO USUÁRIO OMITIDAS PARA BREVIDADE
 # ============================================================================
 
 @app.post("/analyze")
@@ -1306,49 +1027,36 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
     print(f"🔄 Iniciando pipeline com modelo: {selected_model}")
 
     try:
-        # 1) Architect
-        structure = await agent_architect(request.text, selected_model)
+        structure = ensure_dict(await agent_architect(request.text, selected_model))
         area = structure.get("area_conhecimento", "Geral")
         modules = normalize_modules(structure.get("modulos"))
         
-        # 2) Instruction Designer (Contexto)
-        instructions = await agent_instruction_designer(request.text, area, selected_model)
+        instructions = ensure_dict(await agent_instruction_designer(request.text, area, selected_model))
         
         final_aulas: List[Dict[str, Any]] = []
 
-        # 3) Sequential pipeline (Loop pelos Módulos)
         for idx, mod in enumerate(modules):
             titulo = mod.get("titulo", f"Módulo {idx+1}")
             print(f"\n➡️ Processando Módulo {idx + 1}: {titulo}")
 
-            # 3.1 Pesquisa
-            research = await agent_researcher(mod, area, request.text, instructions, selected_model)
+            research = ensure_dict(await agent_researcher(mod, area, request.text, instructions, selected_model))
             await asyncio.sleep(1)
 
-            # 3.2 Aula do Professor
-            lesson = await agent_professor(mod, area, research, instructions, selected_model)
+            lesson = ensure_dict(await agent_professor(mod, area, research, instructions, selected_model))
             lesson = sanitize_lesson(lesson)
             await asyncio.sleep(1)
             
-            # --- CRÍTICO: VALIDAR E CORRIGIR AULA SE NECESSÁRIO ---
             try:
-                # Recupera o texto atual
                 como_atual = (lesson.get("aula_teorica") or {}).get("como_funciona", "")
-                
-                # Validação 1: Estrutura e Profundidade
                 report = validate_como_funciona(como_atual)
-
-                # Validação 2: Termos Suspeitos (CORREÇÃO AQUI: Usa 'termos_chave' que existe)
                 allowed_terms = normalize_terms(research.get("termos_chave"))
                 suspects = detect_suspect_tools(como_atual, allowed_terms)
 
                 if (not report["ok"]) or suspects:
                     print(f"⚠️ 'como_funciona' precisa de revisão. Report: {report['ok']}, Suspeitos: {suspects}")
-                    
-                    deep = await agent_deepener_como_funciona(mod, area, research, lesson, selected_model)
+                    deep = ensure_dict(await agent_deepener_como_funciona(mod, area, research, lesson, selected_model))
                     new_como = ensure_str(deep.get("como_funciona"))
 
-                    # CORREÇÃO AQUI: Só sobrescreve se o novo texto for válido e substancial
                     if new_como and len(new_como) > 100:
                         if "aula_teorica" not in lesson or not isinstance(lesson["aula_teorica"], dict):
                             lesson["aula_teorica"] = {}
@@ -1357,37 +1065,40 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
                         print("✅ 'como_funciona' aprofundado com sucesso.")
                     else:
                         print("⚠️ Deepener retornou vazio ou inválido. Mantendo texto original.")
-                        
                     await asyncio.sleep(1)
             except Exception as e:
                 print(f"Erro no deepener (não crítico): {e}")
 
-            # 3.3 Glossário
-            glossary_data = await agent_glossarist(mod, area, lesson, selected_model)
+            glossary_data = ensure_dict(await agent_glossarist(mod, area, lesson, selected_model))
             await asyncio.sleep(1)
 
-            # 3.4 Banca Examinadora (Quiz)
-            exam = await agent_examiner(mod, area, lesson, selected_model)
+            exam = ensure_dict(await agent_examiner(mod, area, lesson, selected_model))
             await asyncio.sleep(1)
 
-            # 3.5 Mapa Mental (NOVO)
-            mindmap_data = await agent_mindmap(mod, area, lesson, selected_model)
+            mindmap_data = ensure_dict(await agent_mindmap(mod, area, lesson, selected_model))
             await asyncio.sleep(1)
 
-            # 3.6 Flashcards (NOVO)
-            flashcards_data = await agent_flashcards(mod, area, lesson, selected_model)
+            flashcards_data = ensure_dict(await agent_flashcards(mod, area, lesson, selected_model))
             await asyncio.sleep(1)
 
-            # 3.7 Discursiva (NOVO)
-            essay_data = await agent_essay_generator(mod, area, lesson, selected_model)
+            essay_data = ensure_dict(await agent_essay_generator(mod, area, lesson, selected_model))
             await asyncio.sleep(1)
             
-            # --- PREPARAÇÃO FINAL DOS DADOS ---
-
             quiz_list = sanitize_quiz(exam.get("quiz") if isinstance(exam, dict) else [])
             glossary_list = ensure_list(glossary_data.get("glossario")) if isinstance(glossary_data, dict) else []
             flashcards_list = ensure_list(flashcards_data.get("flashcards")) if isinstance(flashcards_data, dict) else []
             mindmap_obj = mindmap_data.get("mapa_mental") if isinstance(mindmap_data, dict) else {}
+
+            raw_glossary = ensure_list(lesson.get("glosario")) + glossary_list
+            clean_glossary = []
+            seen_terms = set()
+            
+            for g in raw_glossary:
+                if isinstance(g, dict) and g.get("termo") and g.get("definicao"):
+                    t_lower = str(g["termo"]).strip().lower()
+                    if t_lower not in seen_terms:
+                        clean_glossary.append(g)
+                        seen_terms.add(t_lower)
 
             raw_subtemas = ensure_list(research.get("subtemas_aprofundados"))
             
@@ -1405,14 +1116,13 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
                     "pontos_de_atencao": ["Verificar atualizações recentes na área."]
                 }]
 
-            # 3.7 MONTAGEM DO OBJETO FINAL
             full_module = {
                 **lesson,
-                "glosario": glossary_list,
+                "glosario": clean_glossary,
                 "quiz": quiz_list,
                 "flashcards": flashcards_list,
                 "mapa_mental": mindmap_obj,
-                "discursiva": essay_data.get("discursiva") if isinstance(essay_data, dict) else {}, # <--- NOVO
+                "discursiva": essay_data.get("discursiva") if isinstance(essay_data, dict) else {}, 
                 "subtemas_aprofundados": raw_subtemas,
                 "meta_modulo": mod,
                 "meta_research": {
@@ -1425,8 +1135,7 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
             final_aulas.append(full_module)
             await asyncio.sleep(1)
 
-        # 4) Estrategista Final (Plano de Estudos)
-        strategy = await agent_strategist(final_aulas, area, selected_model)
+        strategy = ensure_dict(await agent_strategist(final_aulas, area, selected_model))
 
         return {
             "resumo_cargo": structure.get("resumo_objetivo", ""),
@@ -1443,7 +1152,6 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- NOVOS SCHEMAS PARA USUÁRIOS ---
 class UserResponse(BaseModel):
     id: int
     email: str
@@ -1453,11 +1161,8 @@ class UserResponse(BaseModel):
 class UserUpdateRole(BaseModel):
     role: str
 
-# --- NOVAS ROTAS DE GERENCIAMENTO DE USUÁRIOS ---
-
 @app.get("/users", response_model=List[UserResponse])
 async def list_users(db: AsyncSession = Depends(get_db)):
-    """Lista todos os usuários cadastrados."""
     try:
         result = await db.execute(select(User).order_by(User.id))
         return result.scalars().all()
@@ -1467,17 +1172,13 @@ async def list_users(db: AsyncSession = Depends(get_db)):
 
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
-    """Deleta um usuário pelo ID."""
     try:
         result = await db.execute(select(User).filter(User.id == user_id))
         user = result.scalars().first()
         if not user:
             raise HTTPException(status_code=404, detail="Usuário não encontrado")
-        
-        # Opcional: Impedir que delete o próprio admin principal (id 1) se quiser
         if user.id == 1: 
              raise HTTPException(status_code=400, detail="Não é possível deletar o Admin Mestre.")
-
         await db.delete(user)
         await db.commit()
         return {"ok": True, "message": "Usuário deletado"}
@@ -1485,32 +1186,26 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
         raise he
     except Exception as e:
         await db.rollback()
-        print(f"Erro DB: {e}")
         raise HTTPException(status_code=500, detail="Erro ao deletar usuário")
 
 @app.put("/users/{user_id}/role")
 async def update_user_role(user_id: int, payload: UserUpdateRole, db: AsyncSession = Depends(get_db)):
-    """Atualiza o cargo (role) do usuário (admin <-> user)."""
     try:
         result = await db.execute(select(User).filter(User.id == user_id))
         user = result.scalars().first()
         if not user:
             raise HTTPException(status_code=404, detail="Usuário não encontrado")
-        
         if user.role == payload.role:
              return {"ok": True, "message": "Cargo já é este."}
-
         user.role = payload.role
         await db.commit()
         return {"ok": True, "message": f"Cargo atualizado para {payload.role}"}
     except Exception as e:
         await db.rollback()
-        print(f"Erro DB: {e}")
         raise HTTPException(status_code=500, detail="Erro ao atualizar usuário")
 
 @app.get("/users/me/settings", response_model=UserSettingsResponse)
 async def get_user_settings(current_user: User = Depends(get_current_user)):
-    """Busca as configurações de IA salvas do usuário logado"""
     return {
         "api_key": current_user.api_key,
         "preferred_model": current_user.preferred_model
@@ -1518,7 +1213,6 @@ async def get_user_settings(current_user: User = Depends(get_current_user)):
 
 @app.put("/users/me/settings")
 async def update_user_settings(settings: UserSettingsUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Salva a chave e modelo personalizados do usuário logado"""
     current_user.api_key = settings.api_key
     current_user.preferred_model = settings.preferred_model
     await db.commit()
@@ -1527,20 +1221,17 @@ async def update_user_settings(settings: UserSettingsUpdate, current_user: User 
 @app.post("/correct-essay")
 async def correct_essay(req: EssayCorrectionRequest):
     try:
-        result = await agent_essay_corrector(req)
+        result = ensure_dict(await agent_essay_corrector(req))
         return result
     except Exception as e:
         print(f"Erro na correção: {e}")
-        # Retorna o erro 500 para acionar o bloco "catch" do frontend
         raise HTTPException(status_code=500, detail="API de correção indisponível.")
-    
     
 @app.post("/generate-essay")
 async def generate_essay_endpoint(req: GenerateEssayRequest):
     try:
         mod_obj = {"titulo": req.aula_titulo}
-        # Chama o gerador enviando a chave de API do usuário (se houver)
-        result = await agent_essay_generator(mod_obj, req.area, req.lesson_content, req.model, req.api_key)
+        result = ensure_dict(await agent_essay_generator(mod_obj, req.area, req.lesson_content, req.model, req.api_key))
         return result
     except Exception as e:
         print(f"Erro na geração da discursiva: {e}")
@@ -1549,7 +1240,7 @@ async def generate_essay_endpoint(req: GenerateEssayRequest):
 @app.post("/chat")
 async def chat_tutor(req: ChatMessageRequest):
     try:
-        result = await agent_lesson_tutor(req)
+        result = ensure_dict(await agent_lesson_tutor(req))
         return result
     except Exception as e:
         print(f"Erro no chat: {e}")
