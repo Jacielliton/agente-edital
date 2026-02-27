@@ -1,17 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import QuizCard from "../QuizCard";
-
-
-const Mermaid = ({ chart }) => {
-  return (
-    <div style={{ padding: '20px', background: '#f1f5f9', border: '1px dashed #94a3b8', borderRadius: '8px', color: '#334155', fontFamily: 'monospace', whiteSpace: 'pre-wrap', overflowX: 'auto' }}>
-      <strong>[Diagrama Mermaid]</strong>
-      <br /><br />
-      {chart}
-    </div>
-  );
-};
+import Mermaid from "./Mermaid";
 
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
@@ -47,7 +37,7 @@ const getAuthToken = () => {
 };
 
 // ==========================================
-// COMPONENTE: CHAT DO TUTOR (FLUTUANTE)
+// COMPONENTE: CHAT DO TUTOR (FLUTUANTE DIREITO)
 // ==========================================
 function TutorChat({ area, defaultModel, userApiKey, userModel }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -242,7 +232,8 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   };
 
   return (
-    <details className="details" style={{ borderColor: '#0f172a', position: 'relative', margin: '20px 0', border: '1px solid #e2e8f0', borderRadius: '8px' }} open>
+    // ATENÇÃO: Removida a propriedade 'open' daqui
+    <details className="details" style={{ borderColor: '#0f172a', position: 'relative', margin: '20px 0', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
       <summary className="summaryTitle" style={{ color: '#f8fafc', backgroundColor: '#0f172a', padding: '15px', cursor: 'pointer', fontWeight: 'bold', borderRadius: '8px 8px 0 0' }}>
         ✍️ Prova Discursiva (Padrão CESPE)
       </summary>
@@ -331,6 +322,9 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
 export default function LessonContent({ result }) {
   const [selectedMap, setSelectedMap] = useState(null);
   
+  // ESTADO DO MENU LATERAL
+  const [isNavOpen, setIsNavOpen] = useState(false);
+  
   // ESTADO GLOBAL DE CONFIGURAÇÃO DE IA
   const [showConfig, setShowConfig] = useState(false);
   const [tempKey, setTempKey] = useState("");
@@ -405,6 +399,23 @@ export default function LessonContent({ result }) {
   return (
     <div className="result-content" style={{ position: 'relative', maxWidth: '1000px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       
+      {/* INJEÇÃO DE CSS PARA A ANIMAÇÃO DO NAVEGADOR */}
+      <style>
+        {`
+          @keyframes slideRightIn {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+          }
+          .nav-drawer {
+            animation: slideRightIn 0.3s ease-out forwards;
+          }
+          .nav-item-btn:hover {
+            border-color: #3b82f6 !important;
+            background-color: #eff6ff !important;
+          }
+        `}
+      </style>
+
       {/* BARRA SUPERIOR DE CONFIGURAÇÃO UNIFICADA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#e2e8f0', padding: '12px 20px', borderRadius: '8px', marginBottom: '20px' }}>
         <div style={{ fontSize: '0.9rem', color: '#475569' }}>
@@ -429,125 +440,178 @@ export default function LessonContent({ result }) {
       </div>
 
       {!!safeString(result?.plano_estudo) && (
-        <details className="details" style={{ margin: '20px 0', border: '1px solid #e2e8f0', borderRadius: '8px' }} open>
+        // ATENÇÃO: Removida a propriedade 'open' daqui
+        <details className="details" style={{ margin: '20px 0', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
           <summary className="summaryTitle" style={{ padding: '15px', background: '#f1f5f9', fontWeight: 'bold', cursor: 'pointer' }}>📅 Plano de Estudo Estratégico</summary>
           <div className="md" style={{ padding: '20px' }}><ReactMarkdown>{safeString(result?.plano_estudo)}</ReactMarkdown></div>
         </details>
       )}
 
       {aulas.map((aula, idx) => {
-        // Apenas extraímos o que realmente vamos usar na nova interface
         const quiz = safeArray(aula?.quiz);
         const mapaMental = aula?.mapa_mental || {};
 
         return (
-          <article className="card" key={idx} style={{ marginBottom: '40px', padding: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+          // ATENÇÃO: Adicionado ID ao article para o scroll funcionar
+          <article id={`aula-${idx}`} className="card" key={idx} style={{ marginBottom: '40px', padding: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
            
-  <h2 className="lessonTitle" style={{ marginTop: 0, color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
-    <span style={{ display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', color: '#3b82f6', letterSpacing: '0.05em', marginBottom: '6px' }}>
-      📚 {safeString(aula?.disciplina)}
-    </span>
-    {safeString(aula?.titulo)}
-  </h2>
-  
-  <div className="section" style={{ marginBottom: '20px' }}>
-    <p><strong>Visão Geral:</strong> <ReactMarkdown components={{ p: 'span' }}>{safeString(aula?.visao_geral)}</ReactMarkdown></p>
-  </div>
+            <h2 className="lessonTitle" style={{ marginTop: 0, color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
+              <span style={{ display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', color: '#3b82f6', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                📚 {safeString(aula?.disciplina)}
+              </span>
+              {safeString(aula?.titulo)}
+            </h2>
+            
+            <div className="section" style={{ marginBottom: '20px' }}>
+              <p><strong>Visão Geral:</strong> <ReactMarkdown components={{ p: 'span' }}>{safeString(aula?.visao_geral)}</ReactMarkdown></p>
+            </div>
 
-  {/* 1. Aula Teórica Aprofundada */}
-  <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }} open>
-    <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
-      📖 Aula Teórica Aprofundada
-    </summary>
-    <div className="md markdown-format" style={{ padding: '20px' }}>
-      <ReactMarkdown>{safeString(aula?.aula_teorica_aprofundada)}</ReactMarkdown>
-    </div>
-  </details>
+            {/* 1. Aula Teórica Aprofundada - Removido o 'open' */}
+            <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+              <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+                📖 Aula Teórica Aprofundada
+              </summary>
+              <div className="md markdown-format" style={{ padding: '20px' }}>
+                <ReactMarkdown>{safeString(aula?.aula_teorica_aprofundada)}</ReactMarkdown>
+              </div>
+            </details>
 
-  {/* 2. Resumo de Termos Chave */}
-  {Array.isArray(aula?.resumo_termos_chave) && aula.resumo_termos_chave.length > 0 && (
-    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-      <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
-        🔑 Resumo de Termos Chave
-      </summary>
-      <div style={{ padding: '20px' }}>
-        <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
-          {aula.resumo_termos_chave.map((t, k) => (
-            <li key={k} style={{ marginBottom: '12px', background: '#f1f5f9', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #3b82f6' }}>
-              <strong style={{ color: '#1e40af' }}>{t.termo}:</strong> <ReactMarkdown components={{ p: 'span' }}>{t.definicao}</ReactMarkdown>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </details>
-  )}
+            {/* 2. Resumo de Termos Chave */}
+            {Array.isArray(aula?.resumo_termos_chave) && aula.resumo_termos_chave.length > 0 && (
+              <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+                  🔑 Resumo de Termos Chave
+                </summary>
+                <div style={{ padding: '20px' }}>
+                  <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
+                    {aula.resumo_termos_chave.map((t, k) => (
+                      <li key={k} style={{ marginBottom: '12px', background: '#f1f5f9', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #3b82f6' }}>
+                        <strong style={{ color: '#1e40af' }}>{t.termo}:</strong> <ReactMarkdown components={{ p: 'span' }}>{t.definicao}</ReactMarkdown>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
+            )}
 
-  {/* 3. Analogias e Contexto */}
-  {!!aula?.analogias_contexto && (
-    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-      <summary className="summaryTitle" style={{ padding: '15px', background: '#fefce8', color: '#a16207', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
-        💡 Analogias e Contexto
-      </summary>
-      <div className="md markdown-format" style={{ padding: '20px' }}>
-        <ReactMarkdown>{safeString(aula.analogias_contexto)}</ReactMarkdown>
-      </div>
-    </details>
-  )}
+            {/* 3. Analogias e Contexto */}
+            {!!aula?.analogias_contexto && (
+              <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <summary className="summaryTitle" style={{ padding: '15px', background: '#fefce8', color: '#a16207', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+                  💡 Analogias e Contexto
+                </summary>
+                <div className="md markdown-format" style={{ padding: '20px' }}>
+                  <ReactMarkdown>{safeString(aula.analogias_contexto)}</ReactMarkdown>
+                </div>
+              </details>
+            )}
 
-  {/* 4. Aplicação Prática / Exemplos */}
-  {!!aula?.aplicacao_pratica_exemplos && (
-    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-      <summary className="summaryTitle" style={{ padding: '15px', background: '#f0fdf4', color: '#166534', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
-        🛠️ Aplicação Prática / Exemplos
-      </summary>
-      <div className="md markdown-format" style={{ padding: '20px' }}>
-        <ReactMarkdown>{safeString(aula.aplicacao_pratica_exemplos)}</ReactMarkdown>
-      </div>
-    </details>
-  )}
+            {/* 4. Aplicação Prática / Exemplos */}
+            {!!aula?.aplicacao_pratica_exemplos && (
+              <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <summary className="summaryTitle" style={{ padding: '15px', background: '#f0fdf4', color: '#166534', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+                  🛠️ Aplicação Prática / Exemplos
+                </summary>
+                <div className="md markdown-format" style={{ padding: '20px' }}>
+                  <ReactMarkdown>{safeString(aula.aplicacao_pratica_exemplos)}</ReactMarkdown>
+                </div>
+              </details>
+            )}
 
-  {/* 5. Fixação de Conhecimento (Questões) */}
-  {quiz.length > 0 && (
-    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-      <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
-        📝 Fixação de Conhecimento ({quiz.length} Questões)
-      </summary>
-      <div style={{ padding: '20px' }}>
-        {quiz.map((q, i) => (
-          <QuizCard key={i} question={q} index={i} />
-        ))}
-      </div>
-    </details>
-  )}
+            {/* 5. Fixação de Conhecimento (Questões) */}
+            {quiz.length > 0 && (
+              <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+                  📝 Fixação de Conhecimento ({quiz.length} Questões)
+                </summary>
+                <div style={{ padding: '20px' }}>
+                  {quiz.map((q, i) => (
+                    <QuizCard key={i} question={q} index={i} />
+                  ))}
+                </div>
+              </details>
+            )}
 
-  {/* 6. Prova Discursiva */}
-  {aula?.discursiva && Object.keys(aula.discursiva).length > 0 && (
-    <EssaySection 
-      initialDiscursiva={aula.discursiva} 
-      defaultModel={result?.modelo_utilizado} 
-      userApiKey={userApiKey} 
-      userModel={userModel} 
-      aula={aula}
-      area={result?.area_identificada}
-    />
-  )}
+            {/* 6. Prova Discursiva */}
+            {aula?.discursiva && Object.keys(aula.discursiva).length > 0 && (
+              <EssaySection 
+                initialDiscursiva={aula.discursiva} 
+                defaultModel={result?.modelo_utilizado} 
+                userApiKey={userApiKey} 
+                userModel={userModel} 
+                aula={aula}
+                area={result?.area_identificada}
+              />
+            )}
 
-  {/* 7. Mapa Mental */}
-  {!!mapaMental.codigo_mermaid && (
-    <div style={{ margin: '20px 0' }}>
-      <button 
-        onClick={() => setSelectedMap({ titulo: mapaMental.titulo, codigo: mapaMental.codigo_mermaid })}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '15px', backgroundColor: '#f0fdfa', color: '#047857', border: '1px solid #10b981', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', transition: 'background-color 0.2s' }}
-      >
-        🧠 Visualizar Mapa Mental do Capítulo
-      </button>
-    </div>
-  )}
-</article>
+            {/* 7. Mapa Mental */}
+            {!!mapaMental.codigo_mermaid && (
+              <div style={{ margin: '20px 0' }}>
+                <button 
+                  onClick={() => setSelectedMap({ titulo: mapaMental.titulo, codigo: mapaMental.codigo_mermaid })}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '15px', backgroundColor: '#f0fdfa', color: '#047857', border: '1px solid #10b981', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', transition: 'background-color 0.2s' }}
+                >
+                  🧠 Visualizar Mapa Mental do Capítulo
+                </button>
+              </div>
+            )}
+          </article>
         );
       })}
 
-      {/* AQUI ESTÁ O WIDGET FLUTUANTE DO TUTOR */}
+
+      {/* ========================================== */}
+      {/* BOTÃO FLUTUANTE DO NAVEGADOR ESQUERDO      */}
+      {/* ========================================== */}
+      {!isNavOpen && (
+        <button 
+          onClick={() => setIsNavOpen(true)}
+          title="Índice de Tópicos"
+          style={{ position: 'fixed', bottom: '20px', left: '20px', width: '60px', height: '60px', borderRadius: '50%', backgroundColor: '#0f172a', color: '#fff', border: 'none', fontSize: '1.8rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          📑
+        </button>
+      )}
+
+      {/* ========================================== */}
+      {/* MENU NAVEGADOR LATERAL (DRAWER)            */}
+      {/* ========================================== */}
+      {isNavOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 10001, display: 'flex' }} onClick={() => setIsNavOpen(false)}>
+          <div className="nav-drawer" style={{ width: '320px', maxWidth: '85vw', height: '100%', backgroundColor: '#f8fafc', boxShadow: '4px 0 15px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+            
+            <div style={{ padding: '20px', backgroundColor: '#0f172a', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📑 Índice de Aulas</h3>
+              <button onClick={() => setIsNavOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+            </div>
+            
+            <div style={{ flex: 1, overflowY: 'auto', padding: '15px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+               <button 
+                  onClick={() => { window.scrollTo({top: 0, behavior: 'smooth'}); setIsNavOpen(false); }}
+                  style={{ textAlign: 'left', padding: '12px', background: '#e2e8f0', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', color: '#1e293b' }}
+                >
+                  ↑ Voltar ao Topo (Resumo)
+                </button>
+              
+              {aulas.map((aula, i) => (
+                <button 
+                  key={i}
+                  className="nav-item-btn"
+                  onClick={() => { document.getElementById(`aula-${i}`)?.scrollIntoView({ behavior: 'smooth' }); setIsNavOpen(false); }}
+                  style={{ textAlign: 'left', padding: '12px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '8px', cursor: 'pointer', color: '#334155', transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: '4px' }}
+                >
+                  <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: '#3b82f6', fontWeight: 'bold' }}>{safeString(aula?.disciplina).substring(0, 30)}</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: '600', lineHeight: '1.3' }}>{safeString(aula?.titulo)}</span>
+                </button>
+              ))}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+
+      {/* WIDGET FLUTUANTE DO TUTOR DIREITO */}
       <TutorChat 
         area={result?.area_identificada} 
         defaultModel={result?.modelo_utilizado} 
