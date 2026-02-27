@@ -1,22 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import QuizCard from "../QuizCard";
 
-// ==========================================
-// COMPONENTES SIMULADOS (Para compatibilidade)
-// ==========================================
-const QuizCard = ({ question, index }) => {
-  return (
-    <div style={{ padding: '15px', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '10px', background: '#f8fafc' }}>
-      <strong style={{ color: '#0f172a' }}>Questão {index + 1}:</strong>
-      <p>{question?.enunciado}</p>
-      <div style={{ paddingLeft: '15px' }}>
-        {Array.isArray(question?.alternativas) && question.alternativas.map((alt, i) => (
-          <div key={i} style={{ marginBottom: '5px', color: '#475569' }}>{alt}</div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 const Mermaid = ({ chart }) => {
   return (
@@ -451,206 +436,114 @@ export default function LessonContent({ result }) {
       )}
 
       {aulas.map((aula, idx) => {
-        const topicos = safeArray(aula?.topicos_explicados);
-        const glossario = safeArray(aula?.glosario);
+        // Apenas extraímos o que realmente vamos usar na nova interface
         const quiz = safeArray(aula?.quiz);
-        const aprofundamento = safeArray(aula?.subtemas_aprofundados);
-        const flashcards = safeArray(aula?.flashcards);
         const mapaMental = aula?.mapa_mental || {};
-        const aulaTeorica = aula?.aula_teorica || {};
-        const termosTecnicos = safeArray(aulaTeorica?.termos_tecnicos);
 
         return (
           <article className="card" key={idx} style={{ marginBottom: '40px', padding: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <h2 className="lessonTitle" style={{ marginTop: 0, color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>{idx + 1}. {safeString(aula?.titulo)}</h2>
-            <div className="section" style={{ marginBottom: '20px' }}>
-              <p><strong>Visão Geral:</strong> <ReactMarkdown components={{ p: 'span' }}>{safeString(aula?.visao_geral)}</ReactMarkdown></p>
-              {!!aula?.referencia_bibliografica && (
-                 <p className="muted" style={{marginTop: '0.5rem', color: '#64748b'}}>📚 <strong>Fonte:</strong> <ReactMarkdown components={{ p: 'span' }}>{safeString(aula?.referencia_bibliografica)}</ReactMarkdown></p>
-              )}
-            </div>
+           
+  <h2 className="lessonTitle" style={{ marginTop: 0, color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
+    <span style={{ display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', color: '#3b82f6', letterSpacing: '0.05em', marginBottom: '6px' }}>
+      📚 {safeString(aula?.disciplina)}
+    </span>
+    {safeString(aula?.titulo)}
+  </h2>
+  
+  <div className="section" style={{ marginBottom: '20px' }}>
+    <p><strong>Visão Geral:</strong> <ReactMarkdown components={{ p: 'span' }}>{safeString(aula?.visao_geral)}</ReactMarkdown></p>
+  </div>
 
-            <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }} open>
-              <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px 8px 0 0' }}>🎓 Aula Teórica</summary>
-              <div className="md" style={{ padding: '20px' }}>
-                {!!aulaTeorica.introducao_contextual && (
-                  <div style={{ marginBottom: '1.5rem', fontStyle: 'italic', color: '#475569', borderLeft: '4px solid #94a3b8', paddingLeft: '15px' }}>
-                    <ReactMarkdown>{aulaTeorica.introducao_contextual}</ReactMarkdown>
-                  </div>
-                )}
-                {termosTecnicos.length > 0 && (
-                  <div style={{ background: '#f0f9ff', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #0ea5e9' }}>
-                    <h4 style={{margin: '0 0 15px 0', color: '#0369a1'}}>🧠 Termos Técnicos Essenciais</h4>
-                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                      {termosTecnicos.map((t, k) => (
-                        <li key={k} style={{marginBottom: '10px'}}><strong>{t.termo}:</strong> <ReactMarkdown components={{ p: 'span' }}>{t.definicao}</ReactMarkdown></li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <h3 style={{ color: '#0f172a' }}>1. Conceito Simplificado (Analogia)</h3>
-                <div className="markdown-format"><ReactMarkdown>{safeString(aulaTeorica?.conceito_simplificado)}</ReactMarkdown></div>
-                
-                <h3 style={{ color: '#0f172a', marginTop: '25px' }}>2. Definição Técnica</h3>
-                <div className="markdown-format"><ReactMarkdown>{safeString(aulaTeorica?.conceito_tecnico)}</ReactMarkdown></div>
-                
-                <h3 style={{ color: '#0f172a', marginTop: '25px' }}>3. Como Funciona (Mecanismo)</h3>
-                <div className="mechanism-box" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '25px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                   <ReactMarkdown 
-                     components={{
-                       strong: ({node, ...props}) => <span style={{color: '#d946ef', fontWeight: 'bold'}} {...props} />,
-                       ul: ({node, ...props}) => <ul style={{paddingLeft: '20px', marginBottom: '15px'}} {...props} />,
-                       li: ({node, ...props}) => <li style={{marginBottom: '10px', lineHeight: '1.6'}} {...props} />
-                     }}
-                   >
-                     {safeString(aulaTeorica?.como_funciona)}
-                   </ReactMarkdown>
-                </div>
-                {!!aulaTeorica?.comparativo && (
-                  <>
-                    <h3 style={{ color: '#0f172a', marginTop: '25px' }}>4. Comparativo</h3>
-                    <div className="table-responsive" style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <ReactMarkdown>
-                        {safeString(aulaTeorica?.comparativo)}
-                      </ReactMarkdown>
-                    </div>
-                  </>
-                )}
-                {!!aulaTeorica?.exemplo_pratico && (
-                  <>
-                    <h3 style={{ color: '#0f172a', marginTop: '25px' }}>5. Exemplo Prático Resolvido</h3>
-                    <div style={{
-                      background: '#f0fdf4', 
-                      color: '#0f172a', 
-                      padding: '20px', 
-                      borderRadius: '8px', 
-                      borderLeft: '4px solid #0ea5e9',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                      lineHeight: '1.6',
-                      overflowX: 'auto'
-                    }}>
-                      <ReactMarkdown>{safeString(aulaTeorica?.exemplo_pratico)}</ReactMarkdown>
-                    </div>
-                  </>
-                )}
-              </div>
-            </details>
-            
-            <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-              <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>📌 Tópicos Detalhados</summary>
-              <div style={{ padding: '20px' }}>
-                {topicos.map((t, i) => (
-                  <div key={i} className="subCard" style={{ marginBottom: '25px', paddingBottom: '20px', borderBottom: i < topicos.length - 1 ? '1px solid #e2e8f0' : 'none' }}>
-                    <div className="subCardTitle" style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '10px' }}>{safeString(t?.topico)}</div>
-                    
-                    <div className="subCardContent markdown-format">
-                      <ReactMarkdown>{safeString(t?.explicacao)}</ReactMarkdown>
-                    </div>
-                    {!!t?.exemplo_pratico && (
-                      <div className="subCardEx" style={{ marginTop: '15px', padding: '15px', background: '#f8fafc', borderRadius: '8px', borderLeft: '4px solid #64748b' }}>
-                        <strong style={{ color: '#0f172a', display: 'block', marginBottom: '10px' }}>💡 Exemplo Prático:</strong> 
-                        <ReactMarkdown>{safeString(t?.exemplo_pratico)}</ReactMarkdown>
-                      </div>
-                    )}
-                    {!!t?.pegadinha_tipica && (
-                      <div className="warningBox" style={{ marginTop: '15px', padding: '15px', background: '#fef2f2', borderRadius: '8px', borderLeft: '4px solid #ef4444' }}>
-                        <strong style={{ display: 'block', marginBottom: '10px', color: '#b91c1c' }}>⚠️ Cuidado:</strong> 
-                        <ReactMarkdown>{safeString(t?.pegadinha_tipica)}</ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </details>
+  {/* 1. Aula Teórica Aprofundada */}
+  <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }} open>
+    <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+      📖 Aula Teórica Aprofundada
+    </summary>
+    <div className="md markdown-format" style={{ padding: '20px' }}>
+      <ReactMarkdown>{safeString(aula?.aula_teorica_aprofundada)}</ReactMarkdown>
+    </div>
+  </details>
 
-            {aprofundamento.length > 0 && (
-              <details className="details" style={{ borderColor: '#8b5cf6', marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                <summary className="summaryTitle" style={{ color: '#7e22ce', backgroundColor: '#fdf4ff', padding: '15px', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>🚀 Painel Avançado</summary>
-                <div className="grid" style={{ padding: '20px', display: 'grid', gap: '20px' }}>
-                  {aprofundamento.map((item, i) => (
-                    <div className="miniCard" key={i} style={{ padding: '20px', background: '#ffffff', borderRadius: '8px', borderLeft: '4px solid #d946ef', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                      <div className="miniTitle" style={{ color: '#a21caf', fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '10px' }}>{safeString(item.subtema)}</div>
-                      <div className="md markdown-format" style={{ margin: '15px 0', lineHeight: '1.6' }}><ReactMarkdown>{safeString(item.conteudo_denso)}</ReactMarkdown></div>
-                      {item.laboratorio_pratico && (
-                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '15px', borderRadius: '8px', marginTop: '15px' }}>
-                          <strong style={{color: '#059669', fontSize: '1.1rem'}}>🧪 Laboratório Prático:</strong>
-                          <div style={{marginTop:'10px', fontSize: '1rem', display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                            <div><b>🎯 Cenário:</b> <ReactMarkdown components={{ p: 'span' }}>{safeString(item.laboratorio_pratico.cenario)}</ReactMarkdown></div>
-                            <div><b>🛠️ Resolução:</b> <ReactMarkdown components={{ p: 'span' }}>{safeString(item.laboratorio_pratico.resolucao)}</ReactMarkdown></div>
-                            <div><b>✅ Resultado:</b> <ReactMarkdown components={{ p: 'span' }}>{safeString(item.laboratorio_pratico.resultado_esperado)}</ReactMarkdown></div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
+  {/* 2. Resumo de Termos Chave */}
+  {Array.isArray(aula?.resumo_termos_chave) && aula.resumo_termos_chave.length > 0 && (
+    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+      <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+        🔑 Resumo de Termos Chave
+      </summary>
+      <div style={{ padding: '20px' }}>
+        <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
+          {aula.resumo_termos_chave.map((t, k) => (
+            <li key={k} style={{ marginBottom: '12px', background: '#f1f5f9', padding: '12px', borderRadius: '6px', borderLeft: '4px solid #3b82f6' }}>
+              <strong style={{ color: '#1e40af' }}>{t.termo}:</strong> <ReactMarkdown components={{ p: 'span' }}>{t.definicao}</ReactMarkdown>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
+  )}
 
-            {glossario.length > 0 && (
-              <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>📖 Glossário</summary>
-                <div className="grid" style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '15px' }}>
-                  {glossario.map((g, i) => (
-                    <div className="miniCard" key={i} style={{ padding: '15px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                      <div className="miniTitle" style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: '5px' }}>{safeString(g?.termo)}</div>
-                      {!!safeString(g?.definicao) && <div className="muted" style={{ color: '#475569', fontSize: '0.95rem' }}><ReactMarkdown>{safeString(g?.definicao)}</ReactMarkdown></div>}
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}            
+  {/* 3. Analogias e Contexto */}
+  {!!aula?.analogias_contexto && (
+    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+      <summary className="summaryTitle" style={{ padding: '15px', background: '#fefce8', color: '#a16207', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+        💡 Analogias e Contexto
+      </summary>
+      <div className="md markdown-format" style={{ padding: '20px' }}>
+        <ReactMarkdown>{safeString(aula.analogias_contexto)}</ReactMarkdown>
+      </div>
+    </details>
+  )}
 
-            {flashcards.length > 0 && (
-              <details className="details" style={{ borderColor: '#eab308', marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                <summary className="summaryTitle" style={{ color: '#a16207', backgroundColor: '#fefce8', padding: '15px', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>🃏 Flashcards</summary>
-                <div style={{ padding: '20px' }}>
-                  {flashcards.map((card, i) => (
-                    <details key={i} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderLeft: '4px solid #eab308', borderRadius: '8px', padding: '15px', marginBottom: '15px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                      <summary style={{ fontWeight: 'bold', outline: 'none', color: '#1e293b', fontSize: '1.1rem' }}>❓ <ReactMarkdown components={{ p: 'span' }}>{safeString(card.frente)}</ReactMarkdown></summary>
-                      <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px dashed #cbd5e1', color: '#059669', fontSize: '1.05rem' }}>
-                        <strong>💡 Resposta: </strong> <span style={{color: '#334155'}}><ReactMarkdown components={{ p: 'span' }}>{safeString(card.verso)}</ReactMarkdown></span>
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </details>
-            )}
+  {/* 4. Aplicação Prática / Exemplos */}
+  {!!aula?.aplicacao_pratica_exemplos && (
+    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+      <summary className="summaryTitle" style={{ padding: '15px', background: '#f0fdf4', color: '#166534', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+        🛠️ Aplicação Prática / Exemplos
+      </summary>
+      <div className="md markdown-format" style={{ padding: '20px' }}>
+        <ReactMarkdown>{safeString(aula.aplicacao_pratica_exemplos)}</ReactMarkdown>
+      </div>
+    </details>
+  )}
 
-            {quiz.length > 0 && (
-              <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }} open>
-                <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px 8px 0 0' }}>📝 Questões de Fixação</summary>
-                <div style={{ padding: '20px' }}>
-                  {quiz.map((q, i) => (
-                    <QuizCard key={i} question={q} index={i} />
-                  ))}
-                </div>
-              </details>
-            )}
+  {/* 5. Fixação de Conhecimento (Questões) */}
+  {quiz.length > 0 && (
+    <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+      <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
+        📝 Fixação de Conhecimento ({quiz.length} Questões)
+      </summary>
+      <div style={{ padding: '20px' }}>
+        {quiz.map((q, i) => (
+          <QuizCard key={i} question={q} index={i} />
+        ))}
+      </div>
+    </details>
+  )}
 
-            {aula?.discursiva && Object.keys(aula.discursiva).length > 0 && (
-              <EssaySection 
-                initialDiscursiva={aula.discursiva} 
-                defaultModel={result?.modelo_utilizado} 
-                userApiKey={userApiKey} 
-                userModel={userModel} 
-                aula={aula}
-                area={result?.area_identificada}
-              />
-            )}
+  {/* 6. Prova Discursiva */}
+  {aula?.discursiva && Object.keys(aula.discursiva).length > 0 && (
+    <EssaySection 
+      initialDiscursiva={aula.discursiva} 
+      defaultModel={result?.modelo_utilizado} 
+      userApiKey={userApiKey} 
+      userModel={userModel} 
+      aula={aula}
+      area={result?.area_identificada}
+    />
+  )}
 
-            {!!mapaMental.codigo_mermaid && (
-              <div style={{ margin: '20px 0' }}>
-                <button 
-                  onClick={() => setSelectedMap({ titulo: mapaMental.titulo, codigo: mapaMental.codigo_mermaid })}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '15px', backgroundColor: '#f0fdfa', color: '#047857', border: '1px solid #10b981', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', transition: 'background-color 0.2s' }}
-                >
-                  🧠 Visualizar Mapa Mental: {safeString(mapaMental.titulo)}
-                </button>
-              </div>
-            )}
-
-          </article>
+  {/* 7. Mapa Mental */}
+  {!!mapaMental.codigo_mermaid && (
+    <div style={{ margin: '20px 0' }}>
+      <button 
+        onClick={() => setSelectedMap({ titulo: mapaMental.titulo, codigo: mapaMental.codigo_mermaid })}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '15px', backgroundColor: '#f0fdfa', color: '#047857', border: '1px solid #10b981', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', transition: 'background-color 0.2s' }}
+      >
+        🧠 Visualizar Mapa Mental do Capítulo
+      </button>
+    </div>
+  )}
+</article>
         );
       })}
 

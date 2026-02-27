@@ -411,27 +411,41 @@ def ensure_list(val: Any) -> List[Any]: return val if isinstance(val, list) else
 
 def ensure_str(val: Any) -> str: return val if isinstance(val, str) else ""
 
-def normalize_modules(mods: Any) -> List[Dict[str, Any]]:
-    if not isinstance(mods, list) or not mods: return [{"titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""}]
-    if all(isinstance(m, str) for m in mods):
-        out = []
-        for m in mods:
-            if isinstance(m, str) and m.strip():
-                out.append({"titulo": m.strip(), "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""})
-        return out or [{"titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""}]
-    out: List[Dict[str, Any]] = []
-    for m in mods:
-        if not isinstance(m, dict): continue
-        titulo = (m.get("titulo") or m.get("nome") or m.get("title") or "").strip()
-        if not titulo: continue
-        out.append({
-            "titulo": titulo,
-            "tipo": m.get("tipo") or "conceito",
-            "ancoras_detectadas": ensure_list(m.get("ancoras_detectadas")),
-            "subtopicos": ensure_list(m.get("subtopicos")),
-            "regra_de_escopo": ensure_str(m.get("regra_de_escopo")),
-        })
-    return out or [{"titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "subtopicos": [], "regra_de_escopo": ""}]
+def normalize_modules(mods: Any, fallback_disciplina: str = "Conhecimentos Gerais") -> List[Dict[str, Any]]:
+    if not isinstance(mods, list) or not mods: 
+        return [{"disciplina": fallback_disciplina, "titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "regra_de_escopo": ""}]
+    
+    def flatten(module_list, parent_disciplina=fallback_disciplina):
+        res = []
+        for m in module_list:
+            if isinstance(m, str):
+                if m.strip(): 
+                    res.append({"disciplina": parent_disciplina, "titulo": m.strip(), "tipo": "conceito", "ancoras_detectadas": [], "regra_de_escopo": ""})
+                continue
+            if not isinstance(m, dict): 
+                continue
+            
+            titulo = (m.get("titulo") or m.get("nome") or m.get("title") or "").strip()
+            if not titulo: 
+                continue
+            
+            current_disciplina = m.get("disciplina") or parent_disciplina
+            subtopicos = ensure_list(m.get("subtopicos", []))
+            
+            res.append({
+                "disciplina": current_disciplina,
+                "titulo": titulo,
+                "tipo": m.get("tipo") or "conceito",
+                "ancoras_detectadas": ensure_list(m.get("ancoras_detectadas")),
+                "regra_de_escopo": ensure_str(m.get("regra_de_escopo")),
+            })
+            
+            if subtopicos:
+                res.extend(flatten(subtopicos, current_disciplina))
+        return res
+
+    out = flatten(mods)
+    return out or [{"disciplina": fallback_disciplina, "titulo": "Análise Geral", "tipo": "conceito", "ancoras_detectadas": [], "regra_de_escopo": ""}]
 
 def validate_como_funciona(como: str) -> Dict[str, Any]:
     como = (como or "").strip()
@@ -475,18 +489,15 @@ def normalize_wrong_reasons(val: Any) -> Dict[str, str]:
 
 def sanitize_lesson(lesson: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(lesson, dict): return {}
-    for key in ["topicos_explicados", "micro_mecanismos", "criterios_de_decisao", "validacoes_e_checkpoints", "confusoes_classicas_de_prova", "erros_comuns", "checklist_de_revisao", "limites_do_escopo", "glosario"]:
-        lesson[key] = ensure_list(lesson.get(key))
-    for key in ["titulo", "visao_geral", "referencia_bibliografica"]:
+    
+    # Sanitiza as novas chaves de texto
+    for key in ["titulo", "visao_geral", "aula_teorica_aprofundada", "analogias_contexto", "aplicacao_pratica_exemplos", "referencia_bibliografica"]:
         lesson[key] = ensure_str(lesson.get(key))
-    aula_teorica = lesson.get("aula_teorica")
-    if not isinstance(aula_teorica, dict):
-        aula_teorica = {}
-        lesson["aula_teorica"] = aula_teorica
-    teorica_str_keys = ["introducao_contextual", "definicao_chave", "conceito_simplificado", "conceito_tecnico", "como_funciona", "comparativo", "exemplo_pratico"]
-    for k in teorica_str_keys: aula_teorica[k] = ensure_str(aula_teorica.get(k))
-    teorica_list_keys = ["termos_tecnicos"]
-    for k in teorica_list_keys: aula_teorica[k] = ensure_list(aula_teorica.get(k))
+        
+    # Sanitiza as novas chaves de lista
+    for key in ["resumo_termos_chave"]:
+        lesson[key] = ensure_list(lesson.get(key))
+        
     return lesson
 
 def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
@@ -671,36 +682,60 @@ RETORNE APENAS ESTE JSON EXATO:
     return await get_json_response(prompt, model, temp=0.3)
 
 async def agent_architect(text: str, model: str) -> Dict[str, Any]:
-    print("--- 🏛️  Arquiteto: Organizando cronograma em Semanas/Módulos... ---")
+    print("--- 🏛️ Arquiteto: Lendo edital e extraindo disciplinas dinamicamente... ---")
     prompt = f"""
-Atue como COORDENADOR PEDAGÓGICO.
-Agrupe o edital abaixo em MÓDULOS SEMANAIS COESOS.
+Atue como Especialista em Análise de Editais de Concurso.
+Sua missão é ler o texto bruto do edital fornecido e transformá-lo em uma lista de módulos TOTALMENTE PLANA em formato JSON.
 
-EDITAL:
-{clamp_text(text, 12000)}
+REGRA DE EXTRAÇÃO DAS MATÉRIAS (CRÍTICA):
+No texto, o nome da disciplina/área de conhecimento aparece imediatamente ANTES de um sinal de dois-pontos (":").
+Exemplos do padrão:
+- "LÍNGUA PORTUGUESA: 1 Compreensão..." -> A disciplina é "LÍNGUA PORTUGUESA".
+- "NOÇÕES DE DIREITO CONSTITUCIONAL : 1 Aplicabilidade..." -> A disciplina é "NOÇÕES DE DIREITO CONSTITUCIONAL".
+- "ENGENHARIA DE DADOS: 1 Dado..." -> A disciplina é "ENGENHARIA DE DADOS".
 
-REGRAS:
-1. Agrupe tópicos relacionados em Grandes Semanas (ex: "Semana 1: Licitações").
-2. Não faça módulos micro fragmentados.
+Você deve capturar esse texto antes dos dois-pontos e usá-lo OBRIGATORIAMENTE no campo "disciplina" para TODOS os tópicos numéricos que vierem a seguir, até que uma nova disciplina com ":" apareça no texto. Ignore palavras genéricas de agrupamento como "ESPECÍFICO:" se elas não tiverem tópicos numéricos atrelados, ou use-as como parte do contexto.
 
-RETORNE APENAS ESTE JSON EXATO:
+REGRAS DE FORMATAÇÃO DOS TÓPICOS (CRÍTICAS):
+1. CADA NÚMERO individual do edital (ex: 1, 1.1, 1.2, 2, 2.1) deve ser um objeto SEPARADO na lista "modulos".
+2. NUNCA aninhe tópicos (não crie listas dentro de listas). A lista de módulos deve ser 100% plana.
+3. Mantenha o número junto com o texto no campo "titulo" (ex: "4.1 Emprego de tempos e modos verbais").
+
+TEXTO DO EDITAL PARA ANÁLISE:
+{clamp_text(text, 15000)}
+
+RETORNE APENAS ESTE JSON EXATO (Siga rigorosamente esta estrutura):
 {{
-  "area_conhecimento": "Nome da Área Principal",
-  "resumo_objetivo": "Resumo de 2 linhas do curso.",
+  "resumo_objetivo": "Resumo em uma linha sobre a abrangência deste edital.",
   "modulos": [
     {{
-      "titulo": "Semana 1: Nome do Tema Maior",
-      "tipo": "conceito",
-      "ancoras_detectadas": ["Lei X", "Doutrina Y"],
-      "subtopicos": [
-        {{ "nome": "Subtópico 1", "origem": "edital", "nota": "Foco específico" }}
-      ],
-      "regra_de_escopo": "Limite do que estudar aqui."
+      "disciplina": "LÍNGUA PORTUGUESA",
+      "titulo": "4 Domínio dos mecanismos de coesão textual",
+      "tipo": "capitulo",
+      "regra_de_escopo": "Focar na introdução deste tópico."
+    }},
+    {{
+      "disciplina": "LÍNGUA PORTUGUESA",
+      "titulo": "4.1 Emprego de elementos de referenciação, substituição...",
+      "tipo": "subcapitulo",
+      "regra_de_escopo": "Focar estritamente neste item."
+    }},
+    {{
+      "disciplina": "NOÇÕES DE DIREITO CONSTITUCIONAL",
+      "titulo": "1 Aplicabilidade das normas constitucionais",
+      "tipo": "capitulo",
+      "regra_de_escopo": "Focar na introdução deste tópico."
+    }},
+    {{
+      "disciplina": "NOÇÕES DE DIREITO CONSTITUCIONAL",
+      "titulo": "1.1 Normas de eficácia plena, contida e limitada",
+      "tipo": "subcapitulo",
+      "regra_de_escopo": "Focar estritamente neste item."
     }}
   ]
 }}
 """
-    return await get_json_response(prompt, model, temp=0.2)
+    return await get_json_response(prompt, model, temp=0.1)
 
 
 async def agent_researcher(
@@ -774,163 +809,63 @@ async def agent_professor(
     print(f"--- 👨‍🏫 Professor: Ministrando '{titulo}'... ---")
 
     research_summary = json.dumps(research_data, ensure_ascii=False)
-    teaching_style = context_instructions.get("diretrizes_professor", "Didático e progressivo.")
-    example_format = context_instructions.get("formato_exemplo", "Caso prático.")
 
     prompt = f"""
-Atue como PROFESSOR DE ELITE em {area}. Aprofunde exaustivamente cada conceito.
+Atue como um PROFESSOR DE ELITE, reconhecido por sua didática impecável e capacidade de simplificar temas complexos em {area}.
+Aprofunde exaustivamente o tema exato: "{titulo}".
 
-ESTILO: {teaching_style}
-EXEMPLO: {example_format}
-TEMA: {titulo}
-PESQUISA: {research_summary}
+PESQUISA BASE: {research_summary}
 
-REGRAS DE CONTEÚDO E PROFUNDIDADE:
-1. Adapte à área ({area}): TI exige código/comandos; DIREITO exige Casos e Súmulas.
-2. REGRA DE OURO DIDÁTICA: Se você introduzir ou citar um termo técnico, jargão, regra ou conceito subordinado, VOCÊ É OBRIGADO A EXPLICÁ-LO IMEDIATAMENTE. Não deixe pontas soltas.
-3. Na seção `como_funciona`, USE OBRIGATORIAMENTE ESTES 6 SUBTÍTULOS EM MARKDOWN (###) e siga RIGOROSAMENTE a micro-estrutura exigida abaixo de cada um:
-   ### Visão de Mecanismo
-   (Escreva 2 parágrafos. O segundo DEVE conter uma aplicação prática complexa do dia a dia da área).
-   ### Componentes e Interações
-   (Vá direto para bullet points. Para cada item: **[Nome do Componente]:** [Definição técnica]. **Interação:** [Como aciona/limita o próximo componente]).
-   ### Fluxo Passo a Passo
-   (Lista numerada. Para CADA passo: 1. **[Etapa]:** [Ação técnica/jurídica]. **Exemplo Prático:** [Cenário real rápido ilustrando o passo]).
-   ### Regras e Exceções
-   (Lista detalhada: Mostre a **Regra Geral** e no mínimo 2 **Exceções Críticas** justificadas).
-   ### Trade-offs (ou Conflitos de Normas)
-   (Aprofunde em 2 conflitos reais, ex: "Performance vs Segurança" ou "Princípio A vs B", mostrando como resolver na prática).
-   ### Pegadinhas Clássicas
-   (Liste 3 pegadinhas no formato: - **A Casca de Banana:** [Frase falsa comum em provas] - **A Realidade:** [A correção técnica]).
-   *Insira organicamente pelo menos 1 citação no formato: (Trecho do edital/lei/documentação: "...").*
+Gere o conteúdo da aula seguindo ESTA ESTRUTURA RIGOROSA:
+1. Aula teórica aprofundada (Use formatação Markdown para facilitar a leitura).
+2. Resumo de Termos Chave.
+3. Analogias e Contexto (INSTRUÇÃO ESPECIAL: Crie uma analogia BRILHANTE, memorável e altamente didática. Relacione o conceito complexo a algo palpável do cotidiano - como física, arquitetura, trânsito, biologia, tecnologia ou sociedade. A metáfora deve fazer o aluno ter um momento 'Ahá! Entendi perfeitamente!').
+4. Aplicação Prática / Exemplos e Estudo de Caso.
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
   "titulo": "{titulo}",
-  "visao_geral": "Resumo de 3 linhas sobre o módulo e sua importância prática.",
-  "referencia_bibliografica": "Fontes principais (Lei, autor, documentação oficial).",
-  "topicos_explicados": [
-    {{
-      "topico": "Nome do Subtópico",
-      "explicacao": "Explicação EXAUSTIVA e nível Sênior. Se citar um termo, defina-o detalhadamente no mesmo parágrafo.",
-      "exemplo_pratico": "Exemplo direto e prático (comando, código, cálculo ou caso detalhado).",
-      "pegadinha_tipica": "Como as bancas tentam confundir o aluno com detalhes mínimos."
-    }}
+  "visao_geral": "Resumo de 2 linhas sobre a importância deste tópico.",
+  "aula_teorica_aprofundada": "Texto completo, exaustivo e didático sobre o tema. Use subtítulos em Markdown (###).",
+  "resumo_termos_chave": [
+     {{ "termo": "Nome do Termo", "definicao": "Definição técnica e direta." }}
   ],
-  "aula_teorica": {{
-    "introducao_contextual": "O problema prático/histórico que forçou a criação disso.",
-    "termos_tecnicos": [
-       {{ "termo": "Termo", "definicao": "Definição direta e completa." }}
-    ],
-    "definicao_chave": "A regra principal e incontestável.",
-    "conceito_simplificado": "Uma analogia excelente para leigos.",
-    "conceito_tecnico": "Jargão puro e denso. Se listar subtipos aqui, explique a diferença entre eles.",
-    "como_funciona": "O TEXTO GIGANTE E PROFUNDO CONTENDO OS 6 SUBTÍTULOS MARKDOWN EXIGIDOS NA ESTRUTURA EXATA.",
-    "comparativo": "Contraste técnico: X vs Y. PROIBIDO USAR TABELAS. Estruture em bullet points focados em CRITÉRIOS. Exemplo: '- **Critério (Performance/Regra):** X faz [isso], enquanto Y faz [aquilo].'",
-    "exemplo_pratico": "A demonstração prática final e completa."
-  }},
-  "validacoes_e_checkpoints": [
-    {{ "checkpoint": "Nome da checagem", "como_validar": ["Critério 1", "Critério 2"] }}
-  ],
-  "criterios_de_decisao": [
-     {{ "decisao": "Usar X ou Y?", "criterios": ["Critério técnico 1"], "risco_de_erro": "Impacto real do erro." }}
-  ],
-  "confusoes_classicas_de_prova": ["A banca inverte X com Y nesta situação específica."],
-  "erros_comuns": ["Erro comum na aplicação prática."],
-  "checklist_de_revisao": ["Conceito A compreendido nas suas exceções?"],
-  "limites_do_escopo": ["Onde esse conceito quebra ou deixa de funcionar."]
+  "analogias_contexto": "Apresente uma analogia criativa, visual e memorável que traduza a complexidade do assunto para o mundo real, seguida de um breve contexto prático ou histórico. Faça o aluno visualizar o conceito de forma clara.",
+  "aplicacao_pratica_exemplos": "Exemplos detalhados de como isso é aplicado na prática profissional ou estudos de caso clássicos."
 }}
 """
-    return await get_json_response(prompt, model, temp=0.35)
-
-
-async def agent_deepener_como_funciona(modulo_obj: Dict[str, Any], area: str, research_data: Dict[str, Any], lesson: Dict[str, Any], model: str) -> Dict[str, Any]:
-    titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 🧠 Aprofundador: Revisando 'como_funciona' de '{titulo}'... ---")
-
-    base = {"modulo": modulo_obj, "research_data": research_data, "lesson": lesson}
-    base_json = json.dumps(base, ensure_ascii=False)
-
-    prompt = f"""
-Atue como REVISOR TÉCNICO SÊNIOR.
-Reescreva SOMENTE a seção "como_funciona" para TRIPLICAR a profundidade e o nível de detalhe.
-
-BASE DE DADOS:
-{base_json}
-
-REGRAS DE APROFUNDAMENTO:
-1. EXPANSAO DE CONCEITOS: Se o texto original apenas cita um conceito, a sua reescrita DEVE explicar o que é e como se aplica no mundo real.
-2. Na seção `como_funciona`, USE OBRIGATORIAMENTE ESTES 6 SUBTÍTULOS EM MARKDOWN (###) e siga RIGOROSAMENTE a micro-estrutura exigida abaixo de cada um:
-   ### Visão de Mecanismo
-   (Escreva 2 parágrafos. O segundo DEVE conter uma aplicação prática complexa do dia a dia da área).
-   ### Componentes e Interações
-   (Vá direto para bullet points. Para cada item: **[Nome do Componente]:** [Definição técnica]. **Interação:** [Como aciona/limita o próximo componente]).
-   ### Fluxo Passo a Passo
-   (Lista numerada. Para CADA passo: 1. **[Etapa]:** [Ação técnica/jurídica]. **Exemplo Prático:** [Cenário real rápido ilustrando o passo]).
-   ### Regras e Exceções
-   (Lista detalhada: Mostre a **Regra Geral** e no mínimo 2 **Exceções Críticas** justificadas).
-   ### Trade-offs (ou Conflitos de Normas)
-   (Aprofunde em 2 conflitos reais, ex: "Performance vs Segurança" ou "Princípio A vs B", mostrando como resolver na prática).
-   ### Pegadinhas Clássicas
-   (Liste 3 pegadinhas no formato: - **A Casca de Banana:** [Frase falsa comum em provas] - **A Realidade:** [A correção técnica]).
-   *Insira organicamente pelo menos 1 citação no formato: (Trecho do edital/lei/documentação: "...").*
-3. NUNCA use tabelas. 
-
-RETORNE APENAS ESTE JSON EXATO:
-{{ "como_funciona": "Texto formatado em Markdown com os 6 subtítulos, com profundidade exaustiva e seguindo ESTRITAMENTE a micro-estrutura pedida..." }}
-"""
-    return await get_json_response(prompt, model, temp=0.2)
-
-
-async def agent_glossarist(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
-    print(f"--- 📖 Glossarista: Traduzindo termos... ---")
-    lesson_text = json.dumps(lesson_content, ensure_ascii=False)
-
-    prompt = f"""
-Extraia 5 a 10 termos TÉCNICOS cruciais desta aula.
-{lesson_text}
-
-RETORNE APENAS ESTE JSON EXATO:
-{{
-  "glossario": [
-    {{
-      "termo": "Termo Técnico Exato",
-      "definicao": "Definição direta",
-      "trecho_origem": "Frase onde ele aparece no texto"
-    }}
-  ]
-}}
-"""
-    return await get_json_response(prompt, model, temp=0.2)
+    # Aumentamos levemente a temperatura (0.4) para permitir que a IA seja mais criativa e menos robótica nas analogias
+    return await get_json_response(prompt, model, temp=0.4)
 
 
 async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson: Dict[str, Any], model: str) -> Dict[str, Any]:
-    print(f"--- 📝 Banca: Criando questões objetivas... ---")
+    print(f"--- 📝 Banca: Criando 10 questões objetivas... ---")
     lesson_context = json.dumps(professor_lesson, ensure_ascii=False)
 
     prompt = f"""
 Atue como Banca Examinadora de Alto Nível ({area}).
-Com base SOMENTE no texto abaixo, crie 5 questões de múltipla escolha difíceis.
+Com base SOMENTE no texto abaixo, crie EXATAMENTE 10 QUESTÕES de múltipla escolha.
 
 AULA:
 {lesson_context}
 
 REGRAS:
-1. PROIBIDO questões de decoreba direta (ex: "O que é X?").
-2. OBRIGATÓRIO: O "enunciado" DEVE ser uma SITUAÇÃO-PROBLEMA (Estudo de Caso, Incidente de TI, Conflito Jurídico) onde o candidato precise aplicar a teoria para resolver o problema.
-3. Gere exatamente 4 alternativas (A, B, C, D) e justifique tecnicamente cada erro.
+1. Crie 10 questões. Mescle questões diretas de fixação com Estudos de Caso práticos.
+2. Gere exatamente 4 alternativas (A, B, C, D) para cada uma.
+3. Justifique tecnicamente cada erro.
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
   "quiz": [
     {{
-      "enunciado": "A situação-problema complexa aqui...",
+      "enunciado": "A situação-problema ou pergunta direta aqui...",
       "alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],
       "resposta_correta": "C",
       "comentario_da_correta": "Explicação técnica do porquê C está certa.",
       "por_que_as_outras_estao_erradas": {{
-        "A": "Erro técnico da A",
-        "B": "Erro técnico da B",
-        "D": "Erro técnico da D"
+        "A": "Erro da A",
+        "B": "Erro da B",
+        "D": "Erro da D"
       }},
       "topico_relacionado": "Nome do tópico avaliado"
     }}
@@ -963,27 +898,6 @@ RETORNE APENAS ESTE JSON EXATO:
     return await get_json_response(prompt, model, temp=0.2)
 
 
-async def agent_flashcards(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
-    print(f"--- 🃏 Flashcards: Gerando cards de revisão... ---")
-    lesson_text = json.dumps(lesson_content, ensure_ascii=False)
-
-    prompt = f"""
-Crie 3 a 5 Flashcards focados nos pontos mais decorebas ou pegadinhas da aula abaixo:
-{lesson_text}
-
-RETORNE APENAS ESTE JSON EXATO:
-{{
-  "flashcards": [
-    {{
-      "frente": "Pergunta curta?",
-      "verso": "Resposta exata.",
-      "dica": "Dica mnemônica"
-    }}
-  ]
-}}
-"""
-    return await get_json_response(prompt, model, temp=0.25)
-
 async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model: str) -> Dict[str, Any]:
     print("--- 🎯 Estrategista: Criando plano de revisão... ---")
     
@@ -991,8 +905,9 @@ async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model:
     for m in modulos_data:
         if isinstance(m, dict):
             titulo = m.get("titulo", "Módulo")
-            topicos = [t.get("topico") for t in m.get("topicos_explicados", []) if isinstance(t, dict)]
-            conteudo_real.append(f"Módulo '{titulo}': cobriu {', '.join(topicos)}.")
+            # Atualizado para ler os termos chave gerados pelo novo prompt do professor
+            termos = [t.get("termo") for t in m.get("resumo_termos_chave", []) if isinstance(t, dict)]
+            conteudo_real.append(f"Módulo '{titulo}': cobriu {', '.join(termos) if termos else 'conceitos aprofundados'}.")
     
     conteudo_texto = "\n".join(conteudo_real)
 
@@ -1027,119 +942,72 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
     print(f"🔄 Iniciando pipeline com modelo: {selected_model}")
 
     try:
+        # 1. Extraímos a estrutura usando o Arquiteto
         structure = ensure_dict(await agent_architect(request.text, selected_model))
-        area = structure.get("area_conhecimento", "Geral")
-        modules = normalize_modules(structure.get("modulos"))
         
-        instructions = ensure_dict(await agent_instruction_designer(request.text, area, selected_model))
+        # 2. Normalizamos os módulos
+        modules = normalize_modules(structure.get("modulos"), fallback_disciplina="Geral")
+        
+        # --- ATUALIZAÇÃO AQUI ---
+        # 3. Pega todas as disciplinas únicas encontradas (antes do ":") e junta-as.
+        disciplinas_encontradas = list(dict.fromkeys([mod.get("disciplina") for mod in modules if mod.get("disciplina")]))
+        global_area = " / ".join(disciplinas_encontradas) if disciplinas_encontradas else "Edital Específico"
+        # ------------------------
+        
+        instructions = ensure_dict(await agent_instruction_designer(request.text, global_area, selected_model))
         
         final_aulas: List[Dict[str, Any]] = []
 
         for idx, mod in enumerate(modules):
             titulo = mod.get("titulo", f"Módulo {idx+1}")
-            print(f"\n➡️ Processando Módulo {idx + 1}: {titulo}")
+            
+            # 3. ATENÇÃO: Aqui extraímos a matéria ESPECÍFICA deste tópico (ex: "LÍNGUA PORTUGUESA")
+            area_do_modulo = mod.get("disciplina", "Assunto Geral") 
+            
+            print(f"\n➡️ Processando Módulo {idx + 1}: [{area_do_modulo}] {titulo}")
 
-            research = ensure_dict(await agent_researcher(mod, area, request.text, instructions, selected_model))
+            # 4. Passamos 'area_do_modulo' para TODAS as IAs, para que elas tenham o contexto da disciplina
+            research = ensure_dict(await agent_researcher(mod, area_do_modulo, request.text, instructions, selected_model))
             await asyncio.sleep(1)
 
-            lesson = ensure_dict(await agent_professor(mod, area, research, instructions, selected_model))
+            lesson = ensure_dict(await agent_professor(mod, area_do_modulo, research, instructions, selected_model))
             lesson = sanitize_lesson(lesson)
+            
+            # 5. Embutimos a disciplina na aula gerada
+            lesson["disciplina"] = area_do_modulo 
+            await asyncio.sleep(1)
+
+            exam = ensure_dict(await agent_examiner(mod, area_do_modulo, lesson, selected_model))
+            await asyncio.sleep(1)
+
+            mindmap_data = ensure_dict(await agent_mindmap(mod, area_do_modulo, lesson, selected_model))
+            await asyncio.sleep(1)
+
+            essay_data = ensure_dict(await agent_essay_generator(mod, area_do_modulo, lesson, selected_model))
             await asyncio.sleep(1)
             
-            try:
-                como_atual = (lesson.get("aula_teorica") or {}).get("como_funciona", "")
-                report = validate_como_funciona(como_atual)
-                allowed_terms = normalize_terms(research.get("termos_chave"))
-                suspects = detect_suspect_tools(como_atual, allowed_terms)
-
-                if (not report["ok"]) or suspects:
-                    print(f"⚠️ 'como_funciona' precisa de revisão. Report: {report['ok']}, Suspeitos: {suspects}")
-                    deep = ensure_dict(await agent_deepener_como_funciona(mod, area, research, lesson, selected_model))
-                    new_como = ensure_str(deep.get("como_funciona"))
-
-                    if new_como and len(new_como) > 100:
-                        if "aula_teorica" not in lesson or not isinstance(lesson["aula_teorica"], dict):
-                            lesson["aula_teorica"] = {}
-                        lesson["aula_teorica"]["como_funciona"] = new_como
-                        lesson = sanitize_lesson(lesson)
-                        print("✅ 'como_funciona' aprofundado com sucesso.")
-                    else:
-                        print("⚠️ Deepener retornou vazio ou inválido. Mantendo texto original.")
-                    await asyncio.sleep(1)
-            except Exception as e:
-                print(f"Erro no deepener (não crítico): {e}")
-
-            glossary_data = ensure_dict(await agent_glossarist(mod, area, lesson, selected_model))
-            await asyncio.sleep(1)
-
-            exam = ensure_dict(await agent_examiner(mod, area, lesson, selected_model))
-            await asyncio.sleep(1)
-
-            mindmap_data = ensure_dict(await agent_mindmap(mod, area, lesson, selected_model))
-            await asyncio.sleep(1)
-
-            flashcards_data = ensure_dict(await agent_flashcards(mod, area, lesson, selected_model))
-            await asyncio.sleep(1)
-
-            essay_data = ensure_dict(await agent_essay_generator(mod, area, lesson, selected_model))
-            await asyncio.sleep(1)
-            
+            # Sanitização final
             quiz_list = sanitize_quiz(exam.get("quiz") if isinstance(exam, dict) else [])
-            glossary_list = ensure_list(glossary_data.get("glossario")) if isinstance(glossary_data, dict) else []
-            flashcards_list = ensure_list(flashcards_data.get("flashcards")) if isinstance(flashcards_data, dict) else []
             mindmap_obj = mindmap_data.get("mapa_mental") if isinstance(mindmap_data, dict) else {}
 
-            raw_glossary = ensure_list(lesson.get("glosario")) + glossary_list
-            clean_glossary = []
-            seen_terms = set()
-            
-            for g in raw_glossary:
-                if isinstance(g, dict) and g.get("termo") and g.get("definicao"):
-                    t_lower = str(g["termo"]).strip().lower()
-                    if t_lower not in seen_terms:
-                        clean_glossary.append(g)
-                        seen_terms.add(t_lower)
-
-            raw_subtemas = ensure_list(research.get("subtemas_aprofundados"))
-            
-            if not raw_subtemas:
-                print("⚠️ Researcher retornou subtemas vazios. Aplicando fallback.")
-                raw_subtemas = [{
-                    "subtema": "Aprofundamento em Análise",
-                    "natureza": "teorica",
-                    "conteudo_denso": f"Neste módulo de {mod.get('titulo')}, recomenda-se foco total na bibliografia sugerida e na resolução de questões práticas.",
-                    "laboratorio_pratico": {
-                        "cenario": "Estudo de caso integrador.",
-                        "resolucao": "Revisar conceitos fundamentais.",
-                        "resultado_esperado": "Consolidação do conhecimento."
-                    },
-                    "pontos_de_atencao": ["Verificar atualizações recentes na área."]
-                }]
-
+            # Montagem do módulo final limpo
             full_module = {
                 **lesson,
-                "glosario": clean_glossary,
                 "quiz": quiz_list,
-                "flashcards": flashcards_list,
                 "mapa_mental": mindmap_obj,
                 "discursiva": essay_data.get("discursiva") if isinstance(essay_data, dict) else {}, 
-                "subtemas_aprofundados": raw_subtemas,
                 "meta_modulo": mod,
-                "meta_research": {
-                    "ancoras": ensure_list(research.get("termos_chave")), 
-                    "mapa_estrutural": ensure_list(research.get("mapa_estrutural")),
-                    "correlacoes_entre_partes": ensure_list(research.get("correlacoes_entre_partes")),
-                },
             }
             
             final_aulas.append(full_module)
             await asyncio.sleep(1)
 
-        strategy = ensure_dict(await agent_strategist(final_aulas, area, selected_model))
+        # Atualizamos o estrategista para ler a área global
+        strategy = ensure_dict(await agent_strategist(final_aulas, global_area, selected_model))
 
         return {
-            "resumo_cargo": structure.get("resumo_objetivo", ""),
-            "area_identificada": area,
+            "resumo_cargo": structure.get("resumo_objetivo", "Resumo gerado com múltiplas disciplinas."),
+            "area_identificada": global_area,
             "aulas": final_aulas,
             "plano_estudo": (strategy.get("plano_estudo", "") if isinstance(strategy, dict) else ""),
         }
