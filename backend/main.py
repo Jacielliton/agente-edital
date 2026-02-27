@@ -334,14 +334,18 @@ async def set_config(cfg: ConfigRequest):
 @app.post("/plans", status_code=201)
 async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
     try:
-        new_plan = StoredPlan(title=plan.title, area=plan.area, content=plan.content)
+        # CORREÇÃO: Limita o título a 150 caracteres para não quebrar o banco de dados
+        titulo_seguro = plan.title[:150] + "..." if len(plan.title) > 150 else plan.title
+        
+        new_plan = StoredPlan(title=titulo_seguro, area=plan.area, content=plan.content)
         db.add(new_plan)
         await db.commit()
         await db.refresh(new_plan)
         return {"ok": True, "id": new_plan.id}
     except Exception as e:
         await db.rollback()
-        raise HTTPException(status_code=500, detail="Erro ao salvar no banco.")
+        print(f"❌ Erro ao salvar plano no banco: {e}") # Isso vai mostrar o erro exato no log
+        raise HTTPException(status_code=500, detail=f"Erro ao salvar no banco: {str(e)}")
 
 @app.get("/plans", response_model=List[PlanSummaryResponse])
 async def list_plans(db: AsyncSession = Depends(get_db)):
@@ -1115,4 +1119,4 @@ async def chat_tutor(req: ChatMessageRequest):
         raise HTTPException(status_code=500, detail="A IA do Tutor falhou ao processar a resposta.")
     
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
