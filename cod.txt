@@ -353,6 +353,7 @@ git reset --hard origin/main
 **2. Rode o seu script de deploy novamente:**
 
 ```bash
+chmod +x deploy.sh
 ./deploy.sh
 
 ```
