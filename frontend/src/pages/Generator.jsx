@@ -55,7 +55,11 @@ export default function Generator() { // Renomeado de App para Generator
   const [error, setError] = useState("");
 
   // Histórico (Salvar apenas, visualização removida pois já existe no Dashboard)
+ // Histórico e Salvamento
   const [saveTitle, setSaveTitle] = useState("");
+  const [saveAno, setSaveAno] = useState("");          
+  const [saveBanca, setSaveBanca] = useState("");       
+  const [saveConcurso, setSaveConcurso] = useState(""); 
 
   const timeoutsRef = useRef([]);
 
@@ -95,6 +99,12 @@ export default function Generator() { // Renomeado de App para Generator
     if (!result) return;
     setError("");
     
+    // Validação dos novos campos obrigatórios
+    if (!saveAno.trim() || !saveBanca.trim() || !saveConcurso.trim()) {
+      setError("⚠️ Por favor, preencha o Ano, Banca e Concurso para salvar a aula.");
+      return;
+    }
+
     const finalTitle = saveTitle.trim() || safeString(result?.resumo_cargo).substring(0, 60) || "Plano de Estudo Sem Título";
     
     try {
@@ -104,13 +114,19 @@ export default function Generator() { // Renomeado de App para Generator
         body: JSON.stringify({
           title: finalTitle,
           area: result.area_identificada || "Geral",
-          content: result
+          content: result,
+          ano: saveAno.trim(),          // NOVO
+          banca: saveBanca.trim(),      // NOVO
+          concurso: saveConcurso.trim() // NOVO
         })
       });
 
       if (resp.ok) {
         setStatus("Salvo no banco com sucesso! ✅");
         setSaveTitle("");
+        setSaveAno("");       // Limpa após salvar
+        setSaveBanca("");     // Limpa após salvar
+        setSaveConcurso("");  // Limpa após salvar
       } else {
         const errData = await resp.json().catch(() => ({}));
         setError(errData.detail || "Erro ao salvar no banco.");
@@ -268,14 +284,17 @@ export default function Generator() { // Renomeado de App para Generator
           </button>
 
           {result && (
-            <div className="save-container">
-              <input 
-                className="input save-input" 
-                placeholder="Nome para salvar..."
-                value={saveTitle}
-                onChange={e => setSaveTitle(e.target.value)}
-              />
-              <button className="btn primary" onClick={saveToDb}>💾 Salvar</button>
+            <div className="save-container" style={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: '10px', marginTop: '1rem', padding: '15px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+              <div style={{ fontWeight: 'bold', color: '#1e3a8a', marginBottom: '5px' }}>Salvar Aula no Banco</div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <input className="input" placeholder="Ano (ex: 2024)" value={saveAno} onChange={e => setSaveAno(e.target.value)} style={{ flex: 1, minWidth: '100px' }} />
+                <input className="input" placeholder="Banca (ex: CESPE)" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ flex: 1, minWidth: '150px' }} />
+                <input className="input" placeholder="Concurso (ex: Polícia Federal)" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} style={{ flex: 2, minWidth: '200px' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input className="input" placeholder="Nome/Título da Aula..." value={saveTitle} onChange={e => setSaveTitle(e.target.value)} style={{ flex: 1 }} />
+                <button className="btn primary" onClick={saveToDb}>💾 Salvar Aula</button>
+              </div>
             </div>
           )}
         </div>

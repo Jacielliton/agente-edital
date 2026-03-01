@@ -18,7 +18,7 @@ from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 
 # Imports de Banco de Dados (SQLAlchemy + Asyncpg)
-from sqlalchemy import Column, Integer, String, DateTime, JSON, select, desc
+from sqlalchemy import Column, Integer, String, DateTime, JSON, select, desc, func
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -59,6 +59,9 @@ class StoredPlan(Base):
     title = Column(String, index=True)
     area = Column(String)
     content = Column(JSON)
+    ano = Column(String, nullable=True)      # NOVO
+    banca = Column(String, nullable=True)    # NOVO
+    concurso = Column(String, nullable=True) # NOVO
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class User(Base):
@@ -183,13 +186,23 @@ class SavePlanRequest(BaseModel):
     title: str
     area: str
     content: Dict[str, Any]
+    ano: str      # NOVO
+    banca: str    # NOVO
+    concurso: str # NOVO
 
 class PlanSummaryResponse(BaseModel):
     id: int
     title: str
     area: str
+    ano: Optional[str] = None      # NOVO
+    banca: Optional[str] = None    # NOVO
+    concurso: Optional[str] = None # NOVO
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+    
+class PaginatedPlansResponse(BaseModel):
+    items: List[PlanSummaryResponse]
+    total: int
 
 # ============================================================================
 # 5. CLIENTE OPENROUTER
@@ -334,23 +347,64 @@ async def set_config(cfg: ConfigRequest):
 @app.post("/plans", status_code=201)
 async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
     try:
-        # CORREÇÃO: Limita o título a 150 caracteres para não quebrar o banco de dados
         titulo_seguro = plan.title[:150] + "..." if len(plan.title) > 150 else plan.title
         
-        new_plan = StoredPlan(title=titulo_seguro, area=plan.area, content=plan.content)
+        new_plan = StoredPlan(
+            title=titulo_seguro, 
+            area=plan.area, 
+            content=plan.content,
+            ano=plan.ano,          # NOVO
+            banca=plan.banca,      # NOVO
+            concurso=plan.concurso # NOVO
+        )
         db.add(new_plan)
         await db.commit()
         await db.refresh(new_plan)
         return {"ok": True, "id": new_plan.id}
     except Exception as e:
         await db.rollback()
-        print(f"❌ Erro ao salvar plano no banco: {e}") # Isso vai mostrar o erro exato no log
+        print(f"❌ Erro ao salvar plano no banco: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao salvar no banco: {str(e)}")
 
-@app.get("/plans", response_model=List[PlanSummaryResponse])
-async def list_plans(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(StoredPlan).order_by(desc(StoredPlan.created_at)))
-    return result.scalars().all()
+@app.get("/plans", response_model=PaginatedPlansResponse)
+async def list_plans(
+    ano: Optional[str] = None, 
+    banca: Optional[str] = None, 
+    concurso: Optional[str] = None, 
+    page: int = 1,
+    limit: int = 9, # Exibindo 9 por página (fica bonito no grid 3x3)
+    db: AsyncSession = Depends(get_db)
+):
+    # 1. Monta as condições de filtro
+    conditions = []
+    if ano and ano.strip():
+        conditions.append(StoredPlan.ano.ilike(f"%{ano.strip()}%"))
+    if banca and banca.strip():
+        conditions.append(StoredPlan.banca.ilike(f"%{banca.strip()}%"))
+    if concurso and concurso.strip():
+        conditions.append(StoredPlan.concurso.ilike(f"%{concurso.strip()}%"))
+        
+    # 2. Descobre o total de aulas que existem com esses filtros
+    count_query = select(func.count(StoredPlan.id))
+    if conditions:
+        count_query = count_query.where(*conditions)
+        
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one()
+
+    # 3. Busca apenas a "fatia" da página atual
+    skip = (page - 1) * limit
+    query = select(StoredPlan)
+    if conditions:
+        query = query.where(*conditions)
+        
+    query = query.order_by(desc(StoredPlan.created_at)).offset(skip).limit(limit)
+    
+    result = await db.execute(query)
+    items = result.scalars().all()
+    
+    # Retorna as aulas da página + o número total de aulas
+    return {"items": items, "total": total}
 
 @app.get("/plans/{plan_id}")
 async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
@@ -1119,4 +1173,4 @@ async def chat_tutor(req: ChatMessageRequest):
         raise HTTPException(status_code=500, detail="A IA do Tutor falhou ao processar a resposta.")
     
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
