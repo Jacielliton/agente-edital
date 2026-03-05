@@ -232,7 +232,6 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   };
 
   return (
-    // ATENÇÃO: Removida a propriedade 'open' daqui
     <details className="details" style={{ borderColor: '#0f172a', position: 'relative', margin: '20px 0', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
       <summary className="summaryTitle" style={{ color: '#f8fafc', backgroundColor: '#0f172a', padding: '15px', cursor: 'pointer', fontWeight: 'bold', borderRadius: '8px 8px 0 0' }}>
         ✍️ Prova Discursiva (Padrão CESPE)
@@ -278,7 +277,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
             <button className="essay-button" onClick={handleCorrect} disabled={loading || loadingGen || answer.trim().length === 0} style={{ flex: 2, padding: '12px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
               {loading ? "⏳ A avaliar..." : "✔️ Submeter à Correção da IA"}
             </button>
-            <button className="essay-button" onClick={handleGenerateNew} disabled={loading || loadingGen} style={{ flex: 1, backgroundColor: '#475569', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+            <button className="essay-button" onClick={handleGenerateNew} disabled={loadingGen} style={{ flex: 1, backgroundColor: '#475569', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
               {loadingGen ? "⏳ A gerar..." : "🔄 Gerar Nova Prova"}
             </button>
           </div>
@@ -332,6 +331,11 @@ export default function LessonContent({ result }) {
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
   const [savingConfig, setSavingConfig] = useState(false);
+  
+  // ESTADOS PARA O SIMULADO GERAL COM IA
+  const [simuladoQuestoes, setSimuladoQuestoes] = useState(null);
+  const [simuladoLoading, setSimuladoLoading] = useState(false);
+  const [simuladoProgress, setSimuladoProgress] = useState(0);
 
   useEffect(() => {
     const fetchDBSettings = async () => {
@@ -393,13 +397,76 @@ export default function LessonContent({ result }) {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
+  // FUNÇÃO PARA GERAR O SIMULADO EM TEMPO REAL COM A IA
+  const handleGerarSimuladoIA = async () => {
+    setSimuladoLoading(true);
+    setSimuladoQuestoes(null);
+    setSimuladoProgress(0);
+    let questoesGeradas = [];
+    const totalAulas = safeArray(result?.aulas).length;
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      
+      // Itera por cada aula (tópico) gerando as questões na IA sequencialmente
+      for (let i = 0; i < totalAulas; i++) {
+        const aula = result.aulas[i];
+        
+        // Atualiza a barra de progresso
+        setSimuladoProgress(Math.round((i / totalAulas) * 100));
+
+        const res = await fetch(`${apiUrl}/generate-simulado-topic`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
+            topico: aula.titulo || `Tópico ${i+1}`,
+            conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
+            model: userModel || defaultModel || "google/gemini-2.5-flash",
+            api_key: userApiKey || null // Usa a chave de API inserida no painel
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const quiz = safeArray(data.simulado);
+          questoesGeradas = [...questoesGeradas, ...quiz];
+        } else {
+          console.error(`Erro ao gerar questões para o tópico ${aula.titulo}`);
+        }
+      }
+      
+      // Finaliza o carregamento visual da barra para 100%
+      setSimuladoProgress(100);
+      
+      if (questoesGeradas.length === 0) {
+        alert("Não foi possível gerar as questões. Verifique a sua chave de API.");
+        setSimuladoLoading(false);
+        return;
+      }
+
+      // Embaralha a prova toda no final para misturar os tópicos
+      questoesGeradas = questoesGeradas.sort(() => 0.5 - Math.random());
+      setSimuladoQuestoes(questoesGeradas);
+      
+      setTimeout(() => {
+        document.getElementById('simulado-section')?.scrollIntoView({ behavior: 'smooth' });
+      }, 300);
+
+    } catch (err) {
+      console.error(err);
+      alert("Ocorreu um erro de conexão ao tentar gerar o simulado.");
+    } finally {
+      setSimuladoLoading(false);
+    }
+  };
+
   if (!result) return <div style={{ padding: '20px' }}>A aguardar os dados da lição...</div>;
   const aulas = safeArray(result?.aulas);
 
   return (
     <div className="result-content" style={{ position: 'relative', maxWidth: '1000px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' }}>
       
-      {/* INJEÇÃO DE CSS PARA A ANIMAÇÃO DO NAVEGADOR */}
       <style>
         {`
           @keyframes slideRightIn {
@@ -440,7 +507,6 @@ export default function LessonContent({ result }) {
       </div>
 
       {!!safeString(result?.plano_estudo) && (
-        // ATENÇÃO: Removida a propriedade 'open' daqui
         <details className="details" style={{ margin: '20px 0', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
           <summary className="summaryTitle" style={{ padding: '15px', background: '#f1f5f9', fontWeight: 'bold', cursor: 'pointer' }}>📅 Plano de Estudo Estratégico</summary>
           <div className="md" style={{ padding: '20px' }}><ReactMarkdown>{safeString(result?.plano_estudo)}</ReactMarkdown></div>
@@ -452,7 +518,6 @@ export default function LessonContent({ result }) {
         const mapaMental = aula?.mapa_mental || {};
 
         return (
-          // ATENÇÃO: Adicionado ID ao article para o scroll funcionar
           <article id={`aula-${idx}`} className="card" key={idx} style={{ marginBottom: '40px', padding: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', background: '#ffffff', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
            
             <h2 className="lessonTitle" style={{ marginTop: 0, color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
@@ -466,7 +531,7 @@ export default function LessonContent({ result }) {
               <p><strong>Visão Geral:</strong> <ReactMarkdown components={{ p: 'span' }}>{safeString(aula?.visao_geral)}</ReactMarkdown></p>
             </div>
 
-            {/* 1. Aula Teórica Aprofundada - Removido o 'open' */}
+            {/* 1. Aula Teórica Aprofundada */}
             <details className="details" style={{ marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
               <summary className="summaryTitle" style={{ padding: '15px', background: '#f8fafc', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
                 📖 Aula Teórica Aprofundada
@@ -559,10 +624,66 @@ export default function LessonContent({ result }) {
         );
       })}
 
+      {/* ========================================== */}
+      {/* BOTÃO E BLOCO DO SIMULADO GERAL (COM IA)     */}
+      {/* ========================================== */}
+      <div style={{ marginTop: '50px', padding: '40px 20px', background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)', borderRadius: '12px', border: '1px solid #cbd5e1', textAlign: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+        <h2 style={{ color: '#0f172a', margin: '0 0 15px 0', fontSize: '1.8rem' }}>🏆 Simulado Final Inédito (Gerado por IA)</h2>
+        <p style={{ color: '#475569', marginBottom: '25px', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
+          A Inteligência Artificial vai analisar o conteúdo estudado e criar <strong>5 questões inéditas para cada módulo</strong> em tempo real, usando a sua Chave API.
+        </p>
+        
+        {simuladoLoading ? (
+          <div style={{ margin: '0 auto', maxWidth: '500px', padding: '20px', background: '#fff', borderRadius: '12px', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}>
+            <div style={{ marginBottom: '10px', fontWeight: 'bold', color: '#2563eb', fontSize: '1.1rem' }}>
+              A analisar tópicos e a gerar questões... {simuladoProgress}%
+            </div>
+            <div style={{ width: '100%', backgroundColor: '#e2e8f0', borderRadius: '8px', height: '12px', overflow: 'hidden' }}>
+              <div style={{ width: `${simuladoProgress}%`, backgroundColor: '#3b82f6', height: '100%', transition: 'width 0.4s ease' }}></div>
+            </div>
+            <p style={{ fontSize: '0.9rem', color: '#64748b', marginTop: '12px', marginBottom: 0 }}>
+              Isto pode demorar alguns instantes. Por favor, não feche a página.
+            </p>
+          </div>
+        ) : (
+          <button 
+            onClick={handleGerarSimuladoIA} 
+            style={{ padding: '15px 30px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)', transition: 'background-color 0.2s' }}
+            onMouseOver={(e) => e.target.style.backgroundColor = '#1d4ed8'}
+            onMouseOut={(e) => e.target.style.backgroundColor = '#2563eb'}
+          >
+            ✨ Gerar Simulado com IA Agora
+          </button>
+        )}
+      </div>
 
-      {/* ========================================== */}
-      {/* BOTÃO FLUTUANTE DO NAVEGADOR ESQUERDO      */}
-      {/* ========================================== */}
+      {simuladoQuestoes && (
+        <div id="simulado-section" style={{ marginTop: '40px', padding: '30px', background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: '20px', marginBottom: '30px' }}>
+            <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.6rem' }}>🎓 Simulado Geral ({simuladoQuestoes.length} Questões)</h2>
+            <button onClick={() => setSimuladoQuestoes(null)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s' }}>
+              ✕ Fechar Simulado
+            </button>
+          </div>
+          
+          {simuladoQuestoes.map((q, i) => (
+            <div key={i} style={{ marginBottom: '35px', padding: '20px', background: '#f8fafc', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '12px', letterSpacing: '0.05em' }}>
+                📚 {safeString(q.contexto_disciplina)} <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span> 📌 {safeString(q.contexto_topico)}
+              </div>
+              <QuizCard question={q} index={i} />
+            </div>
+          ))}
+
+          <div style={{ textAlign: 'center', marginTop: '40px', paddingTop: '20px', borderTop: '2px solid #e2e8f0' }}>
+            <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} style={{ padding: '12px 25px', background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+              ↑ Voltar ao Início da Aula
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* BOTÃO FLUTUANTE DO NAVEGADOR ESQUERDO */}
       {!isNavOpen && (
         <button 
           onClick={() => setIsNavOpen(true)}
@@ -573,9 +694,7 @@ export default function LessonContent({ result }) {
         </button>
       )}
 
-      {/* ========================================== */}
-      {/* MENU NAVEGADOR LATERAL (DRAWER)            */}
-      {/* ========================================== */}
+      {/* MENU NAVEGADOR LATERAL (DRAWER) */}
       {isNavOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 10001, display: 'flex' }} onClick={() => setIsNavOpen(false)}>
           <div className="nav-drawer" style={{ width: '320px', maxWidth: '85vw', height: '100%', backgroundColor: '#f8fafc', boxShadow: '4px 0 15px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
@@ -605,11 +724,9 @@ export default function LessonContent({ result }) {
                 </button>
               ))}
             </div>
-
           </div>
         </div>
       )}
-
 
       {/* WIDGET FLUTUANTE DO TUTOR DIREITO */}
       <TutorChat 

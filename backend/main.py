@@ -52,7 +52,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 # ============================================================================
 # 2. MODELOS DE BANCO DE DADOS (ORM)
 # ============================================================================
-
+class SimuladoTopicRequest(BaseModel):
+    area: str
+    topico: str
+    conteudo: str
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    
 class StoredPlan(Base):
     __tablename__ = "study_plans"
     id = Column(Integer, primary_key=True, index=True)
@@ -657,6 +663,41 @@ RETORNE APENAS ESTE JSON EXATO (SEM NENHUM TEXTO ADICIONAL):
 """
     return await get_json_response(prompt, model, temp=0.3, api_key=api_key)
 
+async def agent_simulado_topic(area: str, topico: str, conteudo: str, model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    print(f"--- 📝 Gerando Simulado IA para: {topico} ---")
+    prompt = f"""
+    Atue como Banca Examinadora de Alto Nível ({area}).
+    Sua missão é criar um SIMULADO de fixação. Com base estritamente no conteúdo abaixo, crie EXATAMENTE 5 QUESTÕES inéditas de múltipla escolha focadas no tópico "{topico}".
+
+    CONTEÚDO BASE PARA AS QUESTÕES:
+    {conteudo[:8000]}
+
+    REGRAS:
+    1. Crie exatamente 5 questões desafiadoras.
+    2. Gere exatamente 4 alternativas (A, B, C, D) para cada uma.
+    3. Justifique tecnicamente o porquê da correta e o erro das demais.
+
+    RETORNE APENAS ESTE JSON EXATO:
+    {{
+      "simulado": [
+        {{
+          "contexto_disciplina": "{area}",
+          "contexto_topico": "{topico}",
+          "enunciado": "A situação-problema...",
+          "alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],
+          "resposta_correta": "C",
+          "comentario_da_correta": "Explicação técnica...",
+          "por_que_as_outras_estao_erradas": {{
+            "A": "Erro da A",
+            "B": "Erro da B",
+            "D": "Erro da D"
+          }}
+        }}
+      ]
+    }}
+    """
+    return await get_json_response(prompt, model, api_key=api_key, temp=0.3)
+
 async def agent_essay_corrector(req: EssayCorrectionRequest) -> Dict[str, Any]:
     print("--- 📝 Corretor: Avaliando Discursiva do Aluno... ---")
     prompt = f"""
@@ -1172,5 +1213,14 @@ async def chat_tutor(req: ChatMessageRequest):
         print(f"Erro no chat: {e}")
         raise HTTPException(status_code=500, detail="A IA do Tutor falhou ao processar a resposta.")
     
+@app.post("/generate-simulado-topic")
+async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
+    try:
+        result = ensure_dict(await agent_simulado_topic(req.area, req.topico, req.conteudo, req.model, req.api_key))
+        return result
+    except Exception as e:
+        print(f"Erro na geração do simulado: {e}")
+        raise HTTPException(status_code=500, detail="Falha ao gerar simulado com IA.")
+        
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
