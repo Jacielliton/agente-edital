@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agente Edital - Documentação de Deploy e Manutenção</title>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #334155;
+            --heading-color: #0f172a;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --accent-color: #2563eb;
+            --border-color: #e2e8f0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        h1, h2, h3 {
+            color: var(--heading-color);
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 0.5rem;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.3rem;
+        }
+
+        pre {
+            background-color: var(--code-bg);
+            color: var(--code-text);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: "Fira Code", Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+            font-size: 0.9rem;
+        }
+
+        code {
+            background-color: #e2e8f0;
+            color: #ef4444;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: Consolas, monospace;
+            font-size: 0.9em;
+        }
+
+        pre code {
+            background-color: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .notice {
+            background-color: #dbeafe;
+            border-left: 4px solid var(--accent-color);
+            padding: 1rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .warning {
+            background-color: #fef08a;
+            border-left: 4px solid #eab308;
+            padding: 1rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+            color: #854d0e;
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background: var(--border-color);
+            margin: 3rem 0;
+        }
+
+        ul, ol {
+            margin-bottom: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🚀 Agente Edital - Deploy e Manutenção</h1>
+    <p>Este guia contém os procedimentos para garantir que a VPS fique <strong>segura, estável e fácil de manter</strong>. Siga este checklist para evitar invasões, quedas de serviço e automatizar suas atualizações.</p>
+
+    <hr>
+
+    <h2>🛡️ 1. Segurança Básica e Firewall</h2>
+    <p>O Nginx (Porta 80/443) faz a comunicação com o Python internamente. Ninguém de fora deve acessar a porta 8001 diretamente.</p>
+    <pre><code># 1. Garanta que o SSH (seu acesso) esteja liberado (ESSENCIAL)
+sudo ufw allow ssh
+
+# 2. Libere o Nginx (Site HTTP e HTTPS)
+sudo ufw allow 'Nginx Full'
+
+# 3. BLOQUEIE a porta 8001 (O Python só conversa com o Nginx localmente)
+sudo ufw delete allow 8001/tcp
+
+# 4. Ative o Firewall
+sudo ufw enable</code></pre>
+    <div class="notice">
+        <strong>Nota:</strong> Se perguntar <em>"Command may disrupt existing ssh connections"</em>, digite <code>y</code> e Enter.
+    </div>
+
+    <hr>
+
+    <h2>🔒 2. Certificado SSL Automático (HTTPS)</h2>
+    <p>Garante que o site não saia do ar por expiração de certificado.</p>
+    <pre><code># 1. Instale o Certbot
+sudo apt install certbot python3-certbot-nginx
+
+# 2. Gere o certificado (configura o Nginx sozinho)
+sudo certbot --nginx -d agente-edital.tecnopriv.top
+
+# 3. Verifique a renovação automática
+sudo systemctl status snap.certbot.renew.service
+# OU
+sudo systemctl list-timers | grep certbot</code></pre>
+
+    <hr>
+
+    <h2>⚙️ 3. Inicialização Automática (Auto-Start)</h2>
+    <p>Se a VPS reiniciar, os serviços precisam voltar sozinhos.</p>
+    <ul>
+        <li><strong>Docker (Banco de Dados):</strong> Verifique se no <code>docker-compose.yml</code> há a instrução <code>restart: always</code> no serviço do DB.</li>
+        <li><strong>Backend (Python):</strong> Ative o Systemd rodando <code>sudo systemctl enable agente-edital</code>.</li>
+        <li><strong>Frontend (Nginx):</strong> Já inicia no boot por padrão no Ubuntu.</li>
+    </ul>
+
+    <hr>
+
+    <h2>🔄 4. Como Atualizar o Site (Deploy)</h2>
+    <p>Utilize o fluxo automatizado para atualizar o site sem quebrar URLs ou perder arquivos.</p>
+
+    <h3>Fase 1: No seu Computador (Local)</h3>
+    <pre><code>git add .
+git commit -m "Descreva sua alteração"
+git push origin main</code></pre>
+
+    <h3>Fase 2: Na VPS (Automático)</h3>
+    <p>Criamos um script que baixa, configura URLs de produção e reinicia tudo com um comando. Certifique-se de ter o arquivo <code>deploy.sh</code> na raiz do projeto (<code>/opt/agente-edital</code>).</p>
+    <pre><code>#!/bin/bash
+
+echo "🔄 Baixando atualizações do Git..."
+git pull origin main
+
+echo "📦 Atualizando o Backend..."
+cd backend
+source venv/bin/activate
+# pip install -r requirements.txt 
+
+echo "🎨 Atualizando o Frontend..."
+cd ../frontend
+npm install
+
+echo "🔗 Ajustando URLs da API para Produção..."
+grep -rl "localhost:8000" src | xargs -r sed -i 's|http://localhost:8000|https://agente-edital.tecnopriv.top/api|g'
+grep -rl "localhost:8001" src | xargs -r sed -i 's|http://localhost:8001|https://agente-edital.tecnopriv.top/api|g'
+
+echo "🏗️ Construindo arquivos estáticos do React..."
+npm run build
+
+echo "🚀 Reiniciando o serviço do Backend..."
+sudo systemctl restart agente-edital
+
+echo "✅ Sistema atualizado com sucesso!"</code></pre>
+    <p><strong>Para rodar o deploy:</strong></p>
+    <pre><code>cd /opt/agente-edital
+./deploy.sh</code></pre>
+    <div class="notice">
+        <strong>Dica de Ouro:</strong> Se as mudanças não aparecerem imediatamente no navegador após o deploy, pressione <code>Ctrl + F5</code> para limpar o cache.
+    </div>
+
+    <hr>
+
+    <h2>🆘 5. Solução de Problemas (Troubleshooting)</h2>
+    
+    <h3>Erro de Conflito no Git (Merge Overwritten)</h3>
+    <p>Se o script de deploy falhar com o erro <em>"Your local changes would be overwritten by merge"</em>, force a VPS a espelhar o GitHub:</p>
+    <pre><code>cd /opt/agente-edital
+git fetch --all
+git reset --hard origin/main
+./deploy.sh</code></pre>
+
+    <h3>Deploy Manual (Passo a Passo)</h3>
+    <p>Se preferir ou precisar debugar, a ordem manual é:</p>
+    <pre><code># 1. Puxar código
+git pull origin main
+
+# 2. Frontend
+cd frontend
+npm install
+grep -rl "localhost:8000" src | xargs -r sed -i 's|http://localhost:8000|https://agente-edital.tecnopriv.top/api|g'
+npm run build
+
+# 3. Backend
+cd ../backend
+sudo systemctl restart agente-edital
+sudo systemctl status agente-edital</code></pre>
+
+    <hr>
+
+    <h2>💾 6. Banco de Dados e Variáveis de Ambiente</h2>
+
+    <h3>Backup Manual do Docker</h3>
+    <pre><code>docker exec -t professor_ai_db pg_dumpall -c -U postgres > dump_$(date +%Y-%m-%d).sql</code></pre>
+
+    <h3>Comandos Úteis de Banco</h3>
+    <pre><code>docker-compose down -v
+docker-compose up -d
+python migrate.py</code></pre>
+
+    <h3>Exemplo do arquivo <code>backend/.env</code></h3>
+    <pre><code>GEMINI_API_KEY=
+OPENROUTER_API_KEY=
+DEFAULT_MODEL=google/gemini-2.5-flash-lite
+AVAILABLE_MODELS=google/gemini-2.5-flash-lite,arcee-ai/trinity-large-preview:free,stepfun/step-3.5-flash:free,openrouter/aurora-alpha,stepfun/step-3.5-flash:free,nvidia/nemotron-nano-9b-v2:free
+ENV_FILE_PATH=.env
+DATABASE_URL=postgresql+asyncpg://postgres:senha123@localhost:5445/agente_edital
+VITE_API_URL=</code></pre>
+
+</body>
+</html>

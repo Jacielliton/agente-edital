@@ -187,6 +187,8 @@ class ConfigRequest(BaseModel):
 class SyllabusRequest(BaseModel):
     text: str
     model: str | None = None
+    question_format: str = "Múltipla Escolha"
+    question_level: str = "Superior"
 
 class SavePlanRequest(BaseModel):
     title: str
@@ -937,34 +939,49 @@ RETORNE APENAS ESTE JSON EXATO:
     return await get_json_response(prompt, model, temp=0.4)
 
 
-async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson: Dict[str, Any], model: str) -> Dict[str, Any]:
-    print(f"--- 📝 Banca: Criando 10 questões objetivas... ---")
+async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson: Dict[str, Any], model: str, question_format: str, question_level: str) -> Dict[str, Any]:
+    print(f"--- 📝 Banca: Criando 10 questões ({question_format} - Nível {question_level})... ---")
     lesson_context = json.dumps(professor_lesson, ensure_ascii=False)
+
+    regras_formato = ""
+    if question_format == "Múltipla Escolha":
+        regras_formato = """
+2. Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão.
+3. REGRA CRÍTICA DE MÚLTIPLA ESCOLHA: As alternativas incorretas (distratores) NÃO PODEM ser obviamente absurdas. Crie pegadinhas semânticas, misture conceitos reais de forma incorreta ou use exceções à regra. O candidato deve precisar de alto domínio para não cair na pegadinha.
+4. Justifique tecnicamente por que cada alternativa incorreta está errada.
+"""
+        json_alternativas = '"alternativas": ["A) ...", "B) ...", "C) ...", "D) ...", "E) ..."],'
+    else:
+        regras_formato = """
+2. O formato deve ser CERTO ou ERRADO. O campo alternativas deve ter exatamente duas opções: ["A) Certo", "B) Errado"].
+3. REGRA CRÍTICA CERTO/ERRADO: Formule a afirmação com vocabulário técnico. Se a resposta for "Errado", o erro deve ser extremamente sutil (ex: inverter um conceito, usar "sempre" onde há exceção).
+4. Justifique o acerto ou o erro detalhadamente.
+"""
+        json_alternativas = '"alternativas": ["A) Certo", "B) Errado"],'
 
     prompt = f"""
 Atue como Banca Examinadora de Alto Nível ({area}).
-Com base SOMENTE no texto abaixo, crie EXATAMENTE 10 QUESTÕES de múltipla escolha.
+Nível de Exigência: Ensino {question_level}. O aprofundamento técnico, o vocabulário e a complexidade da cobrança devem refletir exatamente o rigor de provas de concursos públicos deste nível.
+
+Com base SOMENTE no texto da aula abaixo, crie EXATAMENTE 10 QUESTÕES.
 
 AULA:
 {lesson_context}
 
 REGRAS:
-1. Crie 10 questões. Mescle questões diretas de fixação com Estudos de Caso práticos.
-2. Gere exatamente 4 alternativas (A, B, C, D) para cada uma.
-3. Justifique tecnicamente cada erro.
+1. Crie 10 questões inéditas. Mescle questões diretas de fixação com Estudos de Caso práticos.
+{regras_formato}
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
   "quiz": [
     {{
       "enunciado": "A situação-problema ou pergunta direta aqui...",
-      "alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],
-      "resposta_correta": "C",
-      "comentario_da_correta": "Explicação técnica do porquê C está certa.",
+      {json_alternativas}
+      "resposta_correta": "A",
+      "comentario_da_correta": "Explicação técnica da resposta.",
       "por_que_as_outras_estao_erradas": {{
-        "A": "Erro da A",
-        "B": "Erro da B",
-        "D": "Erro da D"
+        "Letra Incorreta": "Por que está errada..."
       }},
       "topico_relacionado": "Nome do tópico avaliado"
     }}
@@ -1076,7 +1093,8 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
             lesson["disciplina"] = area_do_modulo 
             await asyncio.sleep(1)
 
-            exam = ensure_dict(await agent_examiner(mod, area_do_modulo, lesson, selected_model))
+            # Passando os novos parâmetros recebidos na rota para a IA da banca
+            exam = ensure_dict(await agent_examiner(mod, area_do_modulo, lesson, selected_model, request.question_format, request.question_level))
             await asyncio.sleep(1)
 
             mindmap_data = ensure_dict(await agent_mindmap(mod, area_do_modulo, lesson, selected_model))

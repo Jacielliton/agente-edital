@@ -32,8 +32,12 @@ function readJsonFile(file) {
   });
 }
 
-export default function Generator() { // Renomeado de App para Generator
+export default function Generator() {
   const [text, setText] = useState("");
+  
+  // --- NOVOS ESTADOS PARA AS QUESTÕES ---
+  const [questionFormat, setQuestionFormat] = useState("Múltipla Escolha");
+  const [questionLevel, setQuestionLevel] = useState("Superior");
 
   // Config vindo do backend (.env)
   const [availableModels, setAvailableModels] = useState([]);
@@ -160,7 +164,12 @@ export default function Generator() { // Renomeado de App para Generator
       const resp = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model: model || null }),
+        body: JSON.stringify({ 
+          text, 
+          model: model || null,
+          question_format: questionFormat,
+          question_level: questionLevel
+        }),
       });
 
       const data = await resp.json().catch(() => ({}));
@@ -259,6 +268,34 @@ export default function Generator() { // Renomeado de App para Generator
             onChange={(e) => setText(e.target.value)}
             placeholder="Cole aqui o conteúdo..."
           />
+        </div>
+
+        {/* --- NOVOS CAMPOS NA INTERFACE --- */}
+        <div className="row" style={{ display: 'flex', gap: '15px' }}>
+          <div style={{ flex: 1 }}>
+            <label className="label">Nível das Questões</label>
+            <select 
+              className="select" 
+              value={questionLevel} 
+              onChange={(e) => setQuestionLevel(e.target.value)}
+              disabled={loading}
+            >
+              <option value="Superior">Ensino Superior</option>
+              <option value="Médio">Ensino Médio</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <label className="label">Formato das Questões</label>
+            <select 
+              className="select" 
+              value={questionFormat} 
+              onChange={(e) => setQuestionFormat(e.target.value)}
+              disabled={loading}
+            >
+              <option value="Múltipla Escolha">Múltipla Escolha (A a E)</option>
+              <option value="Certo/Errado">Certo / Errado</option>
+            </select>
+          </div>
         </div>
 
         <div className="actions">
