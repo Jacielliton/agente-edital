@@ -784,59 +784,159 @@ RETORNE APENAS ESTE JSON EXATO:
 
 async def agent_architect(text: str, model: str) -> Dict[str, Any]:
     print("--- 🏛️ Arquiteto: Lendo edital e extraindo disciplinas dinamicamente... ---")
+
     prompt = f"""
-Atue como Especialista em Análise de Editais de Concurso.
-Sua missão é ler o texto bruto do edital fornecido e transformá-lo em uma lista de módulos TOTALMENTE PLANA em formato JSON.
+Atue como ESPECIALISTA SÊNIOR em Análise Estrutural e Lexical de Editais de Concurso.
 
-REGRA DE EXTRAÇÃO DAS MATÉRIAS (CRÍTICA):
-No texto, o nome da disciplina/área de conhecimento aparece imediatamente ANTES de um sinal de dois-pontos (":").
-Exemplos do padrão:
-- "LÍNGUA PORTUGUESA: 1 Compreensão..." -> A disciplina é "LÍNGUA PORTUGUESA".
-- "NOÇÕES DE DIREITO CONSTITUCIONAL : 1 Aplicabilidade..." -> A disciplina é "NOÇÕES DE DIREITO CONSTITUCIONAL".
-- "ENGENHARIA DE DADOS: 1 Dado..." -> A disciplina é "ENGENHARIA DE DADOS".
+Sua missão é transformar o texto bruto em uma lista de módulos DIDÁTICOS, GRANULARES e 100% FIÉIS ao edital.
 
-Você deve capturar esse texto antes dos dois-pontos e usá-lo OBRIGATORIAMENTE no campo "disciplina" para TODOS os tópicos numéricos que vierem a seguir, até que uma nova disciplina com ":" apareça no texto. Ignore palavras genéricas de agrupamento como "ESPECÍFICO:" se elas não tiverem tópicos numéricos atrelados, ou use-as como parte do contexto.
+==================================================================
+🚨 REGRA MÁXIMA: FIDELIDADE TOTAL AO TEXTO
+==================================================================
 
-REGRAS DE FORMATAÇÃO DOS TÓPICOS (CRÍTICAS):
-1. CADA NÚMERO individual do edital (ex: 1, 1.1, 1.2, 2, 2.1) deve ser um objeto SEPARADO na lista "modulos".
-2. NUNCA aninhe tópicos (não crie listas dentro de listas). A lista de módulos deve ser 100% plana.
-3. Mantenha o número junto com o texto no campo "titulo" (ex: "4.1 Emprego de tempos e modos verbais").
+PROIBIDO ABSOLUTO:
+- Reescrever títulos
+- Usar sinônimos
+- Resumir conteúdo
+- Inventar subtemas
+- Expandir conteúdo
 
-TEXTO DO EDITAL PARA ANÁLISE:
+REGRA CRÍTICA:
+O campo "titulo" DEVE ser um trecho literal do edital (substring real).
+
+Se não estiver no texto, NÃO EXISTE.
+
+==================================================================
+🧠 IDENTIFICAÇÃO DE DISCIPLINA
+==================================================================
+
+- Detecte blocos principais (geralmente em CAIXA ALTA)
+- Use como "disciplina"
+- Todos os tópicos abaixo herdam essa disciplina
+
+Se não encontrar:
+→ use "GERAL"
+
+==================================================================
+✂️ FATIAMENTO CONTROLADO (EVITAR ERROS)
+==================================================================
+
+Use delimitadores:
+- ";" (PRIORIDADE ALTA)
+- "," (USAR COM CUIDADO)
+
+🚨 NÃO QUEBRAR quando:
+- estiver entre parênteses
+- for unidade semântica única
+- houver "e" conectando conceitos dependentes
+
+EXEMPLOS (NÃO QUEBRAR):
+- "SLAs e catálogo de serviços"
+- "crimes contra a pessoa e o patrimônio"
+- "pronomes (pessoais, possessivos e demonstrativos)"
+
+EXEMPLOS (QUEBRAR):
+- itens separados por ";"
+- listas independentes
+
+REGRA DE OURO:
+Se houver dúvida → NÃO dividir
+
+==================================================================
+🧠 MICRODIVISÃO (OPCIONAL E CONTROLADA)
+==================================================================
+
+Pode dividir SOMENTE SE:
+1. Cada parte fizer sentido isoladamente
+2. Não alterar nenhuma palavra
+3. Não perder contexto
+
+Ex:
+"Regência verbal e nominal" → permitido dividir
+
+==================================================================
+📊 CLASSIFICAÇÃO PADRONIZADA (OBRIGATÓRIA)
+==================================================================
+
+TIPO (escolha apenas 1):
+- "fundamento"
+- "conceito"
+- "aplicacao"
+- "ferramenta/tecnica"
+- "legislacao/norma"
+
+PESO (escolha apenas 1):
+- "alto"
+- "medio"
+- "baixo"
+
+REGRAS:
+- Frameworks, leis, normas → alto
+- Conceitos técnicos → medio
+- Introduções → baixo
+
+==================================================================
+🔍 RASTREABILIDADE (OBRIGATÓRIO)
+==================================================================
+
+"origem_no_edital" deve conter o trecho literal exato.
+
+==================================================================
+🧱 REGRA DE ESCOPO
+==================================================================
+
+Crie uma frase curta (máx 10 palavras):
+- objetiva
+- técnica
+- sem explicação longa
+
+Ex:
+"Focar na literalidade da norma"
+"Focar na aplicação prática"
+
+==================================================================
+🛟 FAILSAFE (OBRIGATÓRIO)
+==================================================================
+
+Se não conseguir extrair:
+→ retorne 1 módulo genérico com:
+- disciplina = "GERAL"
+- titulo = "Análise geral do conteúdo"
+
+==================================================================
+🚨 FORMATO DE SAÍDA
+==================================================================
+
+- JSON válido
+- Sem markdown
+- Sem texto extra
+- Estrutura 100% plana
+- Todos os campos obrigatórios
+
+==================================================================
+📥 TEXTO:
+==================================================================
 {clamp_text(text, 15000)}
 
-RETORNE APENAS ESTE JSON EXATO (Siga rigorosamente esta estrutura):
+==================================================================
+📤 SAÍDA:
+==================================================================
+
 {{
-  "resumo_objetivo": "Resumo em uma linha sobre a abrangência deste edital.",
+  "resumo_objetivo": "Resumo em uma linha.",
   "modulos": [
     {{
-      "disciplina": "LÍNGUA PORTUGUESA",
-      "titulo": "4 Domínio dos mecanismos de coesão textual",
-      "tipo": "capitulo",
-      "regra_de_escopo": "Focar na introdução deste tópico."
-    }},
-    {{
-      "disciplina": "LÍNGUA PORTUGUESA",
-      "titulo": "4.1 Emprego de elementos de referenciação, substituição...",
-      "tipo": "subcapitulo",
-      "regra_de_escopo": "Focar estritamente neste item."
-    }},
-    {{
-      "disciplina": "NOÇÕES DE DIREITO CONSTITUCIONAL",
-      "titulo": "1 Aplicabilidade das normas constitucionais",
-      "tipo": "capitulo",
-      "regra_de_escopo": "Focar na introdução deste tópico."
-    }},
-    {{
-      "disciplina": "NOÇÕES DE DIREITO CONSTITUCIONAL",
-      "titulo": "1.1 Normas de eficácia plena, contida e limitada",
-      "tipo": "subcapitulo",
-      "regra_de_escopo": "Focar estritamente neste item."
+      "disciplina": "NOME DA DISCIPLINA",
+      "titulo": "TRECHO LITERAL DO EDITAL",
+      "tipo": "conceito",
+      "peso": "medio",
+      "origem_no_edital": "TRECHO EXATO",
+      "regra_de_escopo": "Foco direto"
     }}
   ]
 }}
 """
-    return await get_json_response(prompt, model, temp=0.1)
+    return await get_json_response(prompt, model, temp=0.05)
 
 
 async def agent_researcher(
@@ -848,7 +948,12 @@ async def agent_researcher(
 ) -> Dict[str, Any]:
     
     titulo = modulo_obj.get("titulo", "Módulo")
-    print(f"--- 🔎 Pesquisador: Aprofundando '{titulo}'... ---")
+    tipo = modulo_obj.get("tipo", "conceito")
+    peso = modulo_obj.get("peso", "medio")
+    escopo = modulo_obj.get("regra_de_escopo", "Aprofundar tecnicamente.")
+    origem = modulo_obj.get("origem_no_edital", titulo)
+    
+    print(f"--- 🔎 Pesquisador: Aprofundando '{titulo}' (Tipo: {tipo} | Peso: {peso})... ---")
 
     modulo_json = json.dumps(modulo_obj, ensure_ascii=False)
     guidelines = context_instructions.get("diretrizes_pesquisador", "Foco técnico rigoroso.")
@@ -858,18 +963,22 @@ async def agent_researcher(
 Atue como PESQUISADOR TÉCNICO SÊNIOR em {area}.
 Gere o mapa estrutural detalhado para a aula "{titulo}".
 
-DIRETRIZES: {guidelines}
+DADOS DO EDITAL PARA ESTE TÓPICO:
+- Origem literal no edital: "{origem}"
+- Natureza do Tópico (Tipo): {tipo}
+- Relevância (Peso): {peso}
+- Regra de Escopo: {escopo}
+
+DIRETRIZES GERAIS: {guidelines}
 FOCO: {deep_focus}
-MÓDULO: {modulo_json}
 
 REGRAS CRÍTICAS DE PROFUNDIDADE E DOMÍNIO:
-1. GERE no mínimo 3 itens longos e exaustivos em "subtemas_aprofundados".
-2. Não cite um termo técnico sem explicá-lo brevemente. Se citar conceitos (ex: "Poder Discricionário", "Programação Orientada a Objetos", "Equação de 2º Grau", "Revolução Industrial"), garanta que a explicação do mecanismo esteja presente.
-3. Adapte ao domínio ({area}):
-   - TI/Exatas/Lógica: Use fórmulas, trechos de código, arquitetura, teoremas.
-   - Direito/Humanas: Use leis, jurisprudência, doutrina, correntes.
-   - Biológicas/Saúde: Fisiopatologia, vias metabólicas, protocolos.
-   - Linguagens: Regras gramaticais, sintaxe, escolas literárias.
+1. Respeite a "Regra de Escopo" e a "Natureza do Tópico". 
+   - Se for "lei/norma", pesquise artigos, incisos, jurisprudência e literalidade.
+   - Se for "ferramenta/tecnica", pesquise comandos, arquitetura e trade-offs.
+   - Se for "conceito/fundamento", pesquise autores, classificações e teorias.
+2. GERE no mínimo 3 itens longos e exaustivos em "subtemas_aprofundados".
+3. Não cite um termo técnico sem explicá-lo. 
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
@@ -885,13 +994,13 @@ RETORNE APENAS ESTE JSON EXATO:
     {{
       "subtema": "Nome Técnico (NÃO USAR HISTÓRIA)",
       "natureza": "teorica|pratica|jurisprudencia",
-      "conteudo_denso": "Explicação EXAUSTIVA. OBRIGATÓRIO usar 3 marcações internas em negrito no texto para forçar a profundidade: **Fundamento Teórico:** [explicar a base], **Mecanismo na Prática:** [como funciona a engrenagem], e **Limitações/Restrições:** [onde falha ou exceções].",
+      "conteudo_denso": "Explicação EXAUSTIVA. OBRIGATÓRIO usar 3 marcações internas em negrito no texto para forçar a profundidade: **Fundamento Teórico:** [explicar a base], **Mecanismo na Prática:** [como funciona], e **Limitações/Exceções:** [onde falha ou exceções].",
       "laboratorio_pratico": {{
-        "cenario": "Problema prático ou caso concreto difícil.",
-        "resolucao": "Solução passo a passo, detalhando o porquê.",
-        "resultado_esperado": "O resultado final comprovado."
+        "cenario": "Problema prático, questão clássica ou caso concreto.",
+        "resolucao": "Solução passo a passo.",
+        "resultado_esperado": "Resultado final."
       }},
-      "pontos_de_atencao": ["Exceção técnica 1", "Risco de implementação/interpretação 2"]
+      "pontos_de_atencao": ["Pegadinha clássica de prova 1", "Exceção técnica 2"]
     }}
   ]
 }}
@@ -907,35 +1016,41 @@ async def agent_professor(
 ) -> Dict[str, Any]:
 
     titulo = modulo_obj.get("titulo", "Módulo")
+    tipo = modulo_obj.get("tipo", "conceito")
+    peso = modulo_obj.get("peso", "medio")
+    
     print(f"--- 👨‍🏫 Professor: Ministrando '{titulo}'... ---")
 
     research_summary = json.dumps(research_data, ensure_ascii=False)
 
     prompt = f"""
-Atue como um PROFESSOR DE ELITE, reconhecido por sua didática impecável e capacidade de simplificar temas complexos em {area}.
-Aprofunde exaustivamente o tema exato: "{titulo}".
+Atue como um PROFESSOR DE ELITE, reconhecido por sua didática impecável em {area}.
+Sua missão é dar uma aula exaustiva sobre: "{titulo}".
+
+CONTEXTO ESTRATÉGICO DO EDITAL:
+- Tipo de Conteúdo: {tipo}
+- Peso para a prova: {peso} (Se for "alto", aprofunde rigorosamente em pegadinhas de bancas).
 
 PESQUISA BASE: {research_summary}
 
 Gere o conteúdo da aula seguindo ESTA ESTRUTURA RIGOROSA:
-1. Aula teórica aprofundada (Use formatação Markdown para facilitar a leitura).
+1. Aula teórica aprofundada (Use formatação Markdown, subtítulos, negritos). Adapte o tom para o TIPO de conteúdo (ex: mais hermenêutico para leis, mais pragmático para ferramentas).
 2. Resumo de Termos Chave.
-3. Analogias e Contexto (INSTRUÇÃO ESPECIAL: Crie uma analogia BRILHANTE, memorável e altamente didática. Relacione o conceito complexo a algo palpável do cotidiano - como física, arquitetura, trânsito, biologia, tecnologia ou sociedade. A metáfora deve fazer o aluno ter um momento 'Ahá! Entendi perfeitamente!').
-4. Aplicação Prática / Exemplos e Estudo de Caso.
+3. Analogias e Contexto (Crie uma metáfora brilhante do cotidiano para ancorar o conhecimento. *Nota: se o tipo for "lei/norma", use como analogia um "caso do mundo real" famoso ou prático ao invés de metáforas abstratas*).
+4. Aplicação Prática / Estudo de Caso.
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
   "titulo": "{titulo}",
-  "visao_geral": "Resumo de 2 linhas sobre a importância deste tópico.",
+  "visao_geral": "Resumo de 2 linhas sobre a importância deste tópico para a prova.",
   "aula_teorica_aprofundada": "Texto completo, exaustivo e didático sobre o tema. Use subtítulos em Markdown (###).",
   "resumo_termos_chave": [
-     {{ "termo": "Nome do Termo", "definicao": "Definição técnica e direta." }}
+     {{ "termo": "Nome do Termo", "definicao": "Definição técnica." }}
   ],
-  "analogias_contexto": "Apresente uma analogia criativa, visual e memorável que traduza a complexidade do assunto para o mundo real, seguida de um breve contexto prático ou histórico. Faça o aluno visualizar o conceito de forma clara.",
-  "aplicacao_pratica_exemplos": "Exemplos detalhados de como isso é aplicado na prática profissional ou estudos de caso clássicos."
+  "analogias_contexto": "Apresente uma analogia criativa ou caso real para visualização do conceito.",
+  "aplicacao_pratica_exemplos": "Exemplos detalhados de aplicação ou resolução de um caso prático típico de provas."
 }}
 """
-    # Aumentamos levemente a temperatura (0.4) para permitir que a IA seja mais criativa e menos robótica nas analogias
     return await get_json_response(prompt, model, temp=0.4)
 
 
@@ -1015,32 +1130,41 @@ RETORNE APENAS ESTE JSON EXATO:
 
 
 async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model: str) -> Dict[str, Any]:
-    print("--- 🎯 Estrategista: Criando plano de revisão... ---")
+    print("--- 🎯 Estrategista: Criando plano de revisão com base nos pesos... ---")
     
     conteudo_real = []
     for m in modulos_data:
         if isinstance(m, dict):
-            titulo = m.get("titulo", "Módulo")
-            # Atualizado para ler os termos chave gerados pelo novo prompt do professor
+            meta = m.get("meta_modulo", {})
+            titulo = meta.get("titulo") or m.get("titulo", "Módulo")
+            tipo = meta.get("tipo", "conceito")
+            peso = meta.get("peso", "medio")
+            
             termos = [t.get("termo") for t in m.get("resumo_termos_chave", []) if isinstance(t, dict)]
-            conteudo_real.append(f"Módulo '{titulo}': cobriu {', '.join(termos) if termos else 'conceitos aprofundados'}.")
+            termos_str = ', '.join(termos[:3]) if termos else 'conceitos chave'
+            
+            conteudo_real.append(f"- [Peso: {peso.upper()} | Tipo: {tipo}] Módulo '{titulo}': cobriu {termos_str}.")
     
     conteudo_texto = "\n".join(conteudo_real)
 
     prompt = f"""
-Atue como Mentor de Alta Performance para Concursos/Certificações.
-Crie um Plano de Estudos ESTRATÉGICO em Markdown baseado SOMENTE nestes módulos:
+Atue como Mentor de Alta Performance e Estratégia de Estudos para Concursos.
+Crie um Plano de Estudos ESTRATÉGICO e implacável em Markdown baseado na lista de aulas geradas abaixo. 
+Você deve usar a classificação de PESO (ALTO, MEDIO, BAIXO) para definir a prioridade do candidato.
+
+INVENTÁRIO DE AULAS GERADAS:
 {conteudo_texto}
 
 REGRAS CRÍTICAS:
-Para cada módulo, não apenas cite o que estudar, mas inclua OBRIGATORIAMENTE:
-1. **Foco de Ouro:** Onde o aluno deve gastar 80% do tempo.
-2. **Armadilha (O que NÃO focar):** O que é perfumaria e toma tempo à toa.
-3. **Métrica de Validação:** Como o aluno sabe que aprendeu (ex: 'Conseguir configurar X sem ler o manual', 'Acertar 80% das questões de Súmulas').
+1. **Curva ABC:** Destaque explicitamente as aulas de PESO ALTO. Diga ao aluno que elas formam o "Núcleo Duro" da prova.
+2. **Plano de Ataque:** Para cada disciplina ou grande bloco, forneça:
+   - **Onde focar:** Os assuntos de maior retorno (Peso Alto e Médio).
+   - **O que ler por cima:** Assuntos de Peso Baixo ou puramente conceituais.
+   - **Métrica de Validação:** Como o aluno sabe que está pronto para a prova (ex: "Acertar 85% das questões de múltipla escolha sobre o tópico X").
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
-  "plano_estudo": "Texto denso e estratégico em Markdown detalhando o plano de ataque para cada módulo."
+  "plano_estudo": "Texto denso, motivador e altamente estratégico em Markdown detalhando o plano de ataque baseado na prioridade e nos pesos."
 }}
 """
     return await get_json_response(prompt, model, temp=0.35)
