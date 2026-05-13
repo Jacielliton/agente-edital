@@ -9,7 +9,7 @@ import AdminPanel from "./pages/AdminPanel";
 import SingleLesson from "./pages/SingleLesson";
 import Generator from "./pages/Generator";
 import Login from "./pages/Login";
-
+import Performance from './components/Performance';
 import "./App.css";
 
 // Componente para rotas protegidas
@@ -80,6 +80,7 @@ export default function App() {
             <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/aula/:id" element={<PrivateRoute><SingleLesson /></PrivateRoute>} />
+            <Route path="/performance" element={<Performance />} />
 
             {/* Rotas Exclusivas de Admin */}
             <Route path="/generator" element={

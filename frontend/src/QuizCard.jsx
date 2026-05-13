@@ -35,7 +35,6 @@ function parseCorrectLetter(rawValue) {
 }
 
 function normalizeWrongReasons(v) {
-  // aceita objeto {B:".."} ou lista ["B: ..", "C: .."] etc.
   if (!v) return null;
 
   if (Array.isArray(v)) {
@@ -61,7 +60,8 @@ function normalizeWrongReasons(v) {
   return null;
 }
 
-export default function QuizCard({ question, index }) {
+// ADICIONADA A PROP onAnswer
+export default function QuizCard({ question, index, onAnswer }) {
   const [selected, setSelected] = useState(null);
   const [showExplanation, setShowExplanation] = useState(false);
   const [showFullExplanation, setShowFullExplanation] = useState(false);
@@ -98,12 +98,26 @@ export default function QuizCard({ question, index }) {
     setSelected(chosen);
     setShowExplanation(true);
     setShowFullExplanation(false);
+
+    // NOTIFICA O PAI (LessonContent) SOBRE O ACERTO
+    if (onAnswer) {
+      const isCorrect = !!correctLetter && chosen === correctLetter;
+      onAnswer(isCorrect, false); // isCorrect = true/false, isReset = false
+    }
   };
 
   const reset = () => {
+    // Verifica se a questão antes do reset estava CERTA
+    const wasCorrect = !!correctLetter && selected === correctLetter;
+    
     setSelected(null);
     setShowExplanation(false);
     setShowFullExplanation(false);
+
+    // NOTIFICA O PAI PARA DESCONTAR O PONTO, CASO ESTIVESSE CERTA
+    if (onAnswer && wasCorrect) {
+      onAnswer(false, true); // isCorrect = false, isReset = true
+    }
   };
 
   return (

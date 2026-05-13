@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, Calendar, ArrowRight, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, Calendar, ArrowRight, Search, X, ChevronLeft, ChevronRight, TrendingUp } from "lucide-react";
 
 export default function Dashboard() {
   const [plans, setPlans] = useState([]);
@@ -71,8 +71,11 @@ export default function Dashboard() {
 
   return (
     <div className="container">
-      <header className="header" style={{ textAlign: "left", marginBottom: "2rem" }}>
-        <h1>Minhas Aulas</h1>        
+      <header className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
+        <h1 style={{ margin: 0 }}>Minhas Aulas</h1>
+        <Link to="/performance" className="btn" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', fontWeight: 'bold' }}>
+          <TrendingUp size={18} color="#3b82f6" /> Meu Desempenho
+        </Link>
       </header>
 
       {/* Barra de Filtros */}

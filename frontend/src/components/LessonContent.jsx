@@ -36,6 +36,31 @@ const getAuthToken = () => {
   return null;
 };
 
+// NOVA FUNÇÃO: Dispara o salvamento da nota para o backend
+const savePerformance = async (tipo, tema, notaObtida, notaMaxima) => {
+  const token = getAuthToken();
+  if (!token) return; // Se não estiver logado, apenas ignora silenciosamente
+
+  try {
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    await fetch(`${apiUrl}/performance`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        tipo: tipo,
+        tema: tema,
+        nota_obtida: parseFloat(notaObtida) || 0,
+        nota_maxima: parseFloat(notaMaxima) || 10.0
+      })
+    });
+  } catch (err) {
+    console.error("Erro ao salvar desempenho silenciosamente:", err);
+  }
+};
+
 // ==========================================
 // COMPONENTE: CHAT DO TUTOR (FLUTUANTE DIREITO)
 // ==========================================
@@ -185,6 +210,10 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
       if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
       const data = await res.json();
       setCorrection(data);
+      
+      // DISPARA O SALVAMENTO NO BANCO
+      await savePerformance("discursiva", area ? `${area} - ${aula?.titulo || 'Tópico'}` : "Prova Discursiva", data.nota_final, 10.0);
+      
     } catch (err) {
       setError("A IA corretora falhou. Verifique se a sua Chave de API está correta nas configurações.");
     } finally {
@@ -316,6 +345,175 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
 }
 
 // ==========================================
+// COMPONENTE: PROVA DISCURSIVA GERAL (GLOBAL)
+// ==========================================
+function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas }) {
+  const [discursiva, setDiscursiva] = useState(null);
+  const [answer, setAnswer] = useState("");
+  const [correction, setCorrection] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingGen, setLoadingGen] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleGenerateNew = async () => {
+    setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const aulasTitulos = aulas.map(a => a.titulo);
+      
+      const res = await fetch(`${apiUrl}/generate-global-essay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          area: area || "Assunto Geral",
+          aulas_titulos: aulasTitulos,
+          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          api_key: userApiKey || null
+        })
+      });
+
+      if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
+
+      const data = await res.json();
+      const novaQuestao = data.discursiva ? data.discursiva : data;
+
+      if (novaQuestao && novaQuestao.comando) {
+        setDiscursiva(novaQuestao);
+      } else {
+        setError("A IA não retornou um formato válido. Tente gerar novamente.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Falha de conexão ao gerar a discursiva geral.");
+    } finally {
+      setLoadingGen(false);
+    }
+  };
+
+  const handleCorrect = async () => {
+    if (answer.trim().length < 50) {
+      alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
+      return;
+    }
+    setLoading(true); setError(null); setCorrection(null);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/correct-essay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          texto_motivador: discursiva.texto_motivador || "",
+          comando: discursiva.comando || "",
+          aspectos: discursiva.aspectos || [],
+          resposta_aluno: answer,
+          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          api_key: userApiKey || null
+        })
+      });
+      if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
+      const data = await res.json();
+      setCorrection(data); // Reutilizamos a mesma lógica de correção perfeita do backend
+      
+      // DISPARA O SALVAMENTO NO BANCO (Max 20.0 pontos padrão CEBRASPE)
+      await savePerformance("discursiva", area ? `${area} (Simulado Global)` : "Discursiva Global", data.nota_final, 20.0);
+      
+    } catch (err) {
+      setError("A IA corretora falhou ao processar a redação.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!discursiva) {
+    return (
+      <div style={{ textAlign: 'center', marginTop: '20px' }}>
+        <button onClick={handleGenerateNew} disabled={loadingGen} style={{ padding: '15px 30px', backgroundColor: '#1e293b', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(30, 41, 59, 0.3)' }}>
+          {loadingGen ? "⏳ A sortear temas e gerar prova..." : "📝 Gerar Prova Discursiva Oficial"}
+        </button>
+        {error && <div style={{ color: '#ef4444', marginTop: '15px', fontWeight: 'bold' }}>⚠️ {error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="essay-container" style={{ padding: '20px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '20px' }}>
+      <div style={{ marginBottom: '15px' }}>
+        <strong>📋 Cenário / Texto Motivador:</strong>
+        <div className="essay-text"><ReactMarkdown>{safeString(discursiva.texto_motivador)}</ReactMarkdown></div>
+      </div>
+      
+      <div style={{ marginBottom: '15px', background: '#f1f5f9', padding: '10px', borderRadius: '4px', borderLeft: '4px solid #0f172a' }}>
+        <strong>📝 Comando da Questão:</strong>
+        <div className="essay-text" style={{ fontWeight: '500', margin: '5px 0 0 0', color: '#0f172a' }}>
+          <ReactMarkdown>{safeString(discursiva.comando)}</ReactMarkdown>
+        </div>
+      </div>
+      
+      <div style={{ marginBottom: '20px' }}>
+        <strong>🎯 Aspectos Avaliados (Total: 19.0 Pontos):</strong>
+        <ul style={{ margin: '10px 0', paddingLeft: '20px', color: '#334155' }}>
+          {safeArray(discursiva.aspectos).map((asp, i) => (
+            <li key={i} style={{marginBottom: '5px'}}>
+              {safeString(asp.aspecto)} <span style={{color: '#ef4444', fontWeight: 'bold', marginLeft: '5px'}}>({safeString(asp.valor_maximo)} pts)</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      
+      <textarea 
+        className="essay-textarea" 
+        placeholder="FOLHA DE TEXTO DEFINITIVO: Digite aqui a sua resposta estruturada..." 
+        value={answer} 
+        onChange={(e) => setAnswer(e.target.value)} 
+        disabled={loading || loadingGen || correction !== null} 
+        style={{ width: '100%', minHeight: '200px', padding: '15px', borderRadius: '8px', border: '1px solid #cbd5e1', marginBottom: '15px', resize: 'vertical' }}
+      />
+      
+      {!correction && (
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="essay-button" onClick={handleCorrect} disabled={loading || loadingGen || answer.trim().length === 0} style={{ flex: 2, padding: '15px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1.05rem' }}>
+            {loading ? "⏳ Avaliando sua redação..." : "✔️ Enviar para a Banca IA (Correção)"}
+          </button>
+          <button className="essay-button" onClick={handleGenerateNew} disabled={loadingGen} style={{ flex: 1, backgroundColor: '#475569', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+            {loadingGen ? "⏳..." : "🔄 Sortear Outro Tema"}
+          </button>
+        </div>
+      )}
+
+      {error && (<div className="correction-error" style={{ color: '#ef4444', marginTop: '10px' }}><strong>⚠️ Erro: </strong> {error}</div>)}
+      
+      {correction && (
+        <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ marginTop: 0, color: '#10b981', borderBottom: '2px solid #10b981', paddingBottom: '10px' }}>📊 Nota no Domínio do Conteúdo: {safeString(correction.nota_final)} / 19.0</h3>
+          <div style={{fontStyle: 'italic', marginBottom: '20px'}}><strong>Parecer Oficial da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown></div>
+          
+          <h4 style={{ color: '#0f172a' }}>🔹 Detalhamento por Aspecto:</h4>
+          {safeArray(correction.avaliacoes_aspectos).map((av, k) => (
+            <div key={k} style={{ marginBottom: '15px', background: '#f8fafc', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
+              <div style={{fontWeight: 'bold', color: '#334155'}}>{safeString(av.aspecto)}</div>
+              <div style={{ color: '#2563eb', fontWeight: 'bold', margin: '5px 0' }}>Nota Atribuída: {safeString(av.nota_atribuida)}</div>
+              <div style={{fontSize: '0.9em', color: '#475569'}}><em><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></em></div>
+            </div>
+          ))}
+
+          <h4 style={{ marginTop: '20px', color: '#0f172a' }}>🔹 Estrutura e Aspectos Gramaticais (Vale até 1.0 ponto):</h4>
+          <div style={{fontSize: '0.95em', color: '#b91c1c', background: '#fef2f2', padding: '15px', borderRadius: '8px', border: '1px solid #fca5a5'}}><ReactMarkdown>{safeString(correction.erros_gramaticais)}</ReactMarkdown></div>
+          
+          <div style={{ display: 'flex', gap: '20px', marginTop: '25px' }}>
+            <button onClick={() => {setCorrection(null); setAnswer("");}} style={{background: '#f1f5f9', color: '#2563eb', border: '1px solid #cbd5e1', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              🔄 Refazer esta redação
+            </button>
+            <button onClick={handleGenerateNew} disabled={loadingGen} style={{background: '#0f172a', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+              {loadingGen ? "⏳ A gerar..." : "🆕 Gerar Nova Discursiva Inédita"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
 // COMPONENTE PRINCIPAL DA PÁGINA
 // ==========================================
 export default function LessonContent({ result }) {
@@ -336,6 +534,8 @@ export default function LessonContent({ result }) {
   const [simuladoQuestoes, setSimuladoQuestoes] = useState(null);
   const [simuladoLoading, setSimuladoLoading] = useState(false);
   const [simuladoProgress, setSimuladoProgress] = useState(0);
+  const [simuladoAcertos, setSimuladoAcertos] = useState(0);
+  const [simuladoFinalizado, setSimuladoFinalizado] = useState(false);
 
   useEffect(() => {
     const fetchDBSettings = async () => {
@@ -399,6 +599,8 @@ export default function LessonContent({ result }) {
 
   // FUNÇÃO PARA GERAR O SIMULADO EM TEMPO REAL COM A IA
   const handleGerarSimuladoIA = async () => {
+    setSimuladoAcertos(0);
+    setSimuladoFinalizado(false);
     setSimuladoLoading(true);
     setSimuladoQuestoes(null);
     setSimuladoProgress(0);
@@ -671,17 +873,63 @@ export default function LessonContent({ result }) {
               <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold', marginBottom: '12px', letterSpacing: '0.05em' }}>
                 📚 {safeString(q.contexto_disciplina)} <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span> 📌 {safeString(q.contexto_topico)}
               </div>
-              <QuizCard question={q} index={i} />
+              <QuizCard 
+                question={q} 
+                index={i} 
+                onAnswer={(isCorrect, isReset) => {
+                  if (isReset) {
+                    setSimuladoAcertos(prev => Math.max(0, prev - 1)); // Tira o ponto se o aluno clicar em "Refazer"
+                  } else if (isCorrect) {
+                    setSimuladoAcertos(prev => prev + 1); // Soma ponto se acertar
+                  }
+                }}
+              />
             </div>
           ))}
 
-          <div style={{ textAlign: 'center', marginTop: '40px', paddingTop: '20px', borderTop: '2px solid #e2e8f0' }}>
-            <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} style={{ padding: '12px 25px', background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-              ↑ Voltar ao Início da Aula
-            </button>
+          <div style={{ textAlign: 'center', marginTop: '40px', paddingTop: '30px', borderTop: '2px solid #e2e8f0' }}>
+            {!simuladoFinalizado ? (
+              <button 
+                onClick={async () => {
+                  await savePerformance("simulado", result?.area_identificada ? `${result.area_identificada} (Simulado Geral)` : "Simulado Geral", simuladoAcertos, simuladoQuestoes.length);
+                  setSimuladoFinalizado(true);
+                }} 
+                style={{ padding: '15px 30px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '1.2rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}
+              >
+                ✅ Finalizar Simulado e Salvar Nota
+              </button>
+            ) : (
+              <div style={{ padding: '20px', background: '#ecfdf5', color: '#065f46', borderRadius: '8px', border: '1px solid #10b981', fontWeight: 'bold', fontSize: '1.2rem', marginBottom: '20px' }}>
+                🏆 Simulado Concluído! Você acertou {simuladoAcertos} de {simuladoQuestoes.length}. Nota salva no seu Desempenho.
+              </div>
+            )}
+            
+            <div style={{ marginTop: '20px' }}>
+              <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} style={{ padding: '10px 20px', background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                ↑ Voltar ao Início da Aula
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* ========================================== */}
+      {/* BLOCO DA DISCURSIVA GERAL (COM IA)         */}
+      {/* ========================================== */}
+      <div style={{ marginTop: '40px', padding: '40px 20px', background: '#ffffff', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
+        <h2 style={{ color: '#0f172a', margin: '0 0 15px 0', fontSize: '1.8rem', textAlign: 'center' }}>✍️ Prova Discursiva Geral (Padrão CEBRASPE)</h2>
+        <p style={{ color: '#475569', marginBottom: '25px', fontSize: '1.1rem', maxWidth: '700px', margin: '0 auto', textAlign: 'center' }}>
+          A IA sorteará <strong>2 temas aleatórios</strong> do curso e criará um cenário inédito. A prova distribuirá 19.0 pontos para o domínio técnico e 1.0 ponto para estrutura e gramática.
+        </p>
+        
+        <GlobalEssaySection 
+          defaultModel={result?.modelo_utilizado} 
+          userApiKey={userApiKey} 
+          userModel={userModel} 
+          area={result?.area_identificada}
+          aulas={aulas}
+        />
+      </div>
 
       {/* BOTÃO FLUTUANTE DO NAVEGADOR ESQUERDO */}
       {!isNavOpen && (

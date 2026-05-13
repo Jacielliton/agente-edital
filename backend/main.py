@@ -18,7 +18,7 @@ from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 
 # Imports de Banco de Dados (SQLAlchemy + Asyncpg)
-from sqlalchemy import Column, Integer, String, DateTime, JSON, select, desc, func
+from sqlalchemy import Column, Float, Integer, String, DateTime, JSON, select, desc, func
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -52,6 +52,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 # ============================================================================
 # 2. MODELOS DE BANCO DE DADOS (ORM)
 # ============================================================================
+
+class PerformanceRecord(Base):
+    __tablename__ = "performance_records"
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String, index=True) # Vinculado ao usuário logado
+    tipo = Column(String)                   # 'simulado' ou 'discursiva'
+    tema = Column(String)                   # Ex: "Direito Penal" ou "Simulado Geral"
+    nota_obtida = Column(Float)
+    nota_maxima = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
 class SimuladoTopicRequest(BaseModel):
     area: str
     topico: str
@@ -106,20 +117,40 @@ def create_access_token(data: dict):
 # ============================================================================
 # 4. SCHEMAS (PYDANTIC)
 # ============================================================================
+class PerformanceCreate(BaseModel):
+    tipo: str
+    tema: str
+    nota_obtida: float
+    nota_maxima: float
 
+class PerformanceResponse(BaseModel):
+    id: int
+    tipo: str
+    tema: str
+    nota_obtida: float
+    nota_maxima: float
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+    
+class GlobalEssayRequest(BaseModel):
+    area: str
+    aulas_titulos: List[str]
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    api_key: Optional[str] = None
+    
 class EssayCorrectionRequest(BaseModel):
     texto_motivador: str
     comando: str
     aspectos: List[Dict[str, Any]]
     resposta_aluno: str
-    model: Optional[str] = "google/gemini-2.5-flash-lite"
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
     api_key: Optional[str] = None
 
 class GenerateEssayRequest(BaseModel):
     area: str
     aula_titulo: str
     lesson_content: Dict[str, Any]
-    model: Optional[str] = "google/gemini-2.5-flash-lite"
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
     api_key: Optional[str] = None
 
 class ChatMessageRequest(BaseModel):
@@ -127,7 +158,7 @@ class ChatMessageRequest(BaseModel):
     aula_titulo: str
     mensagem: str
     historico: List[Dict[str, str]] = []
-    model: Optional[str] = "google/gemini-2.5-flash-lite"
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
     api_key: Optional[str] = None
     
 class UserLogin(BaseModel):
@@ -228,8 +259,8 @@ def get_openrouter_client():
         _CLIENT = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
     return _CLIENT
 
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "google/gemini-2.5-flash-lite")
-AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "google/gemini-2.5-flash-lite,google/gemini-2.5-flash").split(",") if m.strip()]
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "arcee-ai/trinity-large-thinking:free")
+AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "arcee-ai/trinity-large-thinking:free,google/gemini-2.5-flash").split(",") if m.strip()]
 
 # ============================================================================
 # 6. LIFESPAN (CICLO DE VIDA & INICIALIZAÇÃO)
@@ -348,7 +379,7 @@ async def set_config(cfg: ConfigRequest):
         update_env_file(ENV_FILE_PATH, updates)
         load_dotenv(override=True)
         global DEFAULT_MODEL, AVAILABLE_MODELS
-        DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "google/gemini-2.5-flash-lite")
+        DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "arcee-ai/trinity-large-thinking:free")
         AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
     return {"ok": True, "updated": list(updates.keys())}
 
@@ -632,6 +663,39 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
 # ============================================================================
 # 7. AGENTS (OTIMIZADOS PARA GEMINI FLASH-LITE)
 # ============================================================================
+async def agent_global_essay_generator(area: str, aulas_titulos: List[str], model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    print(f"--- ✍️  Discursiva Geral: Criando prova CESPE/CEBRASPE integradora... ---")
+
+    prompt = f"""
+Atue como EXAMINADOR SÊNIOR da banca CEBRASPE/CESPE.
+A área geral de conhecimento do candidato é: {area}.
+
+Lista de tópicos estudados nesta disciplina:
+{json.dumps(aulas_titulos, ensure_ascii=False)}
+
+Sua missão ÚNICA é criar UMA questão discursiva integradora de alto nível, simulando exatamente o padrão real de prova da banca CEBRASPE.
+
+DIRETRIZES DE CRIAÇÃO:
+1. SELEÇÃO: Escolha aleatoriamente EXATAMENTE 2 (dois) temas distintos da lista acima para compor a narrativa. Adapte-se à área de conhecimento informada (não limite à informática, a menos que os temas sejam de TI).
+2. TEXTO MOTIVADOR: Crie um cenário hipotético, rico em detalhes (ex: "Em março de 2023, uma situação ocorreu...").
+3. COMANDO: Use estritamente o padrão da banca: "Considerando a situação narrada, redija um texto dissertativo em atendimento ao que se pede a seguir."
+4. ASPECTOS (TÓPICOS): Crie de 2 a 3 itens numerados que o candidato deve responder obrigatoriamente (Ex: "1. Explique...", "2. Mencione...", "3. Descreva...").
+5. PONTUAÇÃO: A soma do campo "valor_maximo" de todos os aspectos DEVE ser exatos 19.0 pontos (o 1.0 ponto restante é da apresentação textual, fechando a nota de 20.0).
+
+RETORNE APENAS ESTE JSON EXATO:
+{{
+  "discursiva": {{
+    "texto_motivador": "Descrição detalhada do cenário narrado...",
+    "comando": "Considerando a situação narrada, redija um texto dissertativo em atendimento ao que se pede a seguir.",
+    "aspectos": [
+      {{ "aspecto": "1. Explique o conceito X...", "valor_maximo": 6.0 }},
+      {{ "aspecto": "2. Mencione o papel de Y...", "valor_maximo": 8.0 }},
+      {{ "aspecto": "3. Descreva o processo Z...", "valor_maximo": 5.0 }}
+    ]
+  }}
+}}
+"""
+    return await get_json_response(prompt, model, temp=0.6, api_key=api_key)
 
 async def agent_essay_generator(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     titulo = modulo_obj.get("titulo", "Módulo")
@@ -1172,6 +1236,35 @@ RETORNE APENAS ESTE JSON EXATO:
 # ============================================================================
 # 8. ROTA PRINCIPAL (/analyze) E ROTAS DO USUÁRIO OMITIDAS PARA BREVIDADE
 # ============================================================================
+@app.post("/performance", status_code=201)
+async def save_performance(
+    record: PerformanceCreate, 
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    new_record = PerformanceRecord(
+        user_email=current_user.email,
+        tipo=record.tipo,
+        tema=record.tema,
+        nota_obtida=record.nota_obtida,
+        nota_maxima=record.nota_maxima
+    )
+    db.add(new_record)
+    await db.commit()
+    return {"ok": True, "message": "Desempenho salvo!"}
+
+@app.get("/performance/me", response_model=List[PerformanceResponse])
+async def get_my_performance(
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    # Busca o histórico ordenado do mais recente para o mais antigo
+    result = await db.execute(
+        select(PerformanceRecord)
+        .filter(PerformanceRecord.user_email == current_user.email)
+        .order_by(desc(PerformanceRecord.created_at))
+    )
+    return result.scalars().all()
 
 @app.post("/analyze")
 async def analyze_syllabus_deep(request: SyllabusRequest):
@@ -1345,7 +1438,16 @@ async def generate_essay_endpoint(req: GenerateEssayRequest):
     except Exception as e:
         print(f"Erro na geração da discursiva: {e}")
         raise HTTPException(status_code=500, detail="Falha ao gerar nova discursiva.")
-    
+
+@app.post("/generate-global-essay")
+async def generate_global_essay_endpoint(req: GlobalEssayRequest):
+    try:
+        result = ensure_dict(await agent_global_essay_generator(req.area, req.aulas_titulos, req.model, req.api_key))
+        return result
+    except Exception as e:
+        print(f"Erro na geração da discursiva global: {e}")
+        raise HTTPException(status_code=500, detail="Falha ao gerar nova discursiva global.")
+        
 @app.post("/chat")
 async def chat_tutor(req: ChatMessageRequest):
     try:
