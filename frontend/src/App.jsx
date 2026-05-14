@@ -6,11 +6,12 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 
 import Dashboard from "./pages/Dashboard";
 import AdminPanel from "./pages/AdminPanel";
-import GerenciarAulas from "./pages/GerenciarAulas"; // <--- NOVO IMPORT
+import GerenciarAulas from "./pages/GerenciarAulas"; 
 import SingleLesson from "./pages/SingleLesson";
 import Generator from "./pages/Generator";
 import Login from "./pages/Login";
 import Performance from './components/Performance';
+import OpenRouterCallback from "./pages/OpenRouterCallback"; // <--- NOVO IMPORT
 import "./App.css";
 
 // No componente PrivateRoute
@@ -92,7 +93,10 @@ export default function App() {
             <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/aula/:id" element={<PrivateRoute><SingleLesson /></PrivateRoute>} />
-            <Route path="/performance" element={<Performance />} />
+            <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
+            
+            {/* Nova Rota: Callback de autenticação do OpenRouter */}
+            <Route path="/callback" element={<PrivateRoute><OpenRouterCallback /></PrivateRoute>} />
 
             {/* Rotas de Aulas (Admin + Usuário Habilitado) */}
             <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />

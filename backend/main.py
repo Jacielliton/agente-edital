@@ -22,6 +22,8 @@ from sqlalchemy import Column, Float, Integer, String, DateTime, JSON, select, d
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
+import requests
+
 # Cliente OpenAI/OpenRouter
 from openai import OpenAI
 
@@ -120,6 +122,9 @@ def create_access_token(data: dict):
 # ============================================================================
 # 4. SCHEMAS (PYDANTIC)
 # ============================================================================
+class OpenRouterExchange(BaseModel):
+    code: str
+    
 class UpdatePlanRequest(BaseModel):
     title: Optional[str] = None
     area: Optional[str] = None
@@ -1544,6 +1549,35 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
     except Exception as e:
         print(f"Erro na geração do simulado: {e}")
         raise HTTPException(status_code=500, detail="Falha ao gerar simulado com IA.")
+    
+@app.post("/auth/openrouter/exchange")
+async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Troca o código OAuth do OpenRouter por uma chave de API para o aluno"""
+    try:
+        # Chama a API do OpenRouter para trocar o código pela chave
+        response = await asyncio.to_thread(
+            requests.post,
+            "https://openrouter.ai/api/v1/auth/keys",
+            json={"code": payload.code}
+        )
         
+        if response.status_code == 200:
+            data = response.json()
+            nova_api_key = data.get("key")
+            
+            if nova_api_key:
+                # Salva a chave gerada diretamente no perfil do aluno
+                current_user.api_key = nova_api_key
+                # Define um modelo gratuito por padrão para ele começar a usar
+                current_user.preferred_model = "arcee-ai/trinity-large-thinking:free"
+                await db.commit()
+                
+                return {"ok": True, "message": "IA ativada com sucesso!"}
+                
+        raise HTTPException(status_code=400, detail="Código inválido ou expirado do OpenRouter.")
+    except Exception as e:
+        print(f"Erro no OAuth OpenRouter: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao comunicar com o OpenRouter.")
+            
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -97,7 +97,7 @@ function TutorChat({ area, defaultModel, userApiKey, userModel }) {
           aula_titulo: "Conhecimento Geral da Área",
           mensagem: newMsg.content,
           historico: messages.slice(-4),
-          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
       });
@@ -203,7 +203,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           comando: discursiva.comando || "",
           aspectos: discursiva.aspectos || [],
           resposta_aluno: answer,
-          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
       });
@@ -236,7 +236,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           area: area || "Assunto Geral",
           aula_titulo: aula.titulo || "Aula",
           lesson_content: aula, 
-          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
       });
@@ -367,7 +367,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas }
         body: JSON.stringify({
           area: area || "Assunto Geral",
           aulas_titulos: aulasTitulos,
-          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
       });
@@ -406,7 +406,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas }
           comando: discursiva.comando || "",
           aspectos: discursiva.aspectos || [],
           resposta_aluno: answer,
-          model: userModel || defaultModel || "google/gemini-2.5-flash",
+          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
       });
@@ -529,6 +529,12 @@ export default function LessonContent({ result }) {
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
   const [savingConfig, setSavingConfig] = useState(false);
+
+  // ---> NOVA FUNÇÃO: Redireciona para o OpenRouter
+  const handleConnectAI = () => {
+    const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
+    window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
+  };
   
   // ESTADOS PARA O SIMULADO GERAL COM IA
   const [simuladoQuestoes, setSimuladoQuestoes] = useState(null);
@@ -558,7 +564,7 @@ export default function LessonContent({ result }) {
 
   const openConfigModal = () => {
     setTempKey(userApiKey);
-    setTempModel(userModel || result?.modelo_utilizado || "google/gemini-2.5-flash");
+    setTempModel(userModel || result?.modelo_utilizado || "arcee-ai/trinity-large-thinking:free");
     setShowConfig(true);
   };
 
@@ -571,10 +577,10 @@ export default function LessonContent({ result }) {
       const res = await fetch(`${apiUrl}/users/me/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: tempKey.trim(), preferred_model: tempModel.trim() })
+        // Modificado: Mantém a userApiKey atual e só altera o modelo
+        body: JSON.stringify({ api_key: userApiKey, preferred_model: tempModel.trim() })
       });
       if (res.ok) {
-        setUserApiKey(tempKey.trim());
         setUserModel(tempModel.trim());
         setShowConfig(false);
       } else { alert("Erro ao guardar no servidor."); }
@@ -624,7 +630,7 @@ export default function LessonContent({ result }) {
             area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
             topico: aula.titulo || `Tópico ${i+1}`,
             conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
-            model: userModel || defaultModel || "google/gemini-2.5-flash",
+            model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
             api_key: userApiKey || null // Usa a chave de API inserida no painel
           })
         });
@@ -688,7 +694,7 @@ export default function LessonContent({ result }) {
       {/* BARRA SUPERIOR DE CONFIGURAÇÃO UNIFICADA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#e2e8f0', padding: '12px 20px', borderRadius: '8px', marginBottom: '20px' }}>
         <div style={{ fontSize: '0.9rem', color: '#475569' }}>
-          <strong>IA Interativa:</strong> {userApiKey ? <span style={{color: '#10b981'}}>Chave Privada Ativa ({userModel})</span> : <span>Padrão do Sistema</span>}
+          <strong>IA Interativa:</strong> {userApiKey ? <span style={{color: '#10b981'}}>Chave Privada Ativa ({userModel})</span> : <span>Configure sua IA gratuitamente para desbloquear o Tutor IA, Gerar Simulado e Discursiva.</span>}
         </div>
         <button onClick={openConfigModal} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}>
           ⚙️ Configurar a Minha IA
@@ -1006,19 +1012,41 @@ export default function LessonContent({ result }) {
       {showConfig && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: '#fff', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
-            <h3 style={{ marginTop: 0, color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px' }}>⚙️ Configurar a Minha IA</h3>
-            <p style={{ fontSize: '0.95rem', color: '#64748b', marginBottom: '20px', lineHeight: '1.5' }}>Insira a sua chave do OpenRouter. As suas correções e dúvidas do chat não consumirão os limites do sistema.</p>
+            <h3 style={{ marginTop: 0, color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
+            
+            {/* INFORMAÇÃO ATUALIZADA: Gratuito e Login Rápido */}
+            <p style={{ fontSize: '0.95rem', color: '#475569', marginBottom: '20px', lineHeight: '1.5', background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              🔗 Vincule a sua conta do OpenRouter para desbloquear todos os recursos de IA. <br/>
+              ✨ É <strong>100% gratuito</strong> e você pode conectar-se em 2 segundos usando a sua conta já existente do <strong>Google, Discord ou GitHub</strong>.
+            </p>
+            
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>Chave de API (OpenRouter):</label>
-              <input type="password" value={tempKey} onChange={(e) => setTempKey(e.target.value)} placeholder="sk-or-v1-..." style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>Integração de Acesso:</label>
+              
+              {userApiKey ? (
+                <div style={{ padding: '12px', borderRadius: '6px', background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  ✅ Conta vinculada com sucesso!
+                </div>
+              ) : (
+                <button onClick={handleConnectAI} style={{ width: '100%', padding: '14px', backgroundColor: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(59, 130, 246, 0.3)' }}>
+                  🔗 Conectar IA Gratuitamente
+                </button>
+              )}
             </div>
+
             <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>Modelo de IA Preferido:</label>
-              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: google/gemini-2.5-flash" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>Modelo de IA (Opcional):</label>
+              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: google/gemini-2.5-flash-lite" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '1rem' }} />
+              
+              {/* INFORMAÇÃO ATUALIZADA: Link para Modelos Gratuitos */}
+              <span style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
+                O sistema já utiliza um modelo rápido e gratuito por padrão. Se desejar, você pode escolher outras opções de IAs gratuitas. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.
+              </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-              <button onClick={() => setShowConfig(false)} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>Cancelar</button>
-              <button onClick={saveConfigToDB} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: '#10b981', color: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>{savingConfig ? "⏳ A guardar..." : "Guardar Configuração"}</button>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '10px' }}>
+              <button onClick={() => setShowConfig(false)} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: '#f1f5f9', color: '#475569', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>Fechar</button>
+              <button onClick={saveConfigToDB} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: '#10b981', color: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>{savingConfig ? "⏳ A guardar..." : "Salvar Modelo"}</button>
             </div>
           </div>
         </div>
