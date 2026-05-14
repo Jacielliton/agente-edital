@@ -18,7 +18,7 @@ from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 
 # Imports de Banco de Dados (SQLAlchemy + Asyncpg)
-from sqlalchemy import Column, Float, Integer, String, DateTime, JSON, select, desc, func
+from sqlalchemy import Column, Float, Integer, String, DateTime, JSON, select, desc, func, Boolean, or_
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -76,9 +76,11 @@ class StoredPlan(Base):
     title = Column(String, index=True)
     area = Column(String)
     content = Column(JSON)
-    ano = Column(String, nullable=True)      # NOVO
-    banca = Column(String, nullable=True)    # NOVO
-    concurso = Column(String, nullable=True) # NOVO
+    ano = Column(String, nullable=True)
+    banca = Column(String, nullable=True)
+    concurso = Column(String, nullable=True)
+    visibility = Column(String, default="public") # Adicionado
+    owner_id = Column(Integer, nullable=True)     # Adicionado
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class User(Base):
@@ -86,9 +88,10 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    role = Column(String, default="user") # 'admin' ou 'user'
-    api_key = Column(String, nullable=True)          # Chave da IA
-    preferred_model = Column(String, nullable=True)  # Modelo Preferido
+    role = Column(String, default="user") 
+    api_key = Column(String, nullable=True)          
+    preferred_model = Column(String, nullable=True)  
+    can_manage_lessons = Column(Boolean, default=False) # Adicionado
 
 # ============================================================================
 # 3. SEGURANÇA (JWT & HASH)
@@ -123,6 +126,7 @@ class UpdatePlanRequest(BaseModel):
     ano: Optional[str] = None
     banca: Optional[str] = None
     concurso: Optional[str] = None
+    visibility: Optional[str] = None  
     
 class PerformanceCreate(BaseModel):
     tipo: str
@@ -177,6 +181,7 @@ class Token(BaseModel):
     token_type: str
     role: str
     email: str
+    can_manage_lessons: bool
 
 class UserCreate(BaseModel):
     email: str
@@ -232,19 +237,41 @@ class SavePlanRequest(BaseModel):
     title: str
     area: str
     content: Dict[str, Any]
-    ano: str      # NOVO
-    banca: str    # NOVO
-    concurso: str # NOVO
+    ano: str
+    banca: str
+    concurso: str
+    visibility: str = "public" # NOVO
 
 class PlanSummaryResponse(BaseModel):
     id: int
     title: str
     area: str
-    ano: Optional[str] = None      # NOVO
-    banca: Optional[str] = None    # NOVO
-    concurso: Optional[str] = None # NOVO
+    ano: Optional[str] = None
+    banca: Optional[str] = None
+    concurso: Optional[str] = None
+    visibility: str            # NOVO
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+# NOVOS SCHEMAS PARA USUÁRIOS (CRUD ADMIN)
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    can_manage_lessons: bool # Garante que o campo apareça no JSON enviado ao React
+    model_config = ConfigDict(from_attributes=True)
+
+class UserCreateAdmin(BaseModel):
+    email: str
+    password: str
+    role: str = "user"
+    can_manage_lessons: bool = False
+
+class UserUpdateAdmin(BaseModel):
+    email: Optional[str] = None
+    role: Optional[str] = None
+    can_manage_lessons: Optional[bool] = None
+    password: Optional[str] = None
     
 class PaginatedPlansResponse(BaseModel):
     items: List[PlanSummaryResponse]
@@ -327,11 +354,26 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 async def login(form_data: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.email == form_data.email))
     user = result.scalars().first()
+    
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
-    token_data = {"sub": user.email, "role": user.role}
+    
+    # Embutimos a permissão dentro do payload do JWT (opcional, mas recomendado)
+    token_data = {
+        "sub": user.email, 
+        "role": user.role,
+        "can_manage_lessons": user.can_manage_lessons
+    }
     access_token = create_access_token(token_data)
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "email": user.email}
+    
+    # Retornamos a permissão explicitamente no JSON para o React salvar no localStorage
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer", 
+        "role": user.role, 
+        "email": user.email,
+        "can_manage_lessons": user.can_manage_lessons  # <-- NOVO CAMPO ADICIONADO
+    }
 
 def update_env_file(path: str, updates: dict) -> None:
     try:
@@ -391,7 +433,7 @@ async def set_config(cfg: ConfigRequest):
     return {"ok": True, "updated": list(updates.keys())}
 
 @app.post("/plans", status_code=201)
-async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
+async def save_plan(plan: SavePlanRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     try:
         titulo_seguro = plan.title[:150] + "..." if len(plan.title) > 150 else plan.title
         
@@ -399,9 +441,11 @@ async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
             title=titulo_seguro, 
             area=plan.area, 
             content=plan.content,
-            ano=plan.ano,          # NOVO
-            banca=plan.banca,      # NOVO
-            concurso=plan.concurso # NOVO
+            ano=plan.ano,
+            banca=plan.banca,
+            concurso=plan.concurso,
+            visibility=plan.visibility,
+            owner_id=current_user.id # Vincula ao usuário atual
         )
         db.add(new_plan)
         await db.commit()
@@ -409,7 +453,6 @@ async def save_plan(plan: SavePlanRequest, db: AsyncSession = Depends(get_db)):
         return {"ok": True, "id": new_plan.id}
     except Exception as e:
         await db.rollback()
-        print(f"❌ Erro ao salvar plano no banco: {e}")
         raise HTTPException(status_code=500, detail=f"Erro ao salvar no banco: {str(e)}")
 
 @app.get("/plans", response_model=PaginatedPlansResponse)
@@ -418,38 +461,43 @@ async def list_plans(
     banca: Optional[str] = None, 
     concurso: Optional[str] = None, 
     page: int = 1,
-    limit: int = 9, # Exibindo 9 por página (fica bonito no grid 3x3)
+    limit: int = 30,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Monta as condições de filtro
-    conditions = []
+    # 1. Base da query
+    query = select(StoredPlan)
+    
+    # 2. CORREÇÃO DA RESTRIÇÃO: 
+    # Se não for admin, ele vê o que ele criou OU o que for público
+    if current_user.role != 'admin':
+        query = query.where(
+            or_(
+                StoredPlan.owner_id == current_user.id,
+                StoredPlan.visibility == 'public'
+            )
+        )
+    
+    # 3. Filtros de busca (Mantenha o restante igual...)
     if ano and ano.strip():
-        conditions.append(StoredPlan.ano.ilike(f"%{ano.strip()}%"))
+        query = query.where(StoredPlan.ano.ilike(f"%{ano.strip()}%"))
     if banca and banca.strip():
-        conditions.append(StoredPlan.banca.ilike(f"%{banca.strip()}%"))
+        query = query.where(StoredPlan.banca.ilike(f"%{banca.strip()}%"))
     if concurso and concurso.strip():
-        conditions.append(StoredPlan.concurso.ilike(f"%{concurso.strip()}%"))
+        query = query.where(StoredPlan.concurso.ilike(f"%{concurso.strip()}%"))
         
-    # 2. Descobre o total de aulas que existem com esses filtros
-    count_query = select(func.count(StoredPlan.id))
-    if conditions:
-        count_query = count_query.where(*conditions)
-        
+    # 4. Contagem total para paginação (respeitando o filtro de dono)
+    count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
-    # 3. Busca apenas a "fatia" da página atual
+    # 5. Execução com paginação
     skip = (page - 1) * limit
-    query = select(StoredPlan)
-    if conditions:
-        query = query.where(*conditions)
-        
     query = query.order_by(desc(StoredPlan.created_at)).offset(skip).limit(limit)
     
     result = await db.execute(query)
     items = result.scalars().all()
     
-    # Retorna as aulas da página + o número total de aulas
     return {"items": items, "total": total}
 
 @app.get("/plans/{plan_id}")
@@ -471,6 +519,7 @@ async def update_plan(plan_id: int, req: UpdatePlanRequest, db: AsyncSession = D
     if req.ano is not None: plan.ano = req.ano
     if req.banca is not None: plan.banca = req.banca
     if req.concurso is not None: plan.concurso = req.concurso
+    if req.visibility is not None: plan.visibility = req.visibility # <--- NOVA LINHA ADICIONADA
     
     await db.commit()
     return {"ok": True, "message": "Aula atualizada com sucesso"}
@@ -1381,6 +1430,7 @@ class UserResponse(BaseModel):
     id: int
     email: str
     role: str
+    can_manage_lessons: bool
     model_config = ConfigDict(from_attributes=True)
 
 class UserUpdateRole(BaseModel):
@@ -1388,46 +1438,52 @@ class UserUpdateRole(BaseModel):
 
 @app.get("/users", response_model=List[UserResponse])
 async def list_users(db: AsyncSession = Depends(get_db)):
-    try:
-        result = await db.execute(select(User).order_by(User.id))
-        return result.scalars().all()
-    except Exception as e:
-        print(f"Erro ao listar usuários: {e}")
-        return []
+    result = await db.execute(select(User).order_by(User.id))
+    return result.scalars().all()
+
+@app.post("/users", response_model=UserResponse)
+async def create_user(payload: UserCreateAdmin, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).filter(User.email == payload.email))
+    if result.scalars().first(): 
+        raise HTTPException(status_code=400, detail="Email já cadastrado")
+    
+    new_user = User(
+        email=payload.email,
+        hashed_password=get_password_hash(payload.password),
+        role=payload.role,
+        can_manage_lessons=payload.can_manage_lessons
+    )
+    db.add(new_user)
+    await db.commit()
+    await db.refresh(new_user)
+    return new_user
+
+@app.put("/users/{user_id}", response_model=UserResponse)
+async def update_user_admin(user_id: int, payload: UserUpdateAdmin, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    if not user: raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    
+    if payload.email is not None: user.email = payload.email
+    if payload.role is not None: user.role = payload.role
+    if payload.can_manage_lessons is not None: user.can_manage_lessons = payload.can_manage_lessons
+    if payload.password is not None and payload.password.strip():
+        user.hashed_password = get_password_hash(payload.password)
+        
+    await db.commit()
+    await db.refresh(user)
+    return user
 
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
-    try:
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalars().first()
-        if not user:
-            raise HTTPException(status_code=404, detail="Usuário não encontrado")
-        if user.id == 1: 
-             raise HTTPException(status_code=400, detail="Não é possível deletar o Admin Mestre.")
-        await db.delete(user)
-        await db.commit()
-        return {"ok": True, "message": "Usuário deletado"}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail="Erro ao deletar usuário")
-
-@app.put("/users/{user_id}/role")
-async def update_user_role(user_id: int, payload: UserUpdateRole, db: AsyncSession = Depends(get_db)):
-    try:
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalars().first()
-        if not user:
-            raise HTTPException(status_code=404, detail="Usuário não encontrado")
-        if user.role == payload.role:
-             return {"ok": True, "message": "Cargo já é este."}
-        user.role = payload.role
-        await db.commit()
-        return {"ok": True, "message": f"Cargo atualizado para {payload.role}"}
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail="Erro ao atualizar usuário")
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    if not user: raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if user.id == 1: raise HTTPException(status_code=400, detail="Não é possível deletar o Admin Mestre.")
+    
+    await db.delete(user)
+    await db.commit()
+    return {"ok": True, "message": "Usuário deletado"}
 
 @app.get("/users/me/settings", response_model=UserSettingsResponse)
 async def get_user_settings(current_user: User = Depends(get_current_user)):

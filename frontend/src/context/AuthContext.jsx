@@ -30,7 +30,12 @@ export const AuthProvider = ({ children }) => {
 
       const data = await response.json();
       
-      const userData = { email: data.email, role: data.role };
+      // CORREÇÃO: Guardar também a permissão can_manage_lessons!
+      const userData = { 
+        email: data.email, 
+        role: data.role,
+        can_manage_lessons: data.can_manage_lessons 
+      };
       
       localStorage.setItem('professor_ai_token', data.access_token);
       localStorage.setItem('professor_ai_user', JSON.stringify(userData));

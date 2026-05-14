@@ -22,6 +22,11 @@ export default function Dashboard() {
   
   const limitPerPage = 30; 
 
+  // NOVO: Função corrigida para ler exatamente a chave salva pelo AuthContext
+  const getAuthToken = () => {
+    return localStorage.getItem("professor_ai_token") || "";
+  };
+
   const fetchPlans = (anoBusca = "", bancaBusca = "", concursoBusca = "", page = 1) => {
     setLoading(true);
     
@@ -34,22 +39,32 @@ export default function Dashboard() {
     params.append("limit", limitPerPage);
 
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    
+    // Captura o token de forma segura
+    const token = getAuthToken();
 
-    fetch(`${apiUrl}/plans?${params.toString()}`)
-      .then((res) => res.json())
+    fetch(`${apiUrl}/plans?${params.toString()}`, {
+      headers: {
+        "Authorization": token ? `Bearer ${token}` : ""
+      }
+    })
+      .then((res) => {
+        if (res.status === 401) throw new Error("Não autorizado. Sessão expirada.");
+        if (!res.ok) throw new Error("Erro ao buscar dados");
+        return res.json();
+      })
       .then((data) => {
         setPlans(data.items || []);
         const calculatedPages = Math.ceil((data.total || 0) / limitPerPage);
         setTotalPages(calculatedPages > 0 ? calculatedPages : 1);
         
-        if (data.items && data.items.length > 0) {
-          const firstConcurso = data.items[0].concurso?.trim() || "Outros / Sem Concurso Vinculado";
-          setExpandedConcurso(firstConcurso);
-        } else {
-          setExpandedConcurso(null);
-        }
+        // Garante que todas as pastas fiquem fechadas (ChevronDown) por padrão
+        setExpandedConcurso(null);
       })
-      .catch((err) => console.error(err))
+      .catch((err) => {
+        console.error("Erro ao carregar aulas:", err);
+        setPlans([]); 
+      })
       .finally(() => setLoading(false));
   };
 

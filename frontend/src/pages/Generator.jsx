@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import LessonContent from "../components/LessonContent"; // <--- ADICIONADO IMPORT
+import LessonContent from "../components/LessonContent"; 
 
-// Definindo a URL da API
-const API_URL = "http://localhost:8000"; 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"; 
 
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
@@ -32,7 +31,7 @@ function readJsonFile(file) {
   });
 }
 
-export default function Generator() {
+export default function Generator() { 
   const [text, setText] = useState("");
   
   // --- NOVOS ESTADOS PARA AS QUESTÕES ---
@@ -58,14 +57,19 @@ export default function Generator() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
-  // Histórico (Salvar apenas, visualização removida pois já existe no Dashboard)
- // Histórico e Salvamento
+  // Histórico e Salvamento
   const [saveTitle, setSaveTitle] = useState("");
   const [saveAno, setSaveAno] = useState("");          
   const [saveBanca, setSaveBanca] = useState("");       
   const [saveConcurso, setSaveConcurso] = useState(""); 
+  const [saveVisibility, setSaveVisibility] = useState("public");
 
   const timeoutsRef = useRef([]);
+
+  // NOVO: Função robusta para ler o token correto salvo pelo AuthContext
+  const getAuthToken = () => {
+    return localStorage.getItem("professor_ai_token") || "";
+  };
 
   const fetchConfig = async () => {
     try {
@@ -103,7 +107,6 @@ export default function Generator() {
     if (!result) return;
     setError("");
     
-    // Validação dos novos campos obrigatórios
     if (!saveAno.trim() || !saveBanca.trim() || !saveConcurso.trim()) {
       setError("⚠️ Por favor, preencha o Ano, Banca e Concurso para salvar a aula.");
       return;
@@ -111,26 +114,33 @@ export default function Generator() {
 
     const finalTitle = saveTitle.trim() || safeString(result?.resumo_cargo).substring(0, 60) || "Plano de Estudo Sem Título";
     
+    // CORREÇÃO: Pegando o token da forma exata que ele está sendo salvo
+    const token = getAuthToken();
+
     try {
       const resp = await fetch(`${API_URL}/plans`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "" // <-- Garante a permissão no servidor
+        },
         body: JSON.stringify({
           title: finalTitle,
           area: result.area_identificada || "Geral",
           content: result,
-          ano: saveAno.trim(),          // NOVO
-          banca: saveBanca.trim(),      // NOVO
-          concurso: saveConcurso.trim() // NOVO
+          ano: saveAno.trim(),
+          banca: saveBanca.trim(),
+          concurso: saveConcurso.trim(),
+          visibility: saveVisibility // <-- Agora sim ele vai salvar Público ou Privado sem erro
         })
       });
 
       if (resp.ok) {
         setStatus("Salvo no banco com sucesso! ✅");
         setSaveTitle("");
-        setSaveAno("");       // Limpa após salvar
-        setSaveBanca("");     // Limpa após salvar
-        setSaveConcurso("");  // Limpa após salvar
+        setSaveAno("");       
+        setSaveBanca("");     
+        setSaveConcurso("");  
       } else {
         const errData = await resp.json().catch(() => ({}));
         setError(errData.detail || "Erro ao salvar no banco.");
@@ -270,7 +280,6 @@ export default function Generator() {
           />
         </div>
 
-        {/* --- NOVOS CAMPOS NA INTERFACE --- */}
         <div className="row" style={{ display: 'flex', gap: '15px' }}>
           <div style={{ flex: 1 }}>
             <label className="label">Nível das Questões</label>
@@ -324,10 +333,17 @@ export default function Generator() {
             <div className="save-container" style={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: '10px', marginTop: '1rem', padding: '15px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
               <div style={{ fontWeight: 'bold', color: '#1e3a8a', marginBottom: '5px' }}>Salvar Aula no Banco</div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <input className="input" placeholder="Ano (ex: 2024)" value={saveAno} onChange={e => setSaveAno(e.target.value)} style={{ flex: 1, minWidth: '100px' }} />
-                <input className="input" placeholder="Banca (ex: CESPE)" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ flex: 1, minWidth: '150px' }} />
-                <input className="input" placeholder="Concurso (ex: Polícia Federal)" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} style={{ flex: 2, minWidth: '200px' }} />
+                <input className="input" placeholder="Ano (ex: 2024)" value={saveAno} onChange={e => setSaveAno(e.target.value)} style={{ flex: 1, minWidth: '80px' }} />
+                <input className="input" placeholder="Banca (ex: CESPE)" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ flex: 1, minWidth: '120px' }} />
+                <input className="input" placeholder="Concurso (ex: PF)" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} style={{ flex: 2, minWidth: '150px' }} />
+                
+                {/* CAMPO DE VISIBILIDADE */}
+                <select className="select" value={saveVisibility} onChange={e => setSaveVisibility(e.target.value)} style={{ flex: 1, minWidth: '120px' }}>
+                  <option value="public">🌍 Público</option>
+                  <option value="private">🔒 Privado</option>
+                </select>
               </div>
+              
               <div style={{ display: 'flex', gap: '10px' }}>
                 <input className="input" placeholder="Nome/Título da Aula..." value={saveTitle} onChange={e => setSaveTitle(e.target.value)} style={{ flex: 1 }} />
                 <button className="btn primary" onClick={saveToDb}>💾 Salvar Aula</button>
@@ -344,7 +360,6 @@ export default function Generator() {
           <details className="details" open>
             <summary className="summaryTitle">Configurações (.env)</summary>
             <div className="config-content">
-              {/* Campos de config iguais ao original... */}
               <div className="row">
                 <label className="label">Modelo Padrão</label>
                 <input className="input" value={editDefaultModel} onChange={e=>setEditDefaultModel(e.target.value)} />
@@ -365,8 +380,6 @@ export default function Generator() {
         )}
       </section>
 
-      {/* AQUI ESTAVA O PROBLEMA: Removemos a duplicação manual.
-          O LessonContent já exibe tudo (resumo, plano, aulas) */}
       {result && (
         <section className="result">
           <LessonContent result={result} />
