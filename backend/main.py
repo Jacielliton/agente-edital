@@ -117,6 +117,13 @@ def create_access_token(data: dict):
 # ============================================================================
 # 4. SCHEMAS (PYDANTIC)
 # ============================================================================
+class UpdatePlanRequest(BaseModel):
+    title: Optional[str] = None
+    area: Optional[str] = None
+    ano: Optional[str] = None
+    banca: Optional[str] = None
+    concurso: Optional[str] = None
+    
 class PerformanceCreate(BaseModel):
     tipo: str
     tema: str
@@ -451,6 +458,22 @@ async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     plan = result.scalars().first()
     if not plan: raise HTTPException(status_code=404, detail="Plano não encontrado")
     return plan.content
+
+@app.put("/plans/{plan_id}")
+async def update_plan(plan_id: int, req: UpdatePlanRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+    plan = result.scalars().first()
+    if not plan: 
+        raise HTTPException(status_code=404, detail="Plano não encontrado")
+    
+    if req.title is not None: plan.title = req.title
+    if req.area is not None: plan.area = req.area
+    if req.ano is not None: plan.ano = req.ano
+    if req.banca is not None: plan.banca = req.banca
+    if req.concurso is not None: plan.concurso = req.concurso
+    
+    await db.commit()
+    return {"ok": True, "message": "Aula atualizada com sucesso"}
     
 @app.delete("/plans/{plan_id}")
 async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
