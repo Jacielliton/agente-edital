@@ -32,20 +32,15 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      // Usamos a rota /auth/login e o formato FormUrlEncoded (padrão de segurança do FastAPI)
-      const formData = new URLSearchParams();
-      formData.append('username', email);
-      formData.append('password', password);
-
+      // CORREÇÃO: Enviando JSON com "email" e "password" exatamente como o Pydantic do backend exige
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       });
 
       if (res.ok) {
         const data = await res.json();
-        // O FastAPI geralmente retorna access_token
         const token = data.access_token || data.token; 
         localStorage.setItem("professor_ai_token", token);
         
