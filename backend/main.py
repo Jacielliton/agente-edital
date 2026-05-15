@@ -467,23 +467,26 @@ async def list_plans(
     concurso: Optional[str] = None, 
     page: int = 1,
     limit: int = 30,
+    manage_mode: bool = False, # <-- NOVO: Flag para saber se estamos na tela de gerenciamento
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # 1. Base da query
     query = select(StoredPlan)
     
-    # 2. CORREÇÃO DA RESTRIÇÃO: 
-    # Se não for admin, ele vê o que ele criou OU o que for público
+    # Lógica de Visibilidade e Segurança
     if current_user.role != 'admin':
-        query = query.where(
-            or_(
-                StoredPlan.owner_id == current_user.id,
-                StoredPlan.visibility == 'public'
+        if manage_mode:
+            # Se estiver na tela "Gerenciar Aulas", mostra APENAS as que o usuário criou
+            query = query.where(StoredPlan.owner_id == current_user.id)
+        else:
+            # Se estiver no Dashboard normal, mostra as dele + as públicas de outros
+            query = query.where(
+                or_(
+                    StoredPlan.owner_id == current_user.id,
+                    StoredPlan.visibility == 'public'
+                )
             )
-        )
     
-    # 3. Filtros de busca (Mantenha o restante igual...)
     if ano and ano.strip():
         query = query.where(StoredPlan.ano.ilike(f"%{ano.strip()}%"))
     if banca and banca.strip():
@@ -491,12 +494,10 @@ async def list_plans(
     if concurso and concurso.strip():
         query = query.where(StoredPlan.concurso.ilike(f"%{concurso.strip()}%"))
         
-    # 4. Contagem total para paginação (respeitando o filtro de dono)
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar_one()
 
-    # 5. Execução com paginação
     skip = (page - 1) * limit
     query = query.order_by(desc(StoredPlan.created_at)).offset(skip).limit(limit)
     
@@ -513,27 +514,38 @@ async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     return plan.content
 
 @app.put("/plans/{plan_id}")
-async def update_plan(plan_id: int, req: UpdatePlanRequest, db: AsyncSession = Depends(get_db)):
+async def update_plan(plan_id: int, req: UpdatePlanRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
     plan = result.scalars().first()
+    
     if not plan: 
         raise HTTPException(status_code=404, detail="Plano não encontrado")
+    
+    # CADEADO DE SEGURANÇA: Apenas o dono ou o admin podem editar
+    if current_user.role != 'admin' and plan.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão para alterar esta aula.")
     
     if req.title is not None: plan.title = req.title
     if req.area is not None: plan.area = req.area
     if req.ano is not None: plan.ano = req.ano
     if req.banca is not None: plan.banca = req.banca
     if req.concurso is not None: plan.concurso = req.concurso
-    if req.visibility is not None: plan.visibility = req.visibility # <--- NOVA LINHA ADICIONADA
+    if req.visibility is not None: plan.visibility = req.visibility
     
     await db.commit()
     return {"ok": True, "message": "Aula atualizada com sucesso"}
     
 @app.delete("/plans/{plan_id}")
-async def delete_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_plan(plan_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
     plan = result.scalars().first()
+    
     if not plan: raise HTTPException(status_code=404, detail="Plano não encontrado")
+    
+    # CADEADO DE SEGURANÇA: Apenas o dono ou o admin podem deletar
+    if current_user.role != 'admin' and plan.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Sem permissão para deletar esta aula.")
+        
     await db.delete(plan)
     await db.commit()
     return {"ok": True, "message": "Plano deletado com sucesso"}
@@ -1489,6 +1501,11 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(user)
     await db.commit()
     return {"ok": True, "message": "Usuário deletado"}
+
+@app.get("/users/me", response_model=UserResponse)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    """Retorna os dados do usuário atualmente logado para o Frontend"""
+    return current_user
 
 @app.get("/users/me/settings", response_model=UserSettingsResponse)
 async def get_user_settings(current_user: User = Depends(get_current_user)):

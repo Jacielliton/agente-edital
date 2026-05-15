@@ -25,9 +25,10 @@ export default function GerenciarAulas() {
     
     const token = getAuthToken();
 
-    fetch(`${API_URL}/plans?page=${page}&limit=${limitPlansPerPage}`, {
+    // ADICIONAMOS O &manage_mode=true NO FINAL DA URL
+    fetch(`${API_URL}/plans?page=${page}&limit=${limitPlansPerPage}&manage_mode=true`, {
       headers: {
-        "Authorization": token ? `Bearer ${token}` : "" // <-- Envio do token aqui
+        "Authorization": token ? `Bearer ${token}` : ""
       }
     })
       .then((res) => {
