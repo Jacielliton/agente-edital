@@ -1,5 +1,5 @@
 :root {
-  /* Paleta de Cores (Slate & Blue) */
+  /* Paleta de Cores Light (Slate & Blue) */
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --primary-light: #eff6ff;
@@ -7,10 +7,13 @@
   --bg: #f8fafc;
   --card-bg: #ffffff;
   --header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --hover-bg: #f1f5f9;
 
   --text-main: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
+  --heading-color: #1e3a8a;
 
   --border: #e2e8f0;
   --success-bg: #f0fdf4;
@@ -23,6 +26,42 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
+/* PALETA MODO ESCURO */
+html.dark {
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-light: rgba(59, 130, 246, 0.15);
+
+  --bg: #0f172a;          /* Fundo Slate escuro */
+  --card-bg: #1e293b;     /* Cartões um tom mais claros */
+  --header-bg: #1e293b;
+  --input-bg: #020617;    /* Inputs quase pretos */
+  --hover-bg: #334155;
+
+  --text-main: #f8fafc;   /* Texto branco/gelo */
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --heading-color: #60a5fa; /* Títulos em azul claro */
+
+  --border: #334155;      /* Bordas discretas */
+  --success-bg: rgba(21, 128, 61, 0.2);
+  --success-text: #4ade80;
+  --error-bg: rgba(185, 28, 28, 0.2);
+  --error-text: #f87171;
+}
+
+/* Transição suave ao mudar de tema */
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+  min-height: 100%;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -31,15 +70,7 @@ html {
   height: 100%;
 }
 
-body {
-  margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: var(--bg);
-  color: var(--text-main);
-  -webkit-font-smoothing: antialiased;
-  line-height: 1.6;
-  min-height: 100%;
-}
+
 
 /* Ajuste Principal:
    #root ocupa no mínimo a tela inteira (min-height: 100vh).
@@ -73,7 +104,7 @@ body {
 }
 
 .header h1 {
-  color: #1e3a8a;
+  color: var(--heading-color);
   font-size: 2.25rem;
   margin: 0 0 0.5rem 0;
   letter-spacing: -0.025em;
@@ -125,7 +156,7 @@ body {
   border-radius: 8px;
   font-size: 1rem;
   font-family: inherit;
-  background-color: #fff;
+  background-color: var(--input-bg);
   color: var(--text-main);
   transition: all 0.2s ease;
 }
@@ -170,16 +201,15 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid var(--border);
-  background: white;
+  background: var(--card-bg); /* antes era white */
   color: var(--text-secondary);
   text-decoration: none;
   line-height: 1;
 }
 
 .btn:hover:not(:disabled) {
-  background-color: #f1f5f9;
-  border-color: #cbd5e1;
-  transform: translateY(-1px);
+  background-color: var(--hover-bg); /* antes era #f1f5f9 */
+  border-color: var(--border);
 }
 
 .btn:active:not(:disabled) {
@@ -311,7 +341,7 @@ body {
   font-size: 1rem;
   cursor: pointer;
   list-style: none;
-  background: #fff;
+  background: var(--card-bg);
   color: var(--text-main);
   display: flex;
   align-items: center;
@@ -320,12 +350,12 @@ body {
 }
 
 .summaryTitle:hover {
-  background-color: #f8fafc;
+  background: var(--card-bg);
 }
 
 .details[open] > .summaryTitle {
   border-bottom: 1px solid var(--border);
-  background-color: #f8fafc;
+  background-color: var(--hover-bg);
   color: var(--primary);
 }
 
@@ -440,7 +470,7 @@ body {
 }
 
 .md h3, .md h4 {
-  color: #1e3a8a;
+  color: var(--heading-color);
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
 }
@@ -474,7 +504,7 @@ body {
   border-radius: 12px;
   padding: 1.25rem;
   margin-bottom: 1.25rem;
-  background: white;
+  background: var(--card-bg); /* Adaptado para Dark Mode */
   box-shadow: var(--shadow-sm);
 }
 
@@ -488,7 +518,7 @@ body {
 
 .quiz-title {
   margin: 0;
-  color: #1e293b;
+  color: var(--heading-color); /* Adaptado para Dark Mode */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -509,7 +539,7 @@ body {
   gap: 6px;
   font-size: 0.85rem;
   color: var(--text-secondary);
-  background: #f8fafc;
+  background: var(--bg); /* Adaptado para Dark Mode */
   border: 1px solid var(--border);
   padding: 4px 10px;
   border-radius: 999px;
@@ -521,15 +551,15 @@ body {
 
 .quiz-tag.meta {
   color: var(--text-main);
-  background: #f1f5f9;
+  background: var(--hover-bg); /* Adaptado para Dark Mode */
 }
 
 .quiz-reset-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: white;
-  border: 1px solid #cbd5e1;
+  background: var(--card-bg); /* Adaptado para Dark Mode */
+  border: 1px solid var(--border);
   color: var(--text-main);
   padding: 6px 12px;
   border-radius: 8px;
@@ -540,19 +570,20 @@ body {
 }
 
 .quiz-reset-btn:hover:not(.disabled) {
-  background: #f8fafc;
+  background: var(--hover-bg);
 }
 
 .quiz-reset-btn.disabled {
   cursor: not-allowed;
   opacity: 0.65;
-  background: #f8fafc;
+  background: var(--bg);
 }
 
 .quiz-enunciado {
   margin-bottom: 1rem;
   font-size: 1.05rem;
   line-height: 1.6;
+  color: var(--text-main); /* Adaptado para Dark Mode */
 }
 
 .quiz-options {
@@ -565,7 +596,7 @@ body {
   padding: 12px 14px;
   border: 2px solid var(--border);
   border-radius: 10px;
-  background: #f8fafc;
+  background: var(--bg); /* Adaptado para Dark Mode */
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -595,14 +626,14 @@ body {
 
 .option-text {
   flex: 1;
-  color: var(--text-main);
+  color: var(--text-main); /* Adaptado para Dark Mode */
   line-height: 1.5;
 }
 
 .quiz-explanation {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: var(--primary-light);
+  background: var(--primary-light); /* Vai usar a versão translúcida no escuro */
   border-radius: 10px;
   border-left: 4px solid var(--primary);
 }
@@ -616,15 +647,16 @@ body {
 }
 
 .correct-answer-label {
-  color: #1e40af;
+  color: var(--primary);
+  font-weight: bold;
 }
 
 .toggle-explanation-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: white;
-  border: 1px solid #cbd5e1;
+  background: var(--card-bg); /* Adaptado para Dark Mode */
+  border: 1px solid var(--border);
   color: var(--text-main);
   padding: 6px 12px;
   border-radius: 8px;
@@ -636,30 +668,32 @@ body {
 .explanation-snippet {
   margin-top: 10px;
   padding: 10px 12px;
-  background: white;
+  background: var(--card-bg); /* Adaptado para Dark Mode */
   border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .snippet-label {
-  color: #1e40af;
+  color: var(--primary);
   font-size: 0.9rem;
+  font-weight: bold;
 }
 
 .snippet-content {
   margin-top: 6px;
-  color: #334155;
+  color: var(--text-secondary); /* Adaptado para Dark Mode */
   font-size: 0.95rem;
 }
 
 .explanation-comment {
   margin-top: 12px;
-  color: #334155;
+  color: var(--text-secondary); /* Adaptado para Dark Mode */
   line-height: 1.6;
 }
 
 .comment-label {
-  color: #1e40af;
+  color: var(--primary);
+  font-weight: bold;
 }
 
 .comment-text {
@@ -669,11 +703,12 @@ body {
 .full-breakdown {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #bfdbfe;
+  border-top: 1px solid var(--primary-light);
 }
 
 .breakdown-label {
-  color: #1e40af;
+  color: var(--primary);
+  font-weight: bold;
 }
 
 .breakdown-list {
@@ -684,7 +719,7 @@ body {
 }
 
 .breakdown-item {
-  background: white;
+  background: var(--card-bg); /* Adaptado para Dark Mode */
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
@@ -692,12 +727,12 @@ body {
 
 .breakdown-letter {
   font-weight: 900;
-  color: var(--text-main);
+  color: var(--text-main); /* Adaptado para Dark Mode */
   margin-bottom: 4px;
 }
 
 .breakdown-text {
-  color: #334155;
+  color: var(--text-secondary); /* Adaptado para Dark Mode */
   line-height: 1.6;
 }
 
@@ -797,7 +832,7 @@ body {
 
 /* --- Navbar --- */
 .navbar {
-  background: white;
+  background: var(--header-bg);
   border-bottom: 1px solid var(--border);
   padding: 0.75rem 0;
   position: sticky;
@@ -920,7 +955,7 @@ body {
 }
 
 .admin-table th {
-  background: #f8fafc;
+  background: var(--hover-bg); /* <-- AQUI ESTAVA O PROBLEMA! Trocado para variável */
   font-size: 0.85rem;
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -934,7 +969,7 @@ body {
 
 .error-btn {
   color: var(--error-text);
-  border-color: #fecaca;
+  border-color: var(--error-border, #fecaca); /* Fallback caso não tenha a variável de borda de erro */
 }
 
 .error-btn:hover {
@@ -966,7 +1001,8 @@ body {
   line-height: 1.6;
   resize: vertical;
   margin-bottom: 15px;
-  background: rgb(51, 51, 51);
+  background-color: var(--input-bg);
+  color: var(--text-main);
 }
 .essay-textarea:focus {
   outline: none;
@@ -1048,7 +1084,7 @@ body {
 .tutor-widget-window {
   width: 360px;
   height: 520px;
-  background-color: #ffffff;
+  background-color: var(--card-bg);
   border: 1px solid #cbd5e1;
   border-radius: 12px;
   box-shadow: 0 15px 35px rgba(0,0,0,0.2);
@@ -1087,7 +1123,7 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 15px;
-  background-color: #f8fafc;
+  background-color: var(--bg);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1103,16 +1139,16 @@ body {
 }
 
 .chat-msg.user {
-  background-color: #dbeafe;
-  color: #1e40af;
+  background-color: var(--primary);
+  color:white;
   align-self: flex-end;
   border-bottom-right-radius: 0;
 }
 
 .chat-msg.assistant {
-  background-color: #ffffff;
+  background-color: var(--card-bg);
   border: 1px solid #e2e8f0;
-  color: #334155;
+  color: var(--text-main);
   align-self: flex-start;
   border-bottom-left-radius: 0;
 }
@@ -1121,7 +1157,7 @@ body {
   display: flex;
   gap: 10px;
   padding: 15px;
-  background-color: #ffffff;
+  background-color: var(--card-bg);
   border-top: 1px solid #e2e8f0;
 }
 
@@ -1162,8 +1198,8 @@ body {
 /* Força o negrito que o Tailwind/Reset remove por padrão */
 .markdown-format strong,
 .markdown-format b {
-  font-weight: 800 !important; /* 800 deixa o negrito bem forte e legível */
-  color: #0f172a !important; /* Deixa o texto em negrito ligeiramente mais escuro para destacar */
+  font-weight: 800 !important; 
+  color: var(--text-main) !important; /* antes era #0f172a */
 }
 
 /* Força o itálico */

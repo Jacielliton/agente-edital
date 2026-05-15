@@ -76,14 +76,16 @@ export default function AdminPanel() {
 
   return (
     <div className="container">
-      <div className="header">
-        <h1>Painel Administrativo</h1>
-        <p>Gerencie os acessos e permissões dos usuários do sistema.</p>
+      <div className="header" style={{ textAlign: "left" }}>
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Shield size={28} color="var(--primary)" /> Painel Administrativo
+        </h1>
+        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Gerencie os acessos e permissões dos usuários do sistema.</p>
       </div>
 
       <div className="panel">
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", alignItems: "center" }}>
-          <h3>Usuários do Sistema ({users.length})</h3>
+          <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Usuários do Sistema ({users.length})</h3>
           <div style={{display: 'flex', gap: '10px'}}>
             <button className="btn primary small" onClick={() => handleOpenUserModal()}><Plus size={14}/> Novo Usuário</button>
             <button className="btn small" onClick={fetchUsers}><RefreshCw size={14}/> Atualizar</button>
@@ -105,16 +107,16 @@ export default function AdminPanel() {
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id}>
-                    <td>#{u.id}</td>
-                    <td><strong>{u.email}</strong></td>
-                    <td>{u.role.toUpperCase()}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>#{u.id}</td>
+                    <td style={{ color: 'var(--text-main)' }}><strong>{u.email}</strong></td>
+                    <td style={{ color: 'var(--text-main)' }}>{u.role.toUpperCase()}</td>
                     <td>
                       {u.can_manage_lessons ? (
-                        <span style={{ color: '#1e40af', backgroundColor: '#dbeafe', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>
+                        <span style={{ color: 'var(--primary)', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}>
                           ✅ Gerenciar Aulas
                         </span>
                       ) : (
-                        <span style={{ color: '#64748b', fontSize: '0.8rem' }}>Apenas Leitura</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>Apenas Leitura</span>
                       )}
                     </td>
                     <td>
@@ -132,42 +134,42 @@ export default function AdminPanel() {
       </div>
 
       {userModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#fff', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '400px' }}>
-            <h3 style={{ marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <UserCog size={22} color="#3b82f6" /> {editingUser ? "Editar Usuário" : "Novo Usuário"}
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '400px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border)', color: 'var(--heading-color)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <UserCog size={22} color="var(--primary)" /> {editingUser ? "Editar Usuário" : "Novo Usuário"}
             </h3>
             
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>E-mail</label>
-              <input type="email" value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>E-mail</label>
+              <input type="email" value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Senha {editingUser && <span style={{fontWeight: 'normal', color: '#64748b'}}>(Deixe em branco para não alterar)</span>}</label>
-              <input type="password" value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Senha {editingUser && <span style={{fontWeight: 'normal', color: 'var(--text-muted)'}}>(Deixe em branco para não alterar)</span>}</label>
+              <input type="password" value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Nível de Acesso</label>
-              <select value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Nível de Acesso</label>
+              <select value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}>
                 <option value="user">Usuário Padrão (Aluno)</option>
                 <option value="admin">Administrador Global</option>
               </select>
             </div>
 
-            <div style={{ marginBottom: '25px', background: '#f8fafc', padding: '15px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold', color: '#334155' }}>
+            <div style={{ marginBottom: '25px', background: 'var(--bg)', padding: '15px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-main)' }}>
                 <input type="checkbox" checked={userFormData.can_manage_lessons} onChange={e => setUserFormData({...userFormData, can_manage_lessons: e.target.checked})} style={{ width: '18px', height: '18px' }} />
                 Permitir Criação/Gestão de Aulas
               </label>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '5px 0 0 28px' }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '5px 0 0 28px' }}>
                 Se marcado, o utilizador poderá gerar e gerir aulas.
               </p>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setUserModalOpen(false)} disabled={savingUser} className="btn small">Cancelar</button>
+              <button onClick={() => setUserModalOpen(false)} disabled={savingUser} className="btn small" style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }}>Cancelar</button>
               <button onClick={handleSaveUser} disabled={savingUser} className="btn primary small">{savingUser ? "A guardar..." : "Guardar"}</button>
             </div>
           </div>

@@ -29,7 +29,6 @@ function normalizeAlternativeText(alt, idx) {
 function parseCorrectLetter(rawValue) {
   const raw = safeString(rawValue).trim();
   if (!raw) return null;
-  // pega a primeira ocorrência de A-F em qualquer formato (ex.: "Alternativa C", "Letra: D", "C)")
   const m = raw.toUpperCase().match(/[A-F]/);
   return m ? m[0] : null;
 }
@@ -60,7 +59,6 @@ function normalizeWrongReasons(v) {
   return null;
 }
 
-// ADICIONADA A PROP onAnswer
 export default function QuizCard({ question, index, onAnswer }) {
   const [selected, setSelected] = useState(null);
   const [showExplanation, setShowExplanation] = useState(false);
@@ -99,109 +97,43 @@ export default function QuizCard({ question, index, onAnswer }) {
     setShowExplanation(true);
     setShowFullExplanation(false);
 
-    // NOTIFICA O PAI (LessonContent) SOBRE O ACERTO
     if (onAnswer) {
       const isCorrect = !!correctLetter && chosen === correctLetter;
-      onAnswer(isCorrect, false); // isCorrect = true/false, isReset = false
+      onAnswer(isCorrect, false); 
     }
   };
 
   const reset = () => {
-    // Verifica se a questão antes do reset estava CERTA
     const wasCorrect = !!correctLetter && selected === correctLetter;
     
     setSelected(null);
     setShowExplanation(false);
     setShowFullExplanation(false);
 
-    // NOTIFICA O PAI PARA DESCONTAR O PONTO, CASO ESTIVESSE CERTA
     if (onAnswer && wasCorrect) {
-      onAnswer(false, true); // isCorrect = false, isReset = true
+      onAnswer(false, true); 
     }
   };
 
   return (
-    <div
-      style={{
-        border: "1px solid #e2e8f0",
-        borderRadius: "12px",
-        padding: "1.25rem",
-        marginBottom: "1.25rem",
-        background: "white",
-        boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "10px",
-          flexWrap: "wrap",
-          marginBottom: "0.75rem",
-        }}
-      >
-        <h4
-          style={{
-            margin: 0,
-            color: "#1e293b",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <HelpCircle size={20} color="#2563eb" />
+    <div className="quiz-card-container">
+      <div className="quiz-header">
+        <h4 className="quiz-title">
+          <HelpCircle size={20} color="var(--primary)" />
           Questão {index + 1}
         </h4>
 
-        <div
-          style={{
-            display: "flex",
-            gap: "8px",
-            alignItems: "center",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-          }}
-        >
+        <div className="quiz-meta">
           {!!topicoRelacionado && (
-            <span
-              title="Tópico relacionado"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                fontSize: "0.85rem",
-                color: "#475569",
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                padding: "6px 10px",
-                borderRadius: "999px",
-                maxWidth: "520px",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              <Target size={16} color="#475569" />
+            <span className="quiz-tag" title="Tópico relacionado">
+              <Target size={16} color="var(--text-secondary)" />
               {topicoRelacionado}
             </span>
           )}
 
           {(!!nivel || !!habilidade) && (
-            <span
-              title="Metadados da questão"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                fontSize: "0.85rem",
-                color: "#0f172a",
-                background: "#f1f5f9",
-                border: "1px solid #e2e8f0",
-                padding: "6px 10px",
-                borderRadius: "999px",
-              }}
-            >
-              <Sparkles size={16} color="#0f172a" />
+            <span className="quiz-tag meta" title="Metadados da questão">
+              <Sparkles size={16} color="var(--text-main)" />
               {nivel ? `Nível: ${nivel}` : "Nível: —"}
               {habilidade ? ` • ${habilidade}` : ""}
             </span>
@@ -211,19 +143,7 @@ export default function QuizCard({ question, index, onAnswer }) {
             type="button"
             onClick={reset}
             disabled={selected === null}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              background: selected === null ? "#f8fafc" : "white",
-              border: "1px solid #cbd5e1",
-              color: "#0f172a",
-              padding: "8px 10px",
-              borderRadius: "8px",
-              cursor: selected === null ? "not-allowed" : "pointer",
-              fontWeight: 600,
-              opacity: selected === null ? 0.65 : 1,
-            }}
+            className={`quiz-reset-btn ${selected === null ? "disabled" : ""}`}
             title="Refazer questão"
           >
             <RotateCcw size={16} />
@@ -232,27 +152,22 @@ export default function QuizCard({ question, index, onAnswer }) {
         </div>
       </div>
 
-      <div style={{ marginBottom: "1rem", fontSize: "1.05rem" }}>
+      <div className="quiz-enunciado">
         <ReactMarkdown>{safeString(question?.enunciado ?? "")}</ReactMarkdown>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      <div className="quiz-options">
         {alternativas.map((alt, i) => {
           const currentLetter = LETTERS[i] ?? String(i + 1);
           const isSelected = selected === currentLetter;
           const isCorrect = !!correctLetter && currentLetter === correctLetter;
 
-          let bgColor = "#f8fafc";
-          let borderColor = "#e2e8f0";
-
+          // Lógica de classes dinâmicas para gerir as cores verde/vermelho automaticamente
+          let optionClass = "quiz-option";
+          if (selected) optionClass += " cursor-default";
           if (showExplanation && correctLetter) {
-            if (isCorrect) {
-              bgColor = "#dcfce7";
-              borderColor = "#22c55e";
-            } else if (isSelected && !isCorrect) {
-              bgColor = "#fee2e2";
-              borderColor = "#ef4444";
-            }
+            if (isCorrect) optionClass += " correct";
+            else if (isSelected && !isCorrect) optionClass += " incorrect";
           }
 
           const displayAlt = normalizeAlternativeText(alt, i);
@@ -261,59 +176,24 @@ export default function QuizCard({ question, index, onAnswer }) {
             <div
               key={i}
               onClick={() => handleSelect(i)}
-              style={{
-                padding: "12px 14px",
-                border: `2px solid ${borderColor}`,
-                borderRadius: "10px",
-                background: bgColor,
-                cursor: selected ? "default" : "pointer",
-                transition: "all 0.2s",
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "10px",
-              }}
+              className={optionClass}
             >
-              <span
-                style={{
-                  fontWeight: 800,
-                  color: "#64748b",
-                  minWidth: "28px",
-                }}
-              >
-                {currentLetter})
-              </span>
-
-              <div style={{ flex: 1, color: "#0f172a" }}>
+              <span className="option-letter">{currentLetter})</span>
+              <div className="option-text">
                 <ReactMarkdown>{displayAlt}</ReactMarkdown>
               </div>
 
-              {showExplanation && isCorrect && <Check size={20} color="#15803d" />}
-              {showExplanation && isSelected && !isCorrect && <X size={20} color="#b91c1c" />}
+              {showExplanation && isCorrect && <Check size={20} color="var(--success-text)" />}
+              {showExplanation && isSelected && !isCorrect && <X size={20} color="var(--error-text)" />}
             </div>
           );
         })}
       </div>
 
       {showExplanation && (
-        <div
-          style={{
-            marginTop: "1rem",
-            padding: "1rem",
-            background: "#eff6ff",
-            borderRadius: "10px",
-            borderLeft: "4px solid #2563eb",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "10px",
-              flexWrap: "wrap",
-            }}
-          >
-            <strong style={{ color: "#1e40af" }}>
+        <div className="quiz-explanation">
+          <div className="explanation-header">
+            <strong className="correct-answer-label">
               Resposta correta: {correctLetter ?? "—"}
             </strong>
 
@@ -321,80 +201,47 @@ export default function QuizCard({ question, index, onAnswer }) {
               <button
                 type="button"
                 onClick={() => setShowFullExplanation((v) => !v)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "white",
-                  border: "1px solid #cbd5e1",
-                  color: "#0f172a",
-                  padding: "8px 10px",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
+                className="toggle-explanation-btn"
               >
                 {showFullExplanation ? (
-                  <>
-                    Ocultar explicação completa <ChevronUp size={16} />
-                  </>
+                  <>Ocultar explicação completa <ChevronUp size={16} /></>
                 ) : (
-                  <>
-                    Ver explicação completa <ChevronDown size={16} />
-                  </>
+                  <>Ver explicação completa <ChevronDown size={16} /></>
                 )}
               </button>
             )}
           </div>
 
           {!!trechoAula && (
-            <div
-              style={{
-                marginTop: "10px",
-                padding: "10px 12px",
-                background: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: "10px",
-              }}
-            >
-              <strong style={{ color: "#1e40af" }}>Trecho da aula:</strong>
-              <div style={{ marginTop: "6px", color: "#334155" }}>
+            <div className="explanation-snippet">
+              <strong className="snippet-label">Trecho da aula:</strong>
+              <div className="snippet-content">
                 <ReactMarkdown>{trechoAula}</ReactMarkdown>
               </div>
             </div>
           )}
 
-          <div style={{ marginTop: "10px", color: "#334155", lineHeight: 1.6 }}>
-            <strong style={{ color: "#1e40af" }}>Comentário:</strong>
-            <div style={{ marginTop: "6px" }}>
+          <div className="explanation-comment">
+            <strong className="comment-label">Comentário:</strong>
+            <div className="comment-text">
               <ReactMarkdown>{comentarioCorreta || "_Sem explicação disponível._"}</ReactMarkdown>
             </div>
           </div>
 
           {showFullExplanation && hasFullBreakdown && (
-            <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px solid #cbd5e1" }}>
-              <strong style={{ color: "#1e40af" }}>Por que as outras estão erradas:</strong>
+            <div className="full-breakdown">
+              <strong className="breakdown-label">Por que as outras estão erradas:</strong>
 
-              <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              <div className="breakdown-list">
                 {LETTERS.slice(0, alternativas.length)
                   .filter((ltr) => ltr && ltr !== correctLetter)
                   .map((ltr) => {
                     const reason = explicacoesErradas?.[ltr];
                     if (!reason) return null;
                     return (
-                      <div
-                        key={ltr}
-                        style={{
-                          background: "white",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: "10px",
-                          padding: "10px 12px",
-                        }}
-                      >
-                        <div style={{ fontWeight: 900, color: "#0f172a", marginBottom: "6px" }}>
-                          {ltr})
-                        </div>
-                        <div style={{ color: "#334155", lineHeight: 1.6 }}>
+                      <div key={ltr} className="breakdown-item">
+                        <div className="breakdown-letter">{ltr})</div>
+                        <div className="breakdown-text">
                           <ReactMarkdown>{safeString(reason)}</ReactMarkdown>
                         </div>
                       </div>

@@ -79,15 +79,19 @@ export default function GerenciarAulas() {
 
   return (
     <div className="container">
-      <div className="header">
-        <h1><BookOpen size={28} style={{ marginRight: '10px', verticalAlign: 'bottom' }}/> Gerenciar Aulas</h1>
-        <p>Edite, altere a visibilidade ou exclua as aulas do banco de dados.</p>
+      <div className="header" style={{ textAlign: "left" }}>
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <BookOpen size={28} color="var(--primary)" /> Gerenciar Aulas
+        </h1>
+        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Edite, altere a visibilidade ou exclua as aulas do banco de dados.</p>
       </div>
 
       <div className="panel">
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", alignItems: "center" }}>
-          <h3>Aulas Cadastradas</h3>
-          <button className="btn small" onClick={() => fetchPlans(currentPlanPage)}><RefreshCw size={14}/> Atualizar Tabela</button>
+          <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Aulas Cadastradas</h3>
+          <button className="btn small" onClick={() => fetchPlans(currentPlanPage)}>
+            <RefreshCw size={14}/> Atualizar Tabela
+          </button>
         </div>
 
         {loadingPlans ? <div className="status">A carregar aulas...</div> : (
@@ -106,17 +110,19 @@ export default function GerenciarAulas() {
               <tbody>
                 {plans.map((plan) => (
                   <tr key={plan.id}>
-                    <td>#{plan.id}</td>
-                    <td style={{ maxWidth: '250px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><strong>{plan.title}</strong></td>
+                    <td style={{ color: 'var(--text-secondary)' }}>#{plan.id}</td>
+                    <td style={{ maxWidth: '250px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-main)' }}>
+                      <strong>{plan.title}</strong>
+                    </td>
                     <td>
-                      <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: plan.visibility === 'private' ? '#fef3c7' : '#dcfce7', color: plan.visibility === 'private' ? '#92400e' : '#166534' }}>
+                      <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: plan.visibility === 'private' ? 'var(--error-bg)' : 'var(--success-bg)', color: plan.visibility === 'private' ? 'var(--error-text)' : 'var(--success-text)' }}>
                         {plan.visibility === 'private' ? 'PRIVADO' : 'PÚBLICO'}
                       </span>
                     </td>
                     <td><span className="badge-area">{plan.area}</span></td>
                     <td>
-                      {plan.banca && <span style={{ fontWeight: 600 }}>{plan.banca}</span>}
-                      {plan.concurso && <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{plan.concurso}</div>}
+                      {plan.banca && <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{plan.banca}</span>}
+                      {plan.concurso && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{plan.concurso}</div>}
                     </td>
                     <td>
                       <div className="actions-cell">
@@ -133,46 +139,47 @@ export default function GerenciarAulas() {
         )}
       </div>
 
+      {/* MODAL DE EDIÇÃO ADAPTADO AO MODO ESCURO */}
       {editingPlan && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: '#fff', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px' }}>
-            <h3 style={{ marginTop: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Edit size={22} color="#3b82f6" /> Editar Aula
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border)', color: 'var(--heading-color)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Edit size={22} color="var(--primary)" /> Editar Aula
             </h3>
             
             <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Título da Aula</label>
-              <input type="text" value={editFormData.title} onChange={e => setEditFormData({...editFormData, title: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Título da Aula</label>
+              <input type="text" value={editFormData.title} onChange={e => setEditFormData({...editFormData, title: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
             </div>
 
             <div style={{ marginBottom: '15px', display: 'flex', gap: '10px' }}>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Área</label>
-                <input type="text" value={editFormData.area} onChange={e => setEditFormData({...editFormData, area: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Área</label>
+                <input type="text" value={editFormData.area} onChange={e => setEditFormData({...editFormData, area: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
               </div>
               <div style={{ flex: 1 }}>
-                 <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Ano</label>
-                 <input type="text" value={editFormData.ano} onChange={e => setEditFormData({...editFormData, ano: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                 <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Ano</label>
+                 <input type="text" value={editFormData.ano} onChange={e => setEditFormData({...editFormData, ano: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
               </div>
             </div>
 
             <div style={{ marginBottom: '15px', display: 'flex', gap: '10px' }}>
               <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Banca</label>
-                <input type="text" value={editFormData.banca} onChange={e => setEditFormData({...editFormData, banca: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Banca</label>
+                <input type="text" value={editFormData.banca} onChange={e => setEditFormData({...editFormData, banca: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
               </div>
               <div style={{ flex: 1 }}>
-                 <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Concurso</label>
-                 <input type="text" value={editFormData.concurso} onChange={e => setEditFormData({...editFormData, concurso: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                 <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Concurso</label>
+                 <input type="text" value={editFormData.concurso} onChange={e => setEditFormData({...editFormData, concurso: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
               </div>
             </div>
 
             <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px' }}>Visibilidade</label>
+              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Visibilidade</label>
               <select 
                 value={editFormData.visibility} 
                 onChange={e => setEditFormData({...editFormData, visibility: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
               >
                 <option value="public">🌍 Público</option>
                 <option value="private">🔒 Privado</option>
@@ -180,7 +187,7 @@ export default function GerenciarAulas() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setEditingPlan(null)} disabled={savingPlan} className="btn small">Cancelar</button>
+              <button onClick={() => setEditingPlan(null)} disabled={savingPlan} className="btn small" style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)' }}>Cancelar</button>
               <button onClick={handleSaveEdit} disabled={savingPlan} className="btn primary small">{savingPlan ? "A guardar..." : "Guardar Alterações"}</button>
             </div>
           </div>

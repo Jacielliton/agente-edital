@@ -79,12 +79,12 @@ export default function Performance() {
   return (
     <div className="container" style={{ padding: '2rem' }}>
       <header style={{ marginBottom: '2rem' }}>
-        <h1 style={{ color: '#0f172a', margin: 0 }}>Meu Desempenho</h1>
-        <p style={{ color: '#64748b' }}>Acompanhe sua evolução nas métricas de aprovação.</p>
+        <h1 style={{ color: 'var(--heading-color)', margin: 0 }}>Meu Desempenho</h1>
+        <p style={{ color: 'var(--text-secondary)' }}>Acompanhe sua evolução nas métricas de aprovação.</p>
       </header>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b', fontSize: '1.2rem' }}>
+        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)', fontSize: '1.2rem' }}>
           ⏳ Carregando estatísticas...
         </div>
       ) : (
@@ -92,41 +92,41 @@ export default function Performance() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '2rem' }}>
             
             {/* Card Simulados */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#3b82f6', marginBottom: '10px' }}>
+            <div style={{ background: 'var(--card-bg)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--primary)', marginBottom: '10px' }}>
                 <Target size={24} />
-                <h3 style={{ margin: 0 }}>Simulados (Objetivas)</h3>
+                <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Simulados (Objetivas)</h3>
               </div>
-              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#0f172a' }}>
+              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
                 {calcMedia(simulados)}%
               </div>
-              <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Média de acertos ({simulados.length} realizados)</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Média de acertos ({simulados.length} realizados)</div>
             </div>
 
             {/* Card Discursivas */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#10b981', marginBottom: '10px' }}>
+            <div style={{ background: 'var(--card-bg)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--success-text)', marginBottom: '10px' }}>
                 <PenTool size={24} />
-                <h3 style={{ margin: 0 }}>Provas Discursivas</h3>
+                <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Provas Discursivas</h3>
               </div>
-              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#0f172a' }}>
+              <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
                 {calcMedia(discursivas)}%
               </div>
-              <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Aproveitamento médio ({discursivas.length} realizadas)</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Aproveitamento médio ({discursivas.length} realizadas)</div>
             </div>
           </div>
 
           {/* Histórico Recente */}
-          <div style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-            <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-              <h3 style={{ margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', background: 'var(--hover-bg)' }}>
+              <h3 style={{ margin: 0, color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <TrendingUp size={20} /> Histórico Detalhado
               </h3>
             </div>
             
             <div style={{ padding: '0 20px' }}>
               {history.length === 0 ? (
-                <p style={{ padding: '30px 0', color: '#64748b', textAlign: 'center' }}>
+                <p style={{ padding: '30px 0', color: 'var(--text-secondary)', textAlign: 'center' }}>
                   Nenhuma atividade registrada ainda. Complete um simulado ou envie uma discursiva para correção para ver as suas estatísticas aqui!
                 </p>
               ) : (
@@ -137,21 +137,21 @@ export default function Performance() {
                   const aproveitamento = item.nota_obtida / item.nota_maxima;
                   
                   return (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: idx !== history.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 0', borderBottom: idx !== history.length - 1 ? '1px solid var(--border)' : 'none' }}>
                       <div>
-                        <div style={{ fontWeight: 'bold', color: '#1e293b' }}>{item.tema}</div>
-                        <div style={{ fontSize: '0.85rem', color: '#94a3b8', textTransform: 'capitalize' }}>
+                        <div style={{ fontWeight: 'bold', color: 'var(--text-main)' }}>{item.tema}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
                           {dataFormatada} • {item.tipo}
                         </div>
                       </div>
                       <div style={{ 
                         fontWeight: 'bold', 
                         fontSize: '1.1rem', 
-                        background: aproveitamento >= 0.7 ? '#ecfdf5' : '#fef3c7',
-                        color: aproveitamento >= 0.7 ? '#10b981' : '#d97706',
+                        background: aproveitamento >= 0.7 ? 'var(--success-bg)' : 'var(--error-bg)',
+                        color: aproveitamento >= 0.7 ? 'var(--success-text)' : 'var(--error-text)',
                         padding: '5px 12px',
                         borderRadius: '20px',
-                        border: `1px solid ${aproveitamento >= 0.7 ? '#a7f3d0' : '#fde68a'}`
+                        border: `1px solid ${aproveitamento >= 0.7 ? 'var(--success-text)' : 'var(--error-text)'}`
                       }}>
                         {item.nota_obtida} / {item.nota_maxima}
                       </div>

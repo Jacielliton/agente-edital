@@ -329,9 +329,10 @@ export default function Generator() {
             {showConfig ? "Fechar Config" : "Configurar API"}
           </button>
 
+          {/* ÁREA DE SALVAR - CORES ATUALIZADAS PARA MODO NOTURNO */}
           {result && (
-            <div className="save-container" style={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: '10px', marginTop: '1rem', padding: '15px', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
-              <div style={{ fontWeight: 'bold', color: '#1e3a8a', marginBottom: '5px' }}>Salvar Aula no Banco</div>
+            <div className="save-container" style={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: '10px', marginTop: '1rem', padding: '15px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px' }}>
+              <div style={{ fontWeight: 'bold', color: 'var(--heading-color)', marginBottom: '5px' }}>Salvar Aula no Banco</div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <input className="input" placeholder="Ano (ex: 2024)" value={saveAno} onChange={e => setSaveAno(e.target.value)} style={{ flex: 1, minWidth: '80px' }} />
                 <input className="input" placeholder="Banca (ex: CESPE)" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ flex: 1, minWidth: '120px' }} />

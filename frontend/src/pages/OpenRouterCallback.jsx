@@ -7,16 +7,14 @@ export default function OpenRouterCallback() {
   const [errorMsg, setErrorMsg] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
-  const hasFetched = useRef(false); // Trava para evitar execução dupla no localhost
+  const hasFetched = useRef(false); 
   
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   useEffect(() => {
-    // Se já executou, ignora a segunda passada do React Strict Mode
     if (hasFetched.current) return;
     hasFetched.current = true;
 
-    // Pega o código da URL: ?code=XYZ...
     const params = new URLSearchParams(location.search);
     const code = params.get("code");
 
@@ -48,7 +46,7 @@ export default function OpenRouterCallback() {
           throw new Error(errData.detail || "Falha ao validar o código com o servidor.");
         }
         setStatus("success");
-        setTimeout(() => navigate("/dashboard"), 3000); // Volta pro painel em 3s
+        setTimeout(() => navigate("/dashboard"), 3000); 
       })
       .catch((err) => {
         console.error("Erro no Callback:", err);
@@ -61,29 +59,29 @@ export default function OpenRouterCallback() {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '80vh', fontFamily: 'system-ui, sans-serif' }}>
       {status === "loading" && (
         <>
-          <Loader2 size={56} className="spin" color="#3b82f6" style={{ animation: 'spin 1s linear infinite' }} />
-          <h2 style={{ marginTop: '20px', color: '#0f172a' }}>Ativando recursos de IA...</h2>
-          <p style={{ color: '#64748b' }}>Conectando a sua conta ao sistema.</p>
+          <Loader2 size={56} className="spin" color="var(--primary)" style={{ animation: 'spin 1s linear infinite' }} />
+          <h2 style={{ marginTop: '20px', color: 'var(--heading-color)' }}>Ativando recursos de IA...</h2>
+          <p style={{ color: 'var(--text-secondary)' }}>Conectando a sua conta ao sistema.</p>
           <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
         </>
       )}
       
       {status === "success" && (
         <>
-          <CheckCircle size={64} color="#10b981" />
-          <h2 style={{ marginTop: '20px', color: '#065f46' }}>IA Ativada com Sucesso!</h2>
-          <p style={{ color: '#10b981', fontWeight: 'bold' }}>A redirecionar para o painel...</p>
+          <CheckCircle size={64} color="var(--success-text)" />
+          <h2 style={{ marginTop: '20px', color: 'var(--success-text)' }}>IA Ativada com Sucesso!</h2>
+          <p style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>A redirecionar para o painel...</p>
         </>
       )}
       
       {status === "error" && (
         <>
-          <XCircle size={64} color="#ef4444" />
-          <h2 style={{ marginTop: '20px', color: '#991b1b' }}>Falha ao ativar IA</h2>
-          <p style={{ color: '#ef4444', marginBottom: '20px' }}>{errorMsg}</p>
+          <XCircle size={64} color="var(--error-text)" />
+          <h2 style={{ marginTop: '20px', color: 'var(--error-text)' }}>Falha ao ativar IA</h2>
+          <p style={{ color: 'var(--error-text)', marginBottom: '20px' }}>{errorMsg}</p>
           <button 
             onClick={() => window.location.href = '/dashboard'}
-            style={{ padding: '10px 20px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+            style={{ padding: '10px 20px', backgroundColor: 'var(--card-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
           >
             Voltar ao Dashboard
           </button>

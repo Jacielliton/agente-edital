@@ -14,6 +14,9 @@ import Performance from './components/Performance';
 import OpenRouterCallback from "./pages/OpenRouterCallback"; // <--- NOVO IMPORT
 import "./App.css";
 
+import { useState, useEffect } from "react";
+import { Moon, Sun } from "lucide-react"; // Importe os ícones
+
 // No componente PrivateRoute
 const PrivateRoute = ({ children, adminOnly = false, requireManageLessons = false }) => {
   const { user } = useAuth();
@@ -34,9 +37,22 @@ const PrivateRoute = ({ children, adminOnly = false, requireManageLessons = fals
 // No componente NavBar
 function NavBar() {
   const { user, logout } = useAuth();
-  
-  // Variável para facilitar a checagem de permissão de conteúdo
   const podeGerenciar = user?.role === 'admin' || user?.can_manage_lessons === true;
+
+  // Lógica do Modo Escuro
+  const [isDark, setIsDark] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
+
+  useEffect(() => {
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDark]);
 
   return (
     <nav className="navbar">
@@ -44,6 +60,15 @@ function NavBar() {
         <Link to="/" className="nav-logo">AgenteIA Edital</Link>
         
         <div className="nav-links">
+          {/* Botão de Modo Noturno */}
+          <button 
+            onClick={() => setIsDark(!isDark)} 
+            className="nav-item" 
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+            title="Alternar Tema"
+          >
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
           {user ? (
             <>
               <Link to="/" className="nav-item">
