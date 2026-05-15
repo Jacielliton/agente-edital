@@ -16,8 +16,8 @@ npm install
 # Garante que o frontend da VPS aponte para a API em produção (HTTPS)
 # e não para o localhost do seu PC
 echo "🔗 Ajustando URLs da API para Produção..."
-grep -rl "localhost:8000" src | xargs -r sed -i 's|http://localhost:8000|https://agente-edital.tecnopriv.top/api|g'
-grep -rl "localhost:8001" src | xargs -r sed -i 's|http://localhost:8001|https://agente-edital.tecnopriv.top/api|g'
+grep -rl "localhost:8000" . | xargs -r sed -i 's|http://localhost:8000|https://agente-edital.tecnopriv.top/api|g'
+grep -rl "localhost:8001" . | xargs -r sed -i 's|http://localhost:8001|https://agente-edital.tecnopriv.top/api|g'
 
 echo "🏗️ Construindo arquivos estáticos do React..."
 npm run build
