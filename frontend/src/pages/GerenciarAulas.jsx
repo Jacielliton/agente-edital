@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Trash2, Eye, RefreshCw, Edit, BookOpen } from "lucide-react";
+import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function GerenciarAulas() {
@@ -7,25 +7,25 @@ export default function GerenciarAulas() {
 
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
+  
+  // Estados de Paginação
   const [currentPlanPage, setCurrentPlanPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const limitPlansPerPage = 10;
 
   const [editingPlan, setEditingPlan] = useState(null);
   const [editFormData, setEditFormData] = useState({ title: '', area: '', ano: '', banca: '', concurso: '', visibility: 'public' });
   const [savingPlan, setSavingPlan] = useState(false);
 
-  // NOVO: Função para pegar a chave exata do token salva pelo AuthContext
   const getAuthToken = () => {
     return localStorage.getItem("professor_ai_token") || "";
   };
 
-  // NOVO: fetchPlans atualizado para enviar a Autorização
   const fetchPlans = (page = 1) => {
     setLoadingPlans(true);
     
     const token = getAuthToken();
 
-    // ADICIONAMOS O &manage_mode=true NO FINAL DA URL
     fetch(`${API_URL}/plans?page=${page}&limit=${limitPlansPerPage}&manage_mode=true`, {
       headers: {
         "Authorization": token ? `Bearer ${token}` : ""
@@ -35,7 +35,12 @@ export default function GerenciarAulas() {
         if (!res.ok) throw new Error("Não autorizado");
         return res.json();
       })
-      .then((data) => setPlans(data.items || []))
+      .then((data) => {
+        setPlans(data.items || []);
+        // Calcula o total de páginas com base no retorno do backend
+        const calculatedPages = Math.ceil((data.total || 0) / limitPlansPerPage);
+        setTotalPages(calculatedPages > 0 ? calculatedPages : 1);
+      })
       .catch((err) => console.error(err))
       .finally(() => setLoadingPlans(false));
   };
@@ -44,10 +49,18 @@ export default function GerenciarAulas() {
     fetchPlans(currentPlanPage);
   }, [currentPlanPage]);
 
+  // Função de navegação
+  const goToPage = (pageNumber) => {
+    if (pageNumber >= 1 && pageNumber <= totalPages) {
+      setCurrentPlanPage(pageNumber);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const handleDeletePlan = async (id) => {
     if (!window.confirm("Tem certeza que deseja deletar esta aula?")) return;
     try {
-      const res = await fetch(`${API_URL}/plans/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_URL}/plans/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${getAuthToken()}` } });
       if (res.ok) fetchPlans(currentPlanPage);
     } catch (e) { console.error(e); }
   };
@@ -61,13 +74,13 @@ export default function GerenciarAulas() {
 
   const handleSaveEdit = async () => {
     setSavingPlan(true);
-    const token = getAuthToken(); // <-- Captura token
+    const token = getAuthToken(); 
     try {
       const res = await fetch(`${API_URL}/plans/${editingPlan.id}`, {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" // <-- Envia no header
+          "Authorization": token ? `Bearer ${token}` : "" 
         },
         body: JSON.stringify(editFormData)
       });
@@ -140,7 +153,28 @@ export default function GerenciarAulas() {
         )}
       </div>
 
-      {/* MODAL DE EDIÇÃO ADAPTADO AO MODO ESCURO */}
+      {/* Paginação */}
+      {totalPages > 1 && !loadingPlans && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '1.5rem', padding: '1rem', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
+          <button className="btn" onClick={() => goToPage(currentPlanPage - 1)} disabled={currentPlanPage === 1}><ChevronLeft size={18} /> Anterior</button>
+          <div style={{ display: 'flex', gap: '5px' }}>
+            {[...Array(totalPages)].map((_, i) => {
+              const pageNum = i + 1;
+              if (pageNum === 1 || pageNum === totalPages || (pageNum >= currentPlanPage - 1 && pageNum <= currentPlanPage + 1)) {
+                return (
+                  <button key={pageNum} onClick={() => goToPage(pageNum)} style={{ width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px solid', backgroundColor: currentPlanPage === pageNum ? 'var(--primary)' : 'var(--card-bg)', color: currentPlanPage === pageNum ? '#fff' : 'var(--text-main)', borderColor: currentPlanPage === pageNum ? 'var(--primary)' : 'var(--border)' }}>{pageNum}</button>
+                );
+              } else if (pageNum === currentPlanPage - 2 || pageNum === currentPlanPage + 2) {
+                return <span key={pageNum} style={{ alignSelf: 'center', color: 'var(--text-muted)' }}>...</span>;
+              }
+              return null;
+            })}
+          </div>
+          <button className="btn" onClick={() => goToPage(currentPlanPage + 1)} disabled={currentPlanPage === totalPages}>Próxima <ChevronRight size={18} /></button>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO */}
       {editingPlan && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
