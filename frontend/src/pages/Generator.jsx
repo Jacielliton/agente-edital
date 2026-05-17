@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import LessonContent from "../components/LessonContent"; 
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"; 
@@ -31,25 +31,54 @@ function readJsonFile(file) {
   });
 }
 
+// FUNÇÃO ROBUSTA DE TOKEN UNIFICADA
+const getAuthToken = () => {
+  const storages = [localStorage, sessionStorage];
+  for (const storage of storages) {
+    let t = storage.getItem("access_token") || storage.getItem("token");
+    if (t && t.startsWith("eyJ")) return t;
+    try {
+      const uStr = storage.getItem("user");
+      if (uStr && uStr.startsWith("{")) {
+        const uObj = JSON.parse(uStr);
+        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
+        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
+      }
+    } catch(e) {}
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      const val = storage.getItem(key);
+      if (typeof val === "string" && val.startsWith("eyJ")) return val;
+      try {
+        if (val && val.startsWith("{")) {
+          const obj = JSON.parse(val);
+          for (let k in obj) {
+            if (typeof obj[k] === "string" && obj[k].startsWith("eyJ")) return obj[k];
+          }
+        }
+      } catch(e) {}
+    }
+  }
+  return null;
+};
+
 export default function Generator() { 
   const [text, setText] = useState("");
   
-  // --- NOVOS ESTADOS PARA AS QUESTÕES ---
+  // Estados para as Questões
   const [questionFormat, setQuestionFormat] = useState("Múltipla Escolha");
   const [questionLevel, setQuestionLevel] = useState("Superior");
 
-  // Config vindo do backend (.env)
+  // Config do Servidor (Para fallback de Modelos)
   const [availableModels, setAvailableModels] = useState([]);
   const [model, setModel] = useState(""); 
-  const [hasToken, setHasToken] = useState(false);
 
-  // Editor de config
-  const [editDefaultModel, setEditDefaultModel] = useState("");
-  const [editModelsCsv, setEditModelsCsv] = useState("");
-  const [editToken, setEditToken] = useState("");
+  // ESTADOS GLOBAIS DE CONFIGURAÇÃO DE IA INDIVIDUAL
   const [showConfig, setShowConfig] = useState(false);
-  const [configSaving, setConfigSaving] = useState(false);
-  const [configMsg, setConfigMsg] = useState("");
+  const [tempModel, setTempModel] = useState("");
+  const [userApiKey, setUserApiKey] = useState("");
+  const [userModel, setUserModel] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
 
   // Execução
   const [loading, setLoading] = useState(false);
@@ -66,37 +95,39 @@ export default function Generator() {
 
   const timeoutsRef = useRef([]);
 
-  // NOVO: Função robusta para ler o token correto salvo pelo AuthContext
-  const getAuthToken = () => {
-    return localStorage.getItem("professor_ai_token") || "";
-  };
-
   const fetchConfig = async () => {
     try {
       const resp = await fetch(`${API_URL}/config`);
       const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data?.detail || "Falha ao buscar config.");
-      const models = safeArray(data?.available_models);
-      setAvailableModels(models);
-      setHasToken(!!data?.has_token);
-
-      const def = safeString(data?.default_model).trim();
-      setModel(def || (models[0] || ""));
-
-      setEditDefaultModel(def);
-      setEditModelsCsv(models.join(","));
-    } catch (e) {
-      console.error(e);
-      if (e.message.includes("Failed to fetch")) {
-        setError("Backend não detectado. Verifique se o servidor Python (porta 8000) está rodando.");
-      } else {
-        setError(e.message || "Falha ao buscar configuração do backend.");
+      if (resp.ok) {
+        const models = safeArray(data?.available_models);
+        setAvailableModels(models);
+        const def = safeString(data?.default_model).trim();
+        setModel(def || (models[0] || ""));
       }
+    } catch (e) {
+      console.error("Falha ao buscar modelos do backend:", e);
     }
+  };
+
+  const fetchUserSettings = async () => {
+    try {
+      const token = getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/users/me/settings`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.api_key) setUserApiKey(data.api_key);
+        if (data.preferred_model) setUserModel(data.preferred_model);
+      }
+    } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
   };
 
   useEffect(() => {
     fetchConfig();
+    fetchUserSettings();
     return () => {
       timeoutsRef.current.forEach((id) => clearTimeout(id));
       timeoutsRef.current = [];
@@ -113,8 +144,6 @@ export default function Generator() {
     }
 
     const finalTitle = saveTitle.trim() || safeString(result?.resumo_cargo).substring(0, 60) || "Plano de Estudo Sem Título";
-    
-    // CORREÇÃO: Pegando o token da forma exata que ele está sendo salvo
     const token = getAuthToken();
 
     try {
@@ -122,7 +151,7 @@ export default function Generator() {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" // <-- Garante a permissão no servidor
+          "Authorization": token ? `Bearer ${token}` : ""
         },
         body: JSON.stringify({
           title: finalTitle,
@@ -131,7 +160,7 @@ export default function Generator() {
           ano: saveAno.trim(),
           banca: saveBanca.trim(),
           concurso: saveConcurso.trim(),
-          visibility: saveVisibility // <-- Agora sim ele vai salvar Público ou Privado sem erro
+          visibility: saveVisibility 
         })
       });
 
@@ -152,6 +181,9 @@ export default function Generator() {
   };
 
   const run = async () => {
+    // NOVA TRAVA: Se não houver chave individual do utilizador e for gerar, avisa.
+    // Opcionalmente, pode forçar o bloqueio aqui caso o servidor exija.
+    
     setError("");
     setResult(null);
     setLoading(true);
@@ -160,25 +192,24 @@ export default function Generator() {
     timeoutsRef.current.forEach((id) => clearTimeout(id));
     timeoutsRef.current = [];
 
-    timeoutsRef.current.push(
-      setTimeout(() => setStatus("Arquiteto: estruturando módulos e âncoras..."), 500)
-    );
-    timeoutsRef.current.push(
-      setTimeout(() => setStatus("Pesquisador/Professor: criando aulas aprofundadas..."), 1800)
-    );
-    timeoutsRef.current.push(
-      setTimeout(() => setStatus("Glossário e questões: consolidando..."), 3500)
-    );
+    timeoutsRef.current.push(setTimeout(() => setStatus("Arquiteto: estruturando módulos e âncoras..."), 500));
+    timeoutsRef.current.push(setTimeout(() => setStatus("Pesquisador/Professor: criando aulas aprofundadas..."), 1800));
+    timeoutsRef.current.push(setTimeout(() => setStatus("Glossário e questões: consolidando..."), 3500));
 
     try {
+      const token = getAuthToken();
       const resp = await fetch(`${API_URL}/analyze`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : ""
+        },
         body: JSON.stringify({ 
           text, 
-          model: model || null,
+          model: userModel || model || null, // Prioriza o modelo individual do utilizador
           question_format: questionFormat,
-          question_level: questionLevel
+          question_level: questionLevel,
+          api_key: userApiKey || null // Passa a chave individual para o backend caso configurado
         }),
       });
 
@@ -213,36 +244,32 @@ export default function Generator() {
     }
   };
 
-  const saveConfig = async () => {
-    setConfigSaving(true);
-    setConfigMsg("");
-    setError("");
+  // Funções do Modal de Configuração de IA
+  const handleConnectAI = () => {
+    const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
+    window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
+  };
 
-    const models = editModelsCsv.split(",").map((s) => s.trim()).filter(Boolean);
+  const openConfigModal = () => {
+    setTempModel(userModel || "arcee-ai/trinity-large-thinking:free");
+    setShowConfig(true);
+  };
 
+  const saveConfigToDB = async () => {
+    setSavingConfig(true);
     try {
-      const resp = await fetch(`${API_URL}/config`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          default_model: editDefaultModel?.trim() || null,
-          available_models: models.length ? models : null,
-          token: editToken !== "" ? editToken : null,
-        }),
+      const token = getAuthToken();
+      if (!token) { alert("Sessão expirada. Faça login."); return; }
+      const res = await fetch(`${API_URL}/users/me/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ api_key: userApiKey, preferred_model: tempModel.trim() })
       });
-
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data?.detail || "Falha ao salvar config.");
-
-      setConfigMsg(`Salvo ✅`);
-      setEditToken(""); 
-      await fetchConfig(); 
-    } catch (e) {
-      console.error(e);
-      setError(e.message || "Falha ao salvar configuração.");
-    } finally {
-      setConfigSaving(false);
-    }
+      if (res.ok) {
+        setUserModel(tempModel.trim());
+        setShowConfig(false);
+      } else { alert("Erro ao guardar no servidor."); }
+    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
   return (
@@ -252,24 +279,17 @@ export default function Generator() {
         <p>Crie novos conteúdos a partir de editais.</p>
       </header>
 
-      <section className="panel">
-        <div className="row">
-          <label className="label">Modelo (Backend)</label>
-          <select
-            className="select"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            disabled={loading}
-          >
-            {availableModels.length ? (
-              availableModels.map((m) => <option key={m} value={m}>{m}</option>)
-            ) : (
-              <option value={model || ""}>{model || "Carregando..."}</option>
-            )}
-          </select>
-          <div className="muted">{hasToken ? "Token ativo ✅" : "Token ausente ⚠️"}</div>
+      {/* BARRA SUPERIOR DE CONFIGURAÇÃO UNIFICADA */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+        <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+          <strong>IA Geradora:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Ativa ({userModel || "Padrão"})</span> : <span>Configure a sua IA gratuitamente para gerar aulas mais rápidas.</span>}
         </div>
+        <button onClick={openConfigModal} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s' }}>
+          ⚙️ Configurar a Minha IA
+        </button>
+      </div>
 
+      <section className="panel">
         <div className="row">
           <label className="label">Assunto / Edital</label>
           <textarea
@@ -325,11 +345,7 @@ export default function Generator() {
             <input type="file" accept="application/json" onChange={onLoadJson} hidden />
           </label>
 
-          <button className="btn" onClick={() => setShowConfig(!showConfig)}>
-            {showConfig ? "Fechar Config" : "Configurar API"}
-          </button>
-
-          {/* ÁREA DE SALVAR - CORES ATUALIZADAS PARA MODO NOTURNO */}
+          {/* ÁREA DE SALVAR */}
           {result && (
             <div className="save-container" style={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: '10px', marginTop: '1rem', padding: '15px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px' }}>
               <div style={{ fontWeight: 'bold', color: 'var(--heading-color)', marginBottom: '5px' }}>Salvar Aula no Banco</div>
@@ -338,7 +354,6 @@ export default function Generator() {
                 <input className="input" placeholder="Banca (ex: CESPE)" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ flex: 1, minWidth: '120px' }} />
                 <input className="input" placeholder="Concurso (ex: PF)" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} style={{ flex: 2, minWidth: '150px' }} />
                 
-                {/* CAMPO DE VISIBILIDADE */}
                 <select className="select" value={saveVisibility} onChange={e => setSaveVisibility(e.target.value)} style={{ flex: 1, minWidth: '120px' }}>
                   <option value="public">🌍 Público</option>
                   <option value="private">🔒 Privado</option>
@@ -354,31 +369,8 @@ export default function Generator() {
         </div>
 
         {!!status && <div className="status">{status}</div>}
-        {!!configMsg && <div className="status">{configMsg}</div>}
         {!!error && <div className="error">{error}</div>}
 
-        {showConfig && (
-          <details className="details" open>
-            <summary className="summaryTitle">Configurações (.env)</summary>
-            <div className="config-content">
-              <div className="row">
-                <label className="label">Modelo Padrão</label>
-                <input className="input" value={editDefaultModel} onChange={e=>setEditDefaultModel(e.target.value)} />
-              </div>
-              <div className="row">
-                 <label className="label">Modelos (CSV)</label>
-                 <input className="input" value={editModelsCsv} onChange={e=>setEditModelsCsv(e.target.value)} />
-              </div>
-              <div className="row">
-                 <label className="label">Token (OpenRouter)</label>
-                 <input className="input" type="password" value={editToken} onChange={e=>setEditToken(e.target.value)} />
-              </div>
-              <div className="actions config-actions">
-                <button className="btn primary" onClick={saveConfig} disabled={configSaving}>Salvar</button>
-              </div>
-            </div>
-          </details>
-        )}
       </section>
 
       {result && (
@@ -386,6 +378,49 @@ export default function Generator() {
           <LessonContent result={result} />
         </section>
       )}
+
+      {/* MODAL DE CONFIGURAÇÃO GLOBAL (CHAVE DA IA INDIVIDUAL) */}
+      {showConfig && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
+            
+            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5', background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              Vincule a sua conta do OpenRouter para desbloquear a geração rápida e os recursos avançados. <br/><br/>
+              ✨ É <strong style={{color: 'var(--text-main)'}}>100% gratuito</strong> e você pode conectar-se em 2 segundos usando a sua conta já existente do <strong style={{color: 'var(--text-main)'}}>Google, Discord ou GitHub</strong>.
+            </p>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Integração de Acesso:</label>
+              
+              {userApiKey ? (
+                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  ✅ Conta vinculada com sucesso!
+                </div>
+              ) : (
+                <button onClick={handleConnectAI} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                  🔗 Conectar IA Gratuitamente
+                </button>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '25px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA (Opcional):</label>
+              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: arcee-ai/trinity-large-thinking:free" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
+              
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
+                O sistema utiliza modelos gratuitos por padrão. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '10px' }}>
+              <button onClick={() => setShowConfig(false)} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--hover-bg)', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>Fechar</button>
+              <button onClick={saveConfigToDB} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>{savingConfig ? "⏳ A guardar..." : "Salvar Modelo"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

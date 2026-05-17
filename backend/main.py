@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
-
+import httpx
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
@@ -25,7 +25,7 @@ from sqlalchemy.orm import declarative_base
 import requests
 
 # Cliente OpenAI/OpenRouter
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 # ============================================================================
 # 1. CONFIGURAÇÃO DE AMBIENTE E BANCO DE DADOS
@@ -295,7 +295,7 @@ def get_openrouter_client():
     if not key: return None
     if _CLIENT is None or _CLIENT_KEY != key:
         _CLIENT_KEY = key
-        _CLIENT = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
+        _CLIENT = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
     return _CLIENT
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "arcee-ai/trinity-large-thinking:free")
@@ -556,8 +556,10 @@ async def delete_plan(plan_id: int, current_user: User = Depends(get_current_use
 
 def clean_response(text: str) -> str:
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    text = text.replace("```json", "").replace("```", "").strip()
-    return text
+    # Remove blocos markdown de JSON
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+    return text.strip()
 
 def try_parse_json_loose(text: str) -> Any:
     text = text.strip()
@@ -703,7 +705,7 @@ def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
 
 async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None) -> Any:
     if api_key and api_key.strip():
-        client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key.strip())
+        client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key.strip())
     else:
         client = get_openrouter_client()
         if not client: raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY não encontrado no ambiente (.env).")
@@ -714,9 +716,8 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
 
     while tentativa < max_tentativas:
         try:
-            print(f"   ...Conectando ao Modelo {model_name} (Tentativa {tentativa+1})...")
-            response = await asyncio.to_thread(
-                client.chat.completions.create,
+            print(f"   ...Conectando ao Modelo {model_name} (Tentativa {tentativa+1})...")            
+            response = await client.chat.completions.create(
                 model=(model_name or DEFAULT_MODEL),
                 messages=[
                     {
@@ -742,9 +743,9 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
             last_error = str(e)
             print(f"❌ Erro na chamada AI: {last_error}")
             if "429" in last_error or "401" in last_error:
-                await asyncio.sleep(6 + (tentativa * 4))
+                await asyncio.sleep(3 + (tentativa * 2))
             else:
-                await asyncio.sleep(2 + (tentativa * 2))
+                await asyncio.sleep(1 + (tentativa * 1))
             tentativa += 1
 
     raise HTTPException(status_code=503, detail=f"O modelo falhou após várias tentativas. Erro: {last_error}")
@@ -1523,6 +1524,8 @@ async def update_user_settings(settings: UserSettingsUpdate, current_user: User 
     
 @app.post("/correct-essay")
 async def correct_essay(req: EssayCorrectionRequest):
+    if not req.api_key: # <-- TRAVA DE SEGURANÇA
+        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     try:
         result = ensure_dict(await agent_essay_corrector(req))
         return result
@@ -1532,6 +1535,8 @@ async def correct_essay(req: EssayCorrectionRequest):
     
 @app.post("/generate-essay")
 async def generate_essay_endpoint(req: GenerateEssayRequest):
+    if not req.api_key: # <-- TRAVA DE SEGURANÇA
+        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     try:
         mod_obj = {"titulo": req.aula_titulo}
         result = ensure_dict(await agent_essay_generator(mod_obj, req.area, req.lesson_content, req.model, req.api_key))
@@ -1542,6 +1547,8 @@ async def generate_essay_endpoint(req: GenerateEssayRequest):
 
 @app.post("/generate-global-essay")
 async def generate_global_essay_endpoint(req: GlobalEssayRequest):
+    if not req.api_key: # <-- TRAVA DE SEGURANÇA
+        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     try:
         result = ensure_dict(await agent_global_essay_generator(req.area, req.aulas_titulos, req.model, req.api_key))
         return result
@@ -1551,6 +1558,8 @@ async def generate_global_essay_endpoint(req: GlobalEssayRequest):
         
 @app.post("/chat")
 async def chat_tutor(req: ChatMessageRequest):
+    if not req.api_key: # <-- TRAVA DE SEGURANÇA
+        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     try:
         result = ensure_dict(await agent_lesson_tutor(req))
         return result
@@ -1560,6 +1569,8 @@ async def chat_tutor(req: ChatMessageRequest):
     
 @app.post("/generate-simulado-topic")
 async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
+    if not req.api_key: # <-- TRAVA DE SEGURANÇA
+        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     try:
         result = ensure_dict(await agent_simulado_topic(req.area, req.topico, req.conteudo, req.model, req.api_key))
         return result
@@ -1571,12 +1582,13 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
 async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Troca o código OAuth do OpenRouter por uma chave de API para o aluno"""
     try:
-        # Chama a API do OpenRouter para trocar o código pela chave
-        response = await asyncio.to_thread(
-            requests.post,
-            "https://openrouter.ai/api/v1/auth/keys",
-            json={"code": payload.code}
-        )
+        # Usa o httpx assíncrono de forma nativa (Sem to_thread)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/auth/keys",
+                json={"code": payload.code},
+                timeout=15.0 # Timeout de segurança
+            )
         
         if response.status_code == 200:
             data = response.json()

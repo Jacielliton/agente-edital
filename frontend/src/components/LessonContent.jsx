@@ -64,7 +64,7 @@ const savePerformance = async (tipo, tema, notaObtida, notaMaxima) => {
 // ==========================================
 // COMPONENTE: CHAT DO TUTOR (FLUTUANTE DIREITO)
 // ==========================================
-function TutorChat({ area, defaultModel, userApiKey, userModel }) {
+function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) { 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -79,6 +79,12 @@ function TutorChat({ area, defaultModel, userApiKey, userModel }) {
 
   const handleSend = async () => {
     if (!input.trim()) return;
+    // --- NOVA TRAVA ---
+    if (!userApiKey) {
+      setIsOpen(false); // Fecha o chat
+      onOpenConfig();   // Abre o modal de configuração
+      return;
+    }
     
     const newMsg = { role: "user", content: input };
     const updatedMessages = [...messages, newMsg];
@@ -177,7 +183,7 @@ function TutorChat({ area, defaultModel, userApiKey, userModel }) {
 // ==========================================
 // COMPONENTE: PROVA DISCURSIVA
 // ==========================================
-function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, aula, area }) {
+function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, aula, area, onOpenConfig }) {
   const [discursiva, setDiscursiva] = useState(initialDiscursiva);
   const [answer, setAnswer] = useState("");
   const [correction, setCorrection] = useState(null);
@@ -188,6 +194,9 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   if (!discursiva || !discursiva.comando) return null;
 
   const handleCorrect = async () => {
+    // --- NOVA TRAVA ---
+    if (!userApiKey) { onOpenConfig(); return; }
+
     if (answer.trim().length < 50) {
       alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
       return;
@@ -346,7 +355,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
 // ==========================================
 // COMPONENTE: PROVA DISCURSIVA GERAL (GLOBAL)
 // ==========================================
-function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas }) {
+function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, onOpenConfig }) {
   const [discursiva, setDiscursiva] = useState(null);
   const [answer, setAnswer] = useState("");
   const [correction, setCorrection] = useState(null);
@@ -355,7 +364,15 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas }
   const [error, setError] = useState(null);
 
   const handleGenerateNew = async () => {
-    setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
+    // --- NOVA TRAVA ---
+    if (!userApiKey) { onOpenConfig(); return; }
+    // ------------------
+    
+    setLoadingGen(true);
+    setError(null);
+    setCorrection(null);
+    setAnswer("");
+    
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
       const aulasTitulos = aulas.map(a => a.titulo);
@@ -390,6 +407,9 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas }
   };
 
   const handleCorrect = async () => {
+    // --- NOVA TRAVA ---
+    if (!userApiKey) { onOpenConfig(); return; }
+
     if (answer.trim().length < 50) {
       alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
       return;
@@ -602,6 +622,12 @@ export default function LessonContent({ result }) {
 
   // FUNÇÃO PARA GERAR O SIMULADO EM TEMPO REAL COM A IA
   const handleGerarSimuladoIA = async () => {
+    // --- NOVA TRAVA DE SEGURANÇA ---
+    if (!userApiKey) {
+      openConfigModal();
+      return;
+    }
+    // -------------------------------
     setSimuladoAcertos(0);
     setSimuladoFinalizado(false);
     setSimuladoLoading(true);
@@ -807,6 +833,7 @@ export default function LessonContent({ result }) {
                 userModel={userModel} 
                 aula={aula}
                 area={result?.area_identificada}
+                onOpenConfig={openConfigModal}
               />
             )}
 
@@ -925,6 +952,7 @@ export default function LessonContent({ result }) {
           userModel={userModel} 
           area={result?.area_identificada}
           aulas={aulas}
+          onOpenConfig={openConfigModal}
         />
       </div>
 
@@ -979,6 +1007,7 @@ export default function LessonContent({ result }) {
         defaultModel={result?.modelo_utilizado} 
         userApiKey={userApiKey} 
         userModel={userModel} 
+        onOpenConfig={openConfigModal}
       />
 
       {/* MODAL DO MAPA MENTAL */}
