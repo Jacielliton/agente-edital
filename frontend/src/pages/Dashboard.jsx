@@ -3,10 +3,13 @@ import { Link } from "react-router-dom";
 import { 
   BookOpen, Calendar, ArrowRight, Search, X, 
   ChevronLeft, ChevronRight, TrendingUp, 
-  ChevronDown, ChevronUp, Folder, Target 
+  ChevronDown, ChevronUp, Folder, Target,
+  Globe, Lock, Star // <-- NOVOS ÍCONES ADICIONADOS
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -107,6 +110,7 @@ export default function Dashboard() {
 
   return (
     <div className="container">
+      {/* NOVO: Estilos CSS para a animação do Skeleton */}      
       <header className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", flexWrap: 'wrap', gap: '15px' }}>
         <h1 style={{ margin: 0 }}>Minhas Aulas</h1>
         <Link to="/performance" className="btn" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-main)', fontWeight: 'bold' }}>
@@ -128,21 +132,37 @@ export default function Dashboard() {
       </div>
 
       {loading ? (
-        <div className="status" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>⏳ Carregando a sua biblioteca...</div>
+        // NOVO: SKELETON LOADING
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--card-bg)', padding: '20px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <div className="skeleton-box" style={{ width: '50px', height: '50px', borderRadius: '10px' }}></div>
+              <div style={{ flex: 1 }}>
+                <div className="skeleton-box" style={{ height: '24px', width: '30%', marginBottom: '8px' }}></div>
+                <div className="skeleton-box" style={{ height: '16px', width: '20%' }}></div>
+              </div>
+              <div className="skeleton-box" style={{ width: '30px', height: '30px', borderRadius: '6px' }}></div>
+            </div>
+          ))}
+        </div>
       ) : plans.length === 0 ? (
+        // STATE VAZIO
         <div className="panel" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
           <BookOpen size={48} color="var(--text-muted)" style={{ margin: '0 auto 1rem auto' }} />
           <h3 style={{ margin: '0 0 0.5rem 0' }}>Nenhuma aula encontrada.</h3>
           {(filterAno || filterBanca || filterConcurso) ? (
             <button onClick={handleClearFilters} className="btn primary">Limpar Filtros</button>
           ) : (
-            <Link to="/generator" className="btn primary">Criar Nova Aula</Link>
+            <Link to="/generator" className="btn primary">Criar Nova Aula com IA</Link>
           )}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {Object.entries(groupedPlans).map(([concursoName, areas]) => {
-            const totalAulasConcurso = Object.values(areas).flat().length;
+            const todasAulas = Object.values(areas).flat();
+            const totalAulasConcurso = todasAulas.length;
+            const emailCriador = todasAulas[0]?.owner_email || todasAulas[0]?.email || "";
+            const nomeUsuario = emailCriador ? emailCriador.split('@')[0] : "";
             const isExpanded = expandedConcurso === concursoName;
             
             return (
@@ -152,7 +172,12 @@ export default function Dashboard() {
                     <div style={{ background: isExpanded ? 'var(--primary-hover)' : 'var(--primary)', padding: '12px', borderRadius: '10px', color: '#fff', display: 'flex' }}><Folder size={26} /></div>
                     <div>
                       <h2 style={{ margin: 0, color: 'var(--heading-color)', fontSize: '1.4rem' }}>{concursoName}</h2>
-                      <span style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>{totalAulasConcurso} aula(s) neste concurso</span>
+                      <span style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', display: 'block' }}>{totalAulasConcurso} aula(s) neste concurso</span>
+                      {nomeUsuario && (
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px', fontWeight: '500' }}>
+                          👤 Criado por: {nomeUsuario}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div>{isExpanded ? <ChevronUp size={28} color="var(--text-secondary)" /> : <ChevronDown size={28} color="var(--text-secondary)" />}</div>
@@ -167,19 +192,45 @@ export default function Dashboard() {
                         </h3>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {aulasDaArea.map((plan) => (
-                            <div key={plan.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '10px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '0.75rem', background: 'var(--hover-bg)', color: 'var(--text-main)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', fontWeight: 'bold' }}>{plan.banca}</span>
-                                  {plan.ano && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>{plan.ano}</span>}
-                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={12} /> {new Date(plan.created_at).toLocaleDateString()}</span>
+                          {aulasDaArea.map((plan) => {
+                            // NOVAS VARIÁVEIS DE LÓGICA DE UI
+                            const isMinhaAula = user && plan.owner_email === user.email;
+                            const isPublic = plan.visibility === 'public';
+
+                            return (
+                              <div key={plan.id} style={{ 
+                                // DESTAQUE VISUAL SE FOR AULA DO PRÓPRIO UTILIZADOR
+                                background: isMinhaAula ? 'linear-gradient(to right, var(--card-bg), var(--hover-bg))' : 'var(--card-bg)', 
+                                border: isMinhaAula ? '1px solid var(--primary)' : '1px solid var(--border)', 
+                                borderLeft: isMinhaAula ? '4px solid var(--primary)' : '1px solid var(--border)',
+                                borderRadius: '10px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px',
+                                boxShadow: isMinhaAula ? '0 2px 8px rgba(37, 99, 235, 0.1)' : 'none'
+                              }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.75rem', background: 'var(--hover-bg)', color: 'var(--text-main)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', fontWeight: 'bold' }}>{plan.banca}</span>
+                                    {plan.ano && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>{plan.ano}</span>}
+                                    
+                                    {/* BADGE DE VISIBILIDADE */}
+                                    <span style={{ fontSize: '0.75rem', color: isPublic ? 'var(--success-text)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                                      {isPublic ? <Globe size={12} /> : <Lock size={12} />} {isPublic ? 'Público' : 'Privado'}
+                                    </span>
+                                    
+                                    {/* BADGE DE DESTAQUE: MINHA AULA */}
+                                    {isMinhaAula && (
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--primary)', fontWeight: 'bold' }}>
+                                        <Star size={12} fill="currentColor" /> Criado por mim
+                                      </span>
+                                    )}
+                                    
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={12} /> {new Date(plan.created_at).toLocaleDateString()}</span>
+                                  </div>
+                                  <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>{plan.title}</h4>
                                 </div>
-                                <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>{plan.title}</h4>
+                                <Link to={`/aula/${plan.id}`} className="btn small primary" style={{ whiteSpace: 'nowrap' }}>Acessar <ArrowRight size={14} /></Link>
                               </div>
-                              <Link to={`/aula/${plan.id}`} className="btn small primary" style={{ whiteSpace: 'nowrap' }}>Acessar <ArrowRight size={14} /></Link>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     ))}

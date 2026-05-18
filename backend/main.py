@@ -256,6 +256,7 @@ class PlanSummaryResponse(BaseModel):
     banca: Optional[str] = None
     concurso: Optional[str] = None
     visibility: str            # NOVO
+    owner_email: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -468,19 +469,18 @@ async def list_plans(
     concurso: Optional[str] = None, 
     page: int = 1,
     limit: int = 30,
-    manage_mode: bool = False, # <-- NOVO: Flag para saber se estamos na tela de gerenciamento
+    manage_mode: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    query = select(StoredPlan)
+    # Lógica de JOIN para pegar o email do dono
+    query = select(StoredPlan, User.email).outerjoin(User, StoredPlan.owner_id == User.id)
     
     # Lógica de Visibilidade e Segurança
     if current_user.role != 'admin':
         if manage_mode:
-            # Se estiver na tela "Gerenciar Aulas", mostra APENAS as que o usuário criou
             query = query.where(StoredPlan.owner_id == current_user.id)
         else:
-            # Se estiver no Dashboard normal, mostra as dele + as públicas de outros
             query = query.where(
                 or_(
                     StoredPlan.owner_id == current_user.id,
@@ -503,7 +503,14 @@ async def list_plans(
     query = query.order_by(desc(StoredPlan.created_at)).offset(skip).limit(limit)
     
     result = await db.execute(query)
-    items = result.scalars().all()
+    rows = result.all()
+    
+    # Monta a resposta embutindo o owner_email no objeto do plano
+    items = []
+    for plan, email in rows:
+        plan_dict = {c.name: getattr(plan, c.name) for c in plan.__table__.columns}
+        plan_dict["owner_email"] = email
+        items.append(plan_dict)
     
     return {"items": items, "total": total}
 
