@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from dotenv import load_dotenv
@@ -553,7 +554,43 @@ async def delete_plan(plan_id: int, current_user: User = Depends(get_current_use
 # ============================================================================
 # 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)
 # ============================================================================
+async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None):
+    """Lê o stream do OpenRouter e repassa os chunks em tempo real para manter a conexão viva."""
+    if api_key and api_key.strip():
+        client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key.strip())
+    else:
+        client = get_openrouter_client()
+        if not client: 
+            yield '{"error": "OPENROUTER_API_KEY não encontrado."}'
+            return
 
+    try:
+        response = await client.chat.completions.create(
+            model=(model_name or DEFAULT_MODEL),
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Você é um sistema que responde ÚNICA e EXCLUSIVAMENTE em formato JSON estruturado e válido.\n"
+                        "REGRAS VITAIS:\n"
+                        "1. NÃO use formatação markdown como ```json antes ou depois.\n"
+                        "2. NÃO retorne NENHUM texto fora do JSON.\n"
+                        "3. ATENÇÃO CRÍTICA: Escape corretamente TODAS as aspas duplas internas com \\\" e quebras de linha com \\n.\n"
+                        "4. Certifique-se de fechar corretamente todas as chaves e colchetes no final."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=temp,
+            max_tokens=8192,
+            stream=True  # <-- A MÁGICA ACONTECE AQUI
+        )
+        async for chunk in response:
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        yield f'{{"error": "{str(e)}"}}'
+        
 def clean_response(text: str) -> str:
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     # Remove blocos markdown de JSON
@@ -1522,61 +1559,176 @@ async def update_user_settings(settings: UserSettingsUpdate, current_user: User 
     await db.commit()
     return {"ok": True, "message": "Configurações de IA atualizadas no banco de dados."}
     
+@app.post("/chat")
+async def chat_tutor(req: ChatMessageRequest):
+    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+    
+    hist_text = ""
+    if req.historico:
+        hist_text = "HISTÓRICO RECENTE:\n"
+        for msg in req.historico[-4:]:
+            role = "Aluno" if msg.get("role") == "user" else "Tutor"
+            hist_text += f"{role}: {msg.get('content')}\n"
+
+    prompt = f"""
+    Atue como Professor Tutor Especialista em {req.area}.
+    Responda de forma DIRETIVA, CLARA e AMIGÁVEL.
+
+    {hist_text}
+
+    DÚVIDA DO ALUNO:
+    {req.mensagem}
+
+    RETORNE APENAS ESTE JSON EXATO:
+    {{
+      "resposta": "Sua explicação detalhada aqui, usando formatação markdown (negrito, listas) para facilitar a leitura."
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.4, api_key=req.api_key), media_type="text/plain")
+
+
+@app.post("/generate-simulado-topic")
+async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
+    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+    
+    prompt = f"""
+    Atue como Banca Examinadora de Alto Nível ({req.area}).
+    Sua missão é criar um SIMULADO de fixação. Com base estritamente no conteúdo abaixo, crie EXATAMENTE 5 QUESTÕES inéditas de múltipla escolha focadas no tópico "{req.topico}".
+
+    CONTEÚDO BASE PARA AS QUESTÕES:
+    {req.conteudo[:8000]}
+
+    REGRAS:
+    1. Crie exatamente 5 questões desafiadoras.
+    2. Gere exatamente 4 alternativas (A, B, C, D) para cada uma.
+    3. Justifique tecnicamente o porquê da correta e o erro das demais.
+
+    RETORNE APENAS ESTE JSON EXATO:
+    {{
+      "simulado": [
+        {{
+          "contexto_disciplina": "{req.area}",
+          "contexto_topico": "{req.topico}",
+          "enunciado": "A situação-problema...",
+          "alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],
+          "resposta_correta": "C",
+          "comentario_da_correta": "Explicação técnica...",
+          "por_que_as_outras_estao_erradas": {{
+            "A": "Erro da A",
+            "B": "Erro da B",
+            "D": "Erro da D"
+          }}
+        }}
+      ]
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.3, api_key=req.api_key), media_type="text/plain")
+
+
 @app.post("/correct-essay")
 async def correct_essay(req: EssayCorrectionRequest):
-    if not req.api_key: # <-- TRAVA DE SEGURANÇA
-        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
-    try:
-        result = ensure_dict(await agent_essay_corrector(req))
-        return result
-    except Exception as e:
-        print(f"Erro na correção: {e}")
-        raise HTTPException(status_code=500, detail="API de correção indisponível.")
+    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     
+    prompt = f"""
+    Atue como CORRETOR RIGOROSO CESPE/CEBRASPE.
+
+    DADOS DA QUESTÃO:
+    Motivador: {req.texto_motivador}
+    Comando: {req.comando}
+    Aspectos: {json.dumps(req.aspectos, ensure_ascii=False)}
+
+    RESPOSTA DO CANDIDATO:
+    {req.resposta_aluno}
+
+    DIRETRIZES:
+    1. Avalie o conteúdo técnico. Desconte se for raso.
+    2. Dê uma nota exata para cada aspecto (nunca maior que o valor_maximo).
+    3. Avalie gramática e coesão separadamente.
+
+    RETORNE APENAS ESTE JSON EXATO:
+    {{
+      "nota_final": 8.5,
+      "avaliacoes_aspectos": [
+        {{
+          "aspecto": "Nome exato do Aspecto",
+          "nota_atribuida": 3.5,
+          "comentario": "Justificativa direta do ponto."
+        }}
+      ],
+      "erros_gramaticais": "Apontamento de erros de português.",
+      "feedback_geral": "Parecer final da banca."
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.2, api_key=req.api_key), media_type="text/plain")
+
+
 @app.post("/generate-essay")
 async def generate_essay_endpoint(req: GenerateEssayRequest):
-    if not req.api_key: # <-- TRAVA DE SEGURANÇA
-        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
-    try:
-        mod_obj = {"titulo": req.aula_titulo}
-        result = ensure_dict(await agent_essay_generator(mod_obj, req.area, req.lesson_content, req.model, req.api_key))
-        return result
-    except Exception as e:
-        print(f"Erro na geração da discursiva: {e}")
-        raise HTTPException(status_code=500, detail="Falha ao gerar nova discursiva.")
+    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+    
+    lesson_text = json.dumps(req.lesson_content, ensure_ascii=False)
+    prompt = f"""
+    Atue como EXAMINADOR SÊNIOR da banca CESPE/CEBRASPE na área de {req.area}.
+    Sua missão ÚNICA é criar uma questão discursiva focada na aula abaixo.
+
+    AULA:
+    {lesson_text}
+
+    DIRETRIZES DE CRIAÇÃO:
+    - DIREITO: Crie "Estudo de Caso" (crime, conflito contratual, etc).
+    - TI/EXATAS: Crie cenário de incidente em produção ou falha de arquitetura.
+    - OUTROS: Situação problema prática da profissão.
+    - Aspectos: 2 a 3 tópicos obrigatórios para o candidato responder. A soma do "valor_maximo" DEVE ser 10.0.
+
+    RETORNE APENAS ESTE JSON EXATO (SEM NENHUM TEXTO ADICIONAL):
+    {{
+      "discursiva": {{
+        "texto_motivador": "Descrição detalhada do cenário hipotético.",
+        "comando": "Considerando a situação hipotética, redija um texto abordando:",
+        "aspectos": [
+          {{ "aspecto": "1. Primeiro ponto...", "valor_maximo": 4.0 }},
+          {{ "aspecto": "2. Segundo ponto...", "valor_maximo": 6.0 }}
+        ]
+      }}
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.3, api_key=req.api_key), media_type="text/plain")
+
 
 @app.post("/generate-global-essay")
 async def generate_global_essay_endpoint(req: GlobalEssayRequest):
-    if not req.api_key: # <-- TRAVA DE SEGURANÇA
-        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
-    try:
-        result = ensure_dict(await agent_global_essay_generator(req.area, req.aulas_titulos, req.model, req.api_key))
-        return result
-    except Exception as e:
-        print(f"Erro na geração da discursiva global: {e}")
-        raise HTTPException(status_code=500, detail="Falha ao gerar nova discursiva global.")
-        
-@app.post("/chat")
-async def chat_tutor(req: ChatMessageRequest):
-    if not req.api_key: # <-- TRAVA DE SEGURANÇA
-        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
-    try:
-        result = ensure_dict(await agent_lesson_tutor(req))
-        return result
-    except Exception as e:
-        print(f"Erro no chat: {e}")
-        raise HTTPException(status_code=500, detail="A IA do Tutor falhou ao processar a resposta.")
+    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     
-@app.post("/generate-simulado-topic")
-async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
-    if not req.api_key: # <-- TRAVA DE SEGURANÇA
-        raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
-    try:
-        result = ensure_dict(await agent_simulado_topic(req.area, req.topico, req.conteudo, req.model, req.api_key))
-        return result
-    except Exception as e:
-        print(f"Erro na geração do simulado: {e}")
-        raise HTTPException(status_code=500, detail="Falha ao gerar simulado com IA.")
+    prompt = f"""
+    Atue como EXAMINADOR SÊNIOR da banca CEBRASPE/CESPE.
+    A área geral de conhecimento do candidato é: {req.area}.
+
+    Lista de tópicos estudados nesta disciplina:
+    {json.dumps(req.aulas_titulos, ensure_ascii=False)}
+
+    Sua missão ÚNICA é criar UMA questão discursiva integradora de alto nível, simulando exatamente o padrão real de prova da banca CEBRASPE.
+
+    DIRETRIZES DE CRIAÇÃO:
+    1. SELEÇÃO: Escolha aleatoriamente EXATAMENTE 2 (dois) temas distintos da lista acima para compor a narrativa. Adapte-se à área de conhecimento informada.
+    2. TEXTO MOTIVADOR: Crie um cenário hipotético, rico em detalhes (ex: "Em março de 2023, uma situação ocorreu...").
+    3. COMANDO: Use estritamente o padrão da banca.
+    4. ASPECTOS (TÓPICOS): Crie de 2 a 3 itens numerados que o candidato deve responder obrigatoriamente.
+    5. PONTUAÇÃO: A soma do campo "valor_maximo" de todos os aspectos DEVE ser exatos 19.0 pontos.
+
+    RETORNE APENAS ESTE JSON EXATO:
+    {{
+      "discursiva": {{
+        "texto_motivador": "Descrição detalhada do cenário narrado...",
+        "comando": "Considerando a situação narrada, redija um texto dissertativo em atendimento ao que se pede a seguir.",
+        "aspectos": [
+          {{ "aspecto": "1. Explique o conceito X...", "valor_maximo": 6.0 }},
+          {{ "aspecto": "2. Mencione o papel de Y...", "valor_maximo": 8.0 }},
+          {{ "aspecto": "3. Descreva o processo Z...", "valor_maximo": 5.0 }}
+        ]
+      }}
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.6, api_key=req.api_key), media_type="text/plain")
     
 @app.post("/auth/openrouter/exchange")
 async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

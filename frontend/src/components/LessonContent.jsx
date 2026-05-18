@@ -60,7 +60,44 @@ const savePerformance = async (tipo, tema, notaObtida, notaMaxima) => {
     console.error("Erro ao salvar desempenho silenciosamente:", err);
   }
 };
-
+// NOVA FUNÇÃO: Lê o stream e possui extração inteligente de blocos JSON
+const fetchStreamAsJson = async (url, options) => {
+  const res = await fetch(url, options);
+  
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Erro do servidor: ${res.status} - ${errText}`);
+  }
+  
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let rawText = "";
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    rawText += decoder.decode(value, { stream: true });
+  }
+  
+  try {
+    // 1. Limpa tags de raciocínio da IA
+    let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
+    
+    // 2. Extração Robusta: Pega apenas o que estiver entre a primeira e a última chave { } ou [ ]
+    const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (jsonMatch) {
+      cleanText = jsonMatch[0];
+    }
+    
+    // 3. Remove vírgulas sobrando no final de listas (erro clássico de LLMs)
+    cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+    
+    return JSON.parse(cleanText);
+  } catch (e) {
+    console.error("Erro ao parsear JSON. Texto recebido:", rawText);
+    throw new Error("A IA gerou um formato inválido ou incompleto.");
+  }
+};
 // ==========================================
 // COMPONENTE: CHAT DO TUTOR (FLUTUANTE DIREITO)
 // ==========================================
@@ -95,7 +132,7 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
     
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const res = await fetch(`${apiUrl}/chat`, {
+      const data = await fetchStreamAsJson(`${apiUrl}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -108,9 +145,6 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
         })
       });
 
-      if (!res.ok) throw new Error("Erro na API");
-      
-      const data = await res.json();
       setMessages([...updatedMessages, { role: "assistant", content: data.resposta }]);
     } catch (e) {
       setMessages([...updatedMessages, { role: "assistant", content: "⚠️ *Desculpe, falha na conexão.* Verifique sua chave API ou tente novamente." }]);
@@ -204,7 +238,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
     setLoading(true); setError(null); setCorrection(null);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const res = await fetch(`${apiUrl}/correct-essay`, {
+      const data = await fetchStreamAsJson(`${apiUrl}/correct-essay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -216,11 +250,19 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           api_key: userApiKey || null
         })
       });
-      if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
-      const data = await res.json();
+      
+      // --- NOVA LÓGICA: O JS SOMA A NOTA E IGNORA A MATEMÁTICA DA IA ---
+      const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
+        ? data.avaliacoes_aspectos.reduce((acc, curr) => acc + (parseFloat(curr.nota_atribuida) || 0), 0)
+        : (parseFloat(data.nota_final) || 0);
+        
+      data.nota_final_calculada = notaCalculada; // Guarda o valor correto
+      // ------------------------------------------------------------------
+
       setCorrection(data);
       
-      await savePerformance("discursiva", area ? `${area} - ${aula?.titulo || 'Tópico'}` : "Prova Discursiva", data.nota_final, 10.0);
+      // Salva a nota real no banco
+      await savePerformance("discursiva", area ? `${area} - ${aula?.titulo || 'Tópico'}` : "Prova Discursiva", notaCalculada, 10.0);
       
     } catch (err) {
       setError("A IA corretora falhou. Verifique se a sua Chave de API está correta nas configurações.");
@@ -237,7 +279,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
     
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const res = await fetch(`${apiUrl}/generate-essay`, {
+      const data = await fetchStreamAsJson(`${apiUrl}/generate-essay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -249,9 +291,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
         })
       });
 
-      if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
-
-      const data = await res.json();
+      
       const novaQuestao = data.discursiva ? data.discursiva : data;
 
       if (novaQuestao && novaQuestao.comando) {
@@ -324,7 +364,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
         
         {correction && (
           <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--success-text)', borderBottom: '2px solid var(--success-text)', paddingBottom: '10px' }}>📊 Resultado Final: {safeString(correction.nota_final)} / 10.0</h3>
+            <h3 style={{ marginTop: 0, color: 'var(--success-text)', borderBottom: '2px solid var(--success-text)', paddingBottom: '10px' }}>📊 Resultado Final: {safeString(correction.nota_final_calculada?.toFixed(1))} / 10.0</h3>
             <div style={{fontStyle: 'italic', color: 'var(--text-secondary)'}}><strong>Parecer da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown></div>
             <h4 style={{ marginTop: '20px', color: 'var(--heading-color)' }}>🔹 Avaliação por Aspecto:</h4>
             {safeArray(correction.avaliacoes_aspectos).map((av, k) => (
@@ -377,7 +417,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
       const aulasTitulos = aulas.map(a => a.titulo);
       
-      const res = await fetch(`${apiUrl}/generate-global-essay`, {
+      const data = await fetchStreamAsJson(`${apiUrl}/generate-global-essay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -387,10 +427,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
           api_key: userApiKey || null
         })
       });
-
-      if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
-
-      const data = await res.json();
+      
       const novaQuestao = data.discursiva ? data.discursiva : data;
 
       if (novaQuestao && novaQuestao.comando) {
@@ -417,7 +454,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
     setLoading(true); setError(null); setCorrection(null);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const res = await fetch(`${apiUrl}/correct-essay`, {
+      const data = await fetchStreamAsJson(`${apiUrl}/correct-essay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -428,12 +465,20 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
           model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
-      });
-      if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
-      const data = await res.json();
+      });      
+      
+      // --- NOVA LÓGICA: O JS SOMA A NOTA E IGNORA A MATEMÁTICA DA IA ---
+      const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
+        ? data.avaliacoes_aspectos.reduce((acc, curr) => acc + (parseFloat(curr.nota_atribuida) || 0), 0)
+        : (parseFloat(data.nota_final) || 0);
+        
+      data.nota_final_calculada = notaCalculada; // Guarda o valor correto
+      // ------------------------------------------------------------------
+
       setCorrection(data); 
       
-      await savePerformance("discursiva", area ? `${area} (Simulado Global)` : "Discursiva Global", data.nota_final, 20.0);
+      // Salva a nota real no banco
+      await savePerformance("discursiva", area ? `${area} (Simulado Global)` : "Discursiva Global", notaCalculada, 20.0);
       
     } catch (err) {
       setError("A IA corretora falhou ao processar a redação.");
@@ -502,7 +547,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
       
       {correction && (
         <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <h3 style={{ marginTop: 0, color: 'var(--success-text)', borderBottom: '2px solid var(--success-text)', paddingBottom: '10px' }}>📊 Nota no Domínio do Conteúdo: {safeString(correction.nota_final)} / 19.0</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--success-text)', borderBottom: '2px solid var(--success-text)', paddingBottom: '10px' }}>📊 Nota no Domínio do Conteúdo: {safeString(correction.nota_final_calculada?.toFixed(1))} / 19.0</h3>
           <div style={{fontStyle: 'italic', marginBottom: '20px', color: 'var(--text-secondary)'}}><strong>Parecer Oficial da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown></div>
           
           <h4 style={{ color: 'var(--heading-color)' }}>🔹 Detalhamento por Aspecto:</h4>
@@ -604,6 +649,34 @@ export default function LessonContent({ result }) {
     } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
+  const handleDisconnectAI = async () => {
+    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta? Os recursos interativos de IA serão bloqueados.")) return;
+    
+    setSavingConfig(true);
+    try {
+      const token = getAuthToken();
+      if (!token) { alert("Sessão expirada. Faça login."); return; }
+      
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      // Envia uma string vazia para apagar a chave no banco de dados
+      const res = await fetch(`${apiUrl}/users/me/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
+      });
+      
+      if (res.ok) {
+        setUserApiKey(""); // Limpa do estado da tela imediatamente
+      } else { 
+        alert("Erro ao desvincular no servidor."); 
+      }
+    } catch (err) { 
+      alert("Falha de conexão."); 
+    } finally { 
+      setSavingConfig(false); 
+    }
+  };
+
   const handleDownloadSVG = (titulo) => {
     const svgElement = document.querySelector('.mermaid-wrapper svg');
     if (!svgElement) { alert("O mapa ainda está a ser gerado."); return; }
@@ -620,19 +693,19 @@ export default function LessonContent({ result }) {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
-  // FUNÇÃO PARA GERAR O SIMULADO EM TEMPO REAL COM A IA
+  // FUNÇÃO PARA GERAR O SIMULADO EM TEMPO REAL COM A IA (COM RETRIES)
   const handleGerarSimuladoIA = async () => {
-    // --- NOVA TRAVA DE SEGURANÇA ---
     if (!userApiKey) {
       openConfigModal();
       return;
     }
-    // -------------------------------
+    
     setSimuladoAcertos(0);
     setSimuladoFinalizado(false);
     setSimuladoLoading(true);
     setSimuladoQuestoes(null);
     setSimuladoProgress(0);
+    
     let questoesGeradas = [];
     const totalAulas = safeArray(result?.aulas).length;
 
@@ -642,37 +715,66 @@ export default function LessonContent({ result }) {
       for (let i = 0; i < totalAulas; i++) {
         const aula = result.aulas[i];
         
-        setSimuladoProgress(Math.round((i / totalAulas) * 100));
+        // --- INÍCIO DA LÓGICA DE TENTATIVAS DA IA ---
+        let maxTentativas = 3;
+        let tentativaAtual = 0;
+        let sucessoNoTopico = false;
 
-        const res = await fetch(`${apiUrl}/generate-simulado-topic`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
-            topico: aula.titulo || `Tópico ${i+1}`,
-            conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
-            model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
-            api_key: userApiKey || null
-          })
-        });
+        while (tentativaAtual < maxTentativas && !sucessoNoTopico) {
+          try {
+            setSimuladoProgress(Math.round((i / totalAulas) * 100)); // Atualiza progresso
 
-        if (res.ok) {
-          const data = await res.json();
-          const quiz = safeArray(data.simulado);
-          questoesGeradas = [...questoesGeradas, ...quiz];
-        } else {
-          console.error(`Erro ao gerar questões para o tópico ${aula.titulo}`);
+            const data = await fetchStreamAsJson(`${apiUrl}/generate-simulado-topic`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
+                topico: aula.titulo || `Tópico ${i+1}`,
+                conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
+                model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
+                api_key: userApiKey || null
+              })
+            });
+            
+            // Verifica se a API da IA repassou um erro de limite (Rate Limit 429)
+            if (data && data.error) {
+              throw new Error(data.error); 
+            }
+            
+            // Salva as questões geradas
+            if (data && data.simulado) {
+              questoesGeradas.push(...data.simulado);
+              sucessoNoTopico = true;
+            } else if (Array.isArray(data)) {
+              questoesGeradas.push(...data);
+              sucessoNoTopico = true;
+            } else {
+              throw new Error("O JSON retornou vazio ou em formato imprevisto.");
+            }
+            
+          } catch (err) {
+            tentativaAtual++;
+            console.warn(`⚠️ IA falhou no tópico ${i+1} (Tentativa ${tentativaAtual}/${maxTentativas}). Refazendo... Motivo:`, err.message);
+            
+            if (tentativaAtual >= maxTentativas) {
+              throw new Error(`A IA falhou repetidamente ao processar o tópico "${aula.titulo}". Isso geralmente ocorre devido a sobrecarga no provedor do modelo gratuito.`);
+            }
+            // Aguarda 2.5 segundos antes de tentar novamente (Evita bloqueios por excesso de requisições)
+            await new Promise(resolve => setTimeout(resolve, 2500));
+          }
         }
-      }
+        // --- FIM DA LÓGICA DE TENTATIVAS ---
+      } // Fim do Loop For
       
       setSimuladoProgress(100);
       
       if (questoesGeradas.length === 0) {
-        alert("Não foi possível gerar as questões. Verifique a sua chave de API.");
+        alert("Não foi possível gerar as questões. A IA retornou respostas vazias consecutivamente.");
         setSimuladoLoading(false);
         return;
       }
 
+      // Mistura as questões antes de as apresentar
       questoesGeradas = questoesGeradas.sort(() => 0.5 - Math.random());
       setSimuladoQuestoes(questoesGeradas);
       
@@ -682,7 +784,7 @@ export default function LessonContent({ result }) {
 
     } catch (err) {
       console.error(err);
-      alert("Ocorreu um erro de conexão ao tentar gerar o simulado.");
+      alert(err.message || "Ocorreu um erro de conexão ininterrupto ao tentar gerar o simulado.");
     } finally {
       setSimuladoLoading(false);
     }
@@ -1043,8 +1145,15 @@ export default function LessonContent({ result }) {
               <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Integração de Acesso:</label>
               
               {userApiKey ? (
-                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  ✅ Conta vinculada com sucesso!
+                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>✅ Conta vinculada com sucesso!</span>
+                  <button 
+                    onClick={handleDisconnectAI} 
+                    disabled={savingConfig}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--success-text)', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', textDecoration: 'underline' }}
+                  >
+                    {savingConfig ? "Ags..." : "Desvincular"}
+                  </button>
                 </div>
               ) : (
                 <button onClick={handleConnectAI} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>

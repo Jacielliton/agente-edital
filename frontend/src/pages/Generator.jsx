@@ -272,6 +272,32 @@ export default function Generator() {
     } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
+  const handleDisconnectAI = async () => {
+    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta? Os recursos interativos de IA serão bloqueados.")) return;
+    
+    setSavingConfig(true);
+    try {
+      const token = getAuthToken();
+      if (!token) { alert("Sessão expirada. Faça login."); return; }
+      
+      const res = await fetch(`${API_URL}/users/me/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
+      });
+      
+      if (res.ok) {
+        setUserApiKey("");
+      } else { 
+        alert("Erro ao desvincular no servidor."); 
+      }
+    } catch (err) { 
+      alert("Falha de conexão."); 
+    } finally { 
+      setSavingConfig(false); 
+    }
+  };
+
   return (
     <div className="container">
       <header className="header">
@@ -394,8 +420,15 @@ export default function Generator() {
               <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Integração de Acesso:</label>
               
               {userApiKey ? (
-                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  ✅ Conta vinculada com sucesso!
+                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>✅ Conta vinculada com sucesso!</span>
+                  <button 
+                    onClick={handleDisconnectAI} 
+                    disabled={savingConfig}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--success-text)', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', textDecoration: 'underline' }}
+                  >
+                    {savingConfig ? "Ags..." : "Desvincular"}
+                  </button>
                 </div>
               ) : (
                 <button onClick={handleConnectAI} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
