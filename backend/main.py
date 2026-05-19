@@ -87,6 +87,12 @@ class StoredPlan(Base):
     visibility = Column(String, default="public") # Adicionado
     owner_id = Column(Integer, nullable=True)     # Adicionado
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+class PlanShare(Base):
+    __tablename__ = "plan_shares"
+    id = Column(Integer, primary_key=True, index=True)
+    plan_id = Column(Integer, index=True)
+    user_email = Column(String, index=True)
 
 class User(Base):
     __tablename__ = "users"
@@ -135,6 +141,9 @@ class UpdatePlanRequest(BaseModel):
     banca: Optional[str] = None
     concurso: Optional[str] = None
     visibility: Optional[str] = None  
+
+class ShareRequest(BaseModel):
+    email: str
     
 class PerformanceCreate(BaseModel):
     tipo: str
@@ -475,18 +484,24 @@ async def list_plans(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Lógica de JOIN para pegar o email do dono
+    # Lógica de JOIN para pegar o email do dono (sem duplicatas, logo, sem necessidade de .distinct)
     query = select(StoredPlan, User.email).outerjoin(User, StoredPlan.owner_id == User.id)
     
-    # Lógica de Visibilidade e Segurança
     if current_user.role != 'admin':
         if manage_mode:
             query = query.where(StoredPlan.owner_id == current_user.id)
         else:
+            # Subquery eficiente: verifica se existe registro de permissão privada sem multiplicar linhas
+            has_private_access = select(PlanShare).where(
+                PlanShare.plan_id == StoredPlan.id, 
+                PlanShare.user_email == current_user.email
+            ).exists()
+
             query = query.where(
                 or_(
                     StoredPlan.owner_id == current_user.id,
-                    StoredPlan.visibility == 'public'
+                    StoredPlan.visibility == 'public',
+                    has_private_access
                 )
             )
     
@@ -517,10 +532,20 @@ async def list_plans(
     return {"items": items, "total": total}
 
 @app.get("/plans/{plan_id}")
-async def get_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+async def get_plan(plan_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
     plan = result.scalars().first()
-    if not plan: raise HTTPException(status_code=404, detail="Plano não encontrado")
+    
+    if not plan: 
+        raise HTTPException(status_code=404, detail="Plano não encontrado")
+        
+    # VALIDAÇÃO DE SEGURANÇA E VISIBILIDADE
+    if plan.visibility == 'private' and current_user.role != 'admin' and plan.owner_id != current_user.id:
+        # Verifica se o email do usuário logado está na lista de compartilhamento (PlanShare)
+        share_result = await db.execute(select(PlanShare).filter(PlanShare.plan_id == plan_id, PlanShare.user_email == current_user.email))
+        if not share_result.scalars().first():
+            raise HTTPException(status_code=403, detail="Você não tem permissão para acessar esta aula privada.")
+            
     return plan.content
 
 @app.put("/plans/{plan_id}")
@@ -559,7 +584,49 @@ async def delete_plan(plan_id: int, current_user: User = Depends(get_current_use
     await db.delete(plan)
     await db.commit()
     return {"ok": True, "message": "Plano deletado com sucesso"}
+@app.get("/plans/{plan_id}/shares")
+async def get_plan_shares(plan_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Confirma permissão (Apenas Dono ou Admin)
+    result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+    plan = result.scalars().first()
+    if not plan or (current_user.role != 'admin' and plan.owner_id != current_user.id):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    
+    shares_result = await db.execute(select(PlanShare).filter(PlanShare.plan_id == plan_id))
+    emails = [share.user_email for share in shares_result.scalars().all()]
+    return {"emails": emails}
 
+@app.post("/plans/{plan_id}/shares")
+async def add_plan_share(plan_id: int, req: ShareRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+    plan = result.scalars().first()
+    if not plan or (current_user.role != 'admin' and plan.owner_id != current_user.id):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+
+    # Evita duplicação
+    existing = await db.execute(select(PlanShare).filter(PlanShare.plan_id == plan_id, PlanShare.user_email == req.email))
+    if existing.scalars().first():
+        return {"ok": True, "message": "Email já autorizado."}
+
+    new_share = PlanShare(plan_id=plan_id, user_email=req.email)
+    db.add(new_share)
+    await db.commit()
+    return {"ok": True, "message": "Acesso concedido."}
+
+@app.delete("/plans/{plan_id}/shares/{email}")
+async def remove_plan_share(plan_id: int, email: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(StoredPlan).filter(StoredPlan.id == plan_id))
+    plan = result.scalars().first()
+    if not plan or (current_user.role != 'admin' and plan.owner_id != current_user.id):
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+
+    share_result = await db.execute(select(PlanShare).filter(PlanShare.plan_id == plan_id, PlanShare.user_email == email))
+    share = share_result.scalars().first()
+    if share:
+        await db.delete(share)
+        await db.commit()
+        
+    return {"ok": True, "message": "Acesso revogado."}
 # ============================================================================
 # 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)
 # ============================================================================

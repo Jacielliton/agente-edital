@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight, UserPlus, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function GerenciarAulas() {
@@ -13,23 +13,41 @@ export default function GerenciarAulas() {
   const [totalPages, setTotalPages] = useState(1);
   const limitPlansPerPage = 10;
 
+  // Estados de Edição
   const [editingPlan, setEditingPlan] = useState(null);
   const [editFormData, setEditFormData] = useState({ title: '', area: '', ano: '', banca: '', concurso: '', visibility: 'public' });
   const [savingPlan, setSavingPlan] = useState(false);
 
+  // Novos Estados de Compartilhamento (Acesso Privado)
+  const [sharingPlan, setSharingPlan] = useState(null);
+  const [sharedEmails, setSharedEmails] = useState([]);
+  const [newEmail, setNewEmail] = useState("");
+  const [loadingShares, setLoadingShares] = useState(false);
+
   const getAuthToken = () => {
-    return localStorage.getItem("professor_ai_token") || "";
+    // Usando a mesma lógica robusta que você tem nos outros arquivos
+    const storages = [localStorage, sessionStorage];
+    for (const storage of storages) {
+      let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
+      if (t && t.startsWith("eyJ")) return t;
+      try {
+        const uStr = storage.getItem("user");
+        if (uStr && uStr.startsWith("{")) {
+          const uObj = JSON.parse(uStr);
+          if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
+          if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
+        }
+      } catch(e) {}
+    }
+    return "";
   };
 
   const fetchPlans = (page = 1) => {
     setLoadingPlans(true);
-    
     const token = getAuthToken();
 
     fetch(`${API_URL}/plans?page=${page}&limit=${limitPlansPerPage}&manage_mode=true`, {
-      headers: {
-        "Authorization": token ? `Bearer ${token}` : ""
-      }
+      headers: { "Authorization": token ? `Bearer ${token}` : "" }
     })
       .then((res) => {
         if (!res.ok) throw new Error("Não autorizado");
@@ -37,7 +55,6 @@ export default function GerenciarAulas() {
       })
       .then((data) => {
         setPlans(data.items || []);
-        // Calcula o total de páginas com base no retorno do backend
         const calculatedPages = Math.ceil((data.total || 0) / limitPlansPerPage);
         setTotalPages(calculatedPages > 0 ? calculatedPages : 1);
       })
@@ -49,7 +66,6 @@ export default function GerenciarAulas() {
     fetchPlans(currentPlanPage);
   }, [currentPlanPage]);
 
-  // Função de navegação
   const goToPage = (pageNumber) => {
     if (pageNumber >= 1 && pageNumber <= totalPages) {
       setCurrentPlanPage(pageNumber);
@@ -78,10 +94,7 @@ export default function GerenciarAulas() {
     try {
       const res = await fetch(`${API_URL}/plans/${editingPlan.id}`, {
         method: "PUT",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" 
-        },
+        headers: { "Content-Type": "application/json", "Authorization": token ? `Bearer ${token}` : "" },
         body: JSON.stringify(editFormData)
       });
       if (res.ok) {
@@ -89,6 +102,53 @@ export default function GerenciarAulas() {
         fetchPlans(currentPlanPage);
       } else alert("Erro ao editar a aula");
     } catch (e) { console.error(e); } finally { setSavingPlan(false); }
+  };
+
+  // --- NOVAS FUNÇÕES DE COMPARTILHAMENTO ---
+  const handleOpenShare = async (plan) => {
+    setSharingPlan(plan);
+    setLoadingShares(true);
+    try {
+      const res = await fetch(`${API_URL}/plans/${plan.id}/shares`, {
+        headers: { "Authorization": `Bearer ${getAuthToken()}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSharedEmails(data.emails || []);
+      }
+    } catch (e) { console.error(e); } finally { setLoadingShares(false); }
+  };
+
+  const handleAddEmail = async () => {
+    if (!newEmail.trim() || !newEmail.includes("@")) return alert("Digite um e-mail válido.");
+    
+    try {
+      const res = await fetch(`${API_URL}/plans/${sharingPlan.id}/shares`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
+        body: JSON.stringify({ email: newEmail.trim() })
+      });
+      
+      if (res.ok) {
+        setSharedEmails([...sharedEmails, newEmail.trim()]);
+        setNewEmail("");
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Erro ao adicionar usuário");
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleRemoveEmail = async (emailToRemove) => {
+    try {
+      const res = await fetch(`${API_URL}/plans/${sharingPlan.id}/shares/${emailToRemove}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${getAuthToken()}` }
+      });
+      if (res.ok) {
+        setSharedEmails(sharedEmails.filter(e => e !== emailToRemove));
+      }
+    } catch (e) { console.error(e); }
   };
 
   return (
@@ -141,6 +201,12 @@ export default function GerenciarAulas() {
                     <td>
                       <div className="actions-cell">
                         <Link to={`/aula/${plan.id}`} className="btn small" title="Ver"><Eye size={16} /></Link>
+                        
+                        {/* NOVO BOTÃO: Só aparece se a aula for privada */}
+                        {plan.visibility === 'private' && (
+                          <button className="btn small" onClick={() => handleOpenShare(plan)} title="Gerenciar Acesso" style={{ backgroundColor: 'var(--primary-light)', borderColor: 'var(--primary)', color: 'var(--primary)' }}><UserPlus size={16} /></button>
+                        )}
+                        
                         <button className="btn small" onClick={() => handleOpenEdit(plan)} title="Editar"><Edit size={16} /></button>
                         <button className="btn small error-btn" onClick={() => handleDeletePlan(plan.id)} title="Excluir"><Trash2 size={16} /></button>
                       </div>
@@ -171,6 +237,56 @@ export default function GerenciarAulas() {
             })}
           </div>
           <button className="btn" onClick={() => goToPage(currentPlanPage + 1)} disabled={currentPlanPage === totalPages}>Próxima <ChevronRight size={18} /></button>
+        </div>
+      )}
+
+      {/* MODAL DE COMPARTILHAMENTO (NOVO) */}
+      {sharingPlan && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+            <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border)', color: 'var(--heading-color)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <UserPlus size={22} color="var(--primary)" /> Acessos à Aula Privada
+            </h3>
+            
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+              Adicione os e-mails dos utilizadores que podem acessar <strong>{sharingPlan.title}</strong>.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+              <input 
+                type="email" 
+                placeholder="E-mail do utilizador..." 
+                value={newEmail} 
+                onChange={e => setNewEmail(e.target.value)} 
+                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} 
+                onKeyDown={(e) => e.key === 'Enter' && handleAddEmail()}
+              />
+              <button onClick={handleAddEmail} className="btn primary small">Adicionar</button>
+            </div>
+
+            <div style={{ background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)', maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
+              {loadingShares ? (
+                <div style={{ padding: '15px', textAlign: 'center', color: 'var(--text-muted)' }}>A carregar acessos...</div>
+              ) : sharedEmails.length === 0 ? (
+                <div style={{ padding: '15px', textAlign: 'center', color: 'var(--text-muted)' }}>Apenas você tem acesso a esta aula.</div>
+              ) : (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                  {sharedEmails.map((email, i) => (
+                    <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 15px', borderBottom: i < sharedEmails.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                      <span style={{ color: 'var(--text-main)', fontSize: '0.9rem' }}>{email}</span>
+                      <button onClick={() => handleRemoveEmail(email)} style={{ background: 'none', border: 'none', color: 'var(--error-text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Remover Acesso">
+                        <X size={16} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setSharingPlan(null)} className="btn small" style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)' }}>Fechar</button>
+            </div>
+          </div>
         </div>
       )}
 
