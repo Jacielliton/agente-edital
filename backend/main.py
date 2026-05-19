@@ -72,6 +72,8 @@ class SimuladoTopicRequest(BaseModel):
     conteudo: str
     model: Optional[str] = None
     api_key: Optional[str] = None
+    qtd_questoes: Optional[int] = 5
+    nivel: Optional[str] = "Superior"
     
 class StoredPlan(Base):
     __tablename__ = "study_plans"
@@ -1598,15 +1600,20 @@ async def chat_tutor(req: ChatMessageRequest):
 async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
     if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
     
+    qtd = req.qtd_questoes or 5
+    nivel = req.nivel or "Superior"
+    
     prompt = f"""
     Atue como Banca Examinadora de Alto Nível ({req.area}).
-    Sua missão é criar um SIMULADO de fixação. Com base estritamente no conteúdo abaixo, crie EXATAMENTE 5 QUESTÕES inéditas de múltipla escolha focadas no tópico "{req.topico}".
+    Nível de Exigência: Ensino {nivel}. O aprofundamento técnico, o vocabulário e a complexidade da cobrança devem refletir exatamente o rigor de provas de concursos públicos deste nível.
+
+    Sua missão é criar um SIMULADO de fixação. Com base estritamente no conteúdo abaixo, crie EXATAMENTE {qtd} QUESTÕES inéditas de múltipla escolha focadas no tópico "{req.topico}".
 
     CONTEÚDO BASE PARA AS QUESTÕES:
     {req.conteudo[:8000]}
 
     REGRAS:
-    1. Crie exatamente 5 questões desafiadoras.
+    1. Crie exatamente {qtd} questões desafiadoras.
     2. Gere exatamente 4 alternativas (A, B, C, D) para cada uma.
     3. Justifique tecnicamente o porquê da correta e o erro das demais.
 

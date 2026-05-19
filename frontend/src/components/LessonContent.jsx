@@ -599,12 +599,15 @@ export default function LessonContent({ result }) {
     window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
   };
   
+  
   // ESTADOS PARA O SIMULADO GERAL COM IA
   const [simuladoQuestoes, setSimuladoQuestoes] = useState(null);
   const [simuladoLoading, setSimuladoLoading] = useState(false);
   const [simuladoProgress, setSimuladoProgress] = useState(0);
   const [simuladoAcertos, setSimuladoAcertos] = useState(0);
   const [simuladoFinalizado, setSimuladoFinalizado] = useState(false);
+  const [simuladoQtd, setSimuladoQtd] = useState(5);
+  const [simuladoNivel, setSimuladoNivel] = useState("Superior");
 
   useEffect(() => {
     const fetchDBSettings = async () => {
@@ -732,7 +735,9 @@ export default function LessonContent({ result }) {
                 topico: aula.titulo || `Tópico ${i+1}`,
                 conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
                 model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
-                api_key: userApiKey || null
+                api_key: userApiKey || null,
+                qtd_questoes: parseInt(simuladoQtd, 10), // <-- Adicionado
+                nivel: simuladoNivel                     // <-- Adicionado
               })
             });
             
@@ -960,9 +965,37 @@ export default function LessonContent({ result }) {
       <div style={{ marginTop: '50px', padding: '40px 20px', background: 'linear-gradient(135deg, var(--bg) 0%, var(--hover-bg) 100%)', borderRadius: '12px', border: '1px solid var(--border)', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
         <h2 style={{ color: 'var(--heading-color)', margin: '0 0 15px 0', fontSize: '1.8rem' }}>🏆 Simulado Final Inédito (Gerado por IA)</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '25px', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
-          A Inteligência Artificial vai analisar o conteúdo estudado e criar <strong>5 questões inéditas para cada módulo</strong> em tempo real, usando a sua Chave API.
+          A Inteligência Artificial vai analisar o conteúdo estudado e criar questões inéditas em tempo real.
         </p>
         
+        {/* NOVOS CONTROLES DE CONFIGURAÇÃO DO SIMULADO */}
+        {!simuladoLoading && !simuladoQuestoes && (
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '25px', flexWrap: 'wrap' }}>
+            <div style={{ textAlign: 'left' }}>
+              <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Nível de Exigência:</label>
+              <select 
+                value={simuladoNivel} 
+                onChange={(e) => setSimuladoNivel(e.target.value)} 
+                style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '1rem', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="Médio">Ensino Médio</option>
+                <option value="Superior">Ensino Superior</option>
+              </select>
+            </div>
+            <div style={{ textAlign: 'left' }}>
+              <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Questões por Módulo:</label>
+              <input 
+                type="number" 
+                min="1" 
+                max="10" 
+                value={simuladoQtd} 
+                onChange={(e) => setSimuladoQtd(e.target.value)} 
+                style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '1rem', width: '100px', outline: 'none' }} 
+              />
+            </div>
+          </div>
+        )}
+
         {simuladoLoading ? (
           <div style={{ margin: '0 auto', maxWidth: '500px', padding: '20px', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
             <div style={{ marginBottom: '10px', fontWeight: 'bold', color: 'var(--primary)', fontSize: '1.1rem' }}>
