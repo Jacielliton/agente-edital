@@ -102,7 +102,8 @@ class User(Base):
     role = Column(String, default="user") 
     api_key = Column(String, nullable=True)          
     preferred_model = Column(String, nullable=True)  
-    can_manage_lessons = Column(Boolean, default=False) # Adicionado
+    can_manage_lessons = Column(Boolean, default=False) 
+    session_version = Column(Integer, default=1)
 
 # ============================================================================
 # 3. SEGURANÇA (JWT & HASH)
@@ -225,10 +226,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     try:
         payload = jwt.decode(clean_token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        token_session_version = payload.get("session_version") # <--- LÊ DO TOKEN
+        
         if email is None:
             raise credentials_exception
     except JWTError as e:
-        print(f"⚠️ [Auth] Falha no Token JWT: {e} | Início do token: {clean_token[:15]}...")
+        print(f"⚠️ [Auth] Falha no Token JWT: {e}")
         raise credentials_exception
         
     result = await db.execute(select(User).filter(User.email == email))
@@ -236,6 +239,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     
     if user is None:
         raise credentials_exception
+        
+    # === SISTEMA ANTI-COMPARTILHAMENTO: VALIDA A SESSÃO ===
+    # Se o token tem uma versão, mas ela é diferente da versão atual no banco,
+    # significa que alguém fez login DEPOIS deste token ter sido gerado.
+    if token_session_version is not None and user.session_version != token_session_version:
+        raise HTTPException(
+            status_code=401,
+            detail="CONFLITO_DE_SESSAO", # Uma string específica para o Frontend reconhecer
+            headers={"WWW-Authenticate": "Bearer"},
+        )
         
     return user
 
@@ -376,21 +389,27 @@ async def login(form_data: UserLogin, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
     
-    # Embutimos a permissão dentro do payload do JWT (opcional, mas recomendado)
+    # === SISTEMA ANTI-COMPARTILHAMENTO: INCREMENTA A SESSÃO ===
+    # Se for nulo (usuários antigos), define como 1. Depois soma 1.
+    user.session_version = (user.session_version or 0) + 1
+    await db.commit()
+    await db.refresh(user)
+    
+    # Embutimos a permissão e a VERSÃO DA SESSÃO dentro do payload do JWT
     token_data = {
         "sub": user.email, 
         "role": user.role,
-        "can_manage_lessons": user.can_manage_lessons
+        "can_manage_lessons": user.can_manage_lessons,
+        "session_version": user.session_version # <--- NOVO: INJETADO NO TOKEN
     }
     access_token = create_access_token(token_data)
     
-    # Retornamos a permissão explicitamente no JSON para o React salvar no localStorage
     return {
         "access_token": access_token, 
         "token_type": "bearer", 
         "role": user.role, 
         "email": user.email,
-        "can_manage_lessons": user.can_manage_lessons  # <-- NOVO CAMPO ADICIONADO
+        "can_manage_lessons": user.can_manage_lessons
     }
 
 def update_env_file(path: str, updates: dict) -> None:

@@ -9,18 +9,63 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // =======================================================================
+  // SISTEMA ANTI-COMPARTILHAMENTO: INTERCEPTOR GLOBAL DE FETCH
+  // =======================================================================
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    
+    // Sobrescrevemos o fetch nativo temporariamente para monitorar as respostas
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args);
+      
+      // Se a resposta for 401 (Não Autorizado), verificamos o detalhe do erro
+      if (response.status === 401) {
+        try {
+          // Clonamos a resposta para ler o JSON sem bloquear o fluxo original da aplicação
+          const clone = response.clone();
+          const data = await clone.json();
+          
+          if (data.detail === "CONFLITO_DE_SESSAO") {
+            alert("🔒 Segurança: A sua conta foi conectada noutro dispositivo. Você foi desconectado automaticamente.");
+            
+            // Limpeza implacável de todos os vestígios de sessão
+            localStorage.removeItem("professor_ai_token");
+            localStorage.removeItem("access_token");
+            sessionStorage.clear();
+            
+            setUser(null);
+            window.location.href = "/login"; // Força o redirecionamento
+          }
+        } catch (e) {
+          // Se a resposta 401 não tiver JSON ou falhar, ignoramos silenciosamente
+        }
+      }
+      return response;
+    };
+
+    return () => {
+      // Limpeza: Restaura o fetch original caso o AuthProvider seja desmontado
+      window.fetch = originalFetch; 
+    };
+  }, []);
+
+  // =======================================================================
+  // CARREGAMENTO INICIAL DA SESSÃO
+  // =======================================================================
   useEffect(() => {
     const token = localStorage.getItem("professor_ai_token");
     if (token) {
       fetch(`${API_URL}/users/me`, {
         headers: { Authorization: `Bearer ${token}` }
       })
-      .then(res => {
+      .then(async res => {
         if (res.ok) return res.json();
         throw new Error("Token inválido");
       })
       .then(data => setUser(data))
       .catch(() => {
+        // Se der erro na checagem inicial (token expirado ou conflito), limpa o estado
         localStorage.removeItem("professor_ai_token");
         setUser(null);
       })
@@ -30,9 +75,11 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // =======================================================================
+  // FUNÇÃO DE LOGIN
+  // =======================================================================
   const login = async (email, password) => {
     try {
-      // CORREÇÃO: Enviando JSON com "email" e "password" exatamente como o Pydantic do backend exige
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -44,7 +91,7 @@ export const AuthProvider = ({ children }) => {
         const token = data.access_token || data.token; 
         localStorage.setItem("professor_ai_token", token);
         
-        // Puxa os dados do usuário logado
+        // Puxa os dados do usuário recém-logado
         const userRes = await fetch(`${API_URL}/users/me`, {
           headers: { Authorization: `Bearer ${token}` }
         });
