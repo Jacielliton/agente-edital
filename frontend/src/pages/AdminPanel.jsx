@@ -25,26 +25,40 @@ export default function AdminPanel() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   const [users, setUsers] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]); // <-- Novo estado para XP/Ranking
   const [loadingUsers, setLoadingUsers] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(""); // Novo estado para pesquisa
+  const [searchTerm, setSearchTerm] = useState(""); 
 
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [userFormData, setUserFormData] = useState({ email: '', password: '', role: 'user', can_manage_lessons: false });
   const [savingUser, setSavingUser] = useState(false);
 
-  const fetchUsers = () => {
+  // Modificado para buscar Usuários e Leaderboard simultaneamente
+  const fetchUsers = async () => {
     setLoadingUsers(true);
-    fetch(`${API_URL}/users`, {
-      headers: { "Authorization": `Bearer ${getAuthToken()}` } // <-- TOKEN INJETADO AQUI
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Acesso negado ou token inválido");
-        return res.json();
-      })
-      .then((data) => setUsers(data || []))
-      .catch((err) => console.error(err))
-      .finally(() => setLoadingUsers(false));
+    const token = getAuthToken();
+
+    try {
+      const [resUsers, resLead] = await Promise.all([
+        fetch(`${API_URL}/users`, { headers: { "Authorization": `Bearer ${token}` } }),
+        fetch(`${API_URL}/performance/leaderboard`, { headers: { "Authorization": `Bearer ${token}` } })
+      ]);
+
+      if (!resUsers.ok) throw new Error("Acesso negado ou token inválido");
+      
+      const usersData = await resUsers.json();
+      setUsers(usersData || []);
+
+      if (resLead.ok) {
+        const leadData = await resLead.json();
+        setLeaderboard(leadData || []);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar dados do painel admin:", err);
+    } finally {
+      setLoadingUsers(false);
+    }
   };
 
   useEffect(() => {
@@ -77,7 +91,7 @@ export default function AdminPanel() {
         method,
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${getAuthToken()}` // <-- TOKEN INJETADO AQUI
+          "Authorization": `Bearer ${getAuthToken()}` 
         },
         body: JSON.stringify(payload)
       });
@@ -102,7 +116,7 @@ export default function AdminPanel() {
     try {
       const res = await fetch(`${API_URL}/users/${id}`, { 
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${getAuthToken()}` } // <-- TOKEN INJETADO AQUI
+        headers: { "Authorization": `Bearer ${getAuthToken()}` } 
       });
       if (res.ok) {
         setUsers(users.filter((u) => u.id !== id));
@@ -126,7 +140,7 @@ export default function AdminPanel() {
         <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Shield size={28} color="var(--primary)" /> Painel Administrativo
         </h1>
-        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Gerencie os acessos e permissões dos usuários do sistema.</p>
+        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Gerencie os acessos, permissões e acompanhe o XP dos usuários do sistema.</p>
       </div>
 
       <div className="panel">
@@ -157,6 +171,7 @@ export default function AdminPanel() {
                 <tr>
                   <th>ID</th>
                   <th>Email</th>
+                  <th>XP / Elo</th> {/* <-- Nova Coluna */}
                   <th>Nível de Acesso</th>
                   <th>Permissões Extras</th>
                   <th>Ações</th>
@@ -165,43 +180,59 @@ export default function AdminPanel() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
                       Nenhum utilizador encontrado.
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((u) => (
-                    <tr key={u.id}>
-                      <td style={{ color: 'var(--text-secondary)' }}>#{u.id}</td>
-                      <td style={{ color: 'var(--text-main)' }}><strong>{u.email}</strong></td>
-                      <td>
-                        {u.role === 'admin' ? (
-                           <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#1e293b', color: '#fff' }}>
-                             ADMIN GLOBAL
-                           </span>
-                        ) : (
-                           <span style={{ color: 'var(--text-main)', textTransform: 'uppercase', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                             {u.role}
-                           </span>
-                        )}
-                      </td>
-                      <td>
-                        {u.can_manage_lessons ? (
-                          <span style={{ color: 'var(--primary)', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                            ✅ Gerenciar Aulas
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>Apenas Leitura</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="actions-cell">
-                          <button className="btn small" onClick={() => handleOpenUserModal(u)} disabled={u.id === 1} title="Editar Usuário"><Edit size={16} /></button>
-                          <button className="btn small error-btn" onClick={() => handleDeleteUser(u.id)} disabled={u.id === 1} title="Excluir"><Trash2 size={16} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                  filteredUsers.map((u) => {
+                    // Cruzamento dos dados: busca o usuário no Ranking Global pelo e-mail
+                    const userStats = leaderboard.find(l => l.email_completo === u.email);
+                    const userXP = userStats ? Math.floor(userStats.xp) : 0;
+                    const userElo = userStats ? userStats.elo : "Iniciante";
+
+                    return (
+                      <tr key={u.id}>
+                        <td style={{ color: 'var(--text-secondary)' }}>#{u.id}</td>
+                        <td style={{ color: 'var(--text-main)' }}><strong>{u.email}</strong></td>
+                        
+                        {/* Nova Célula de XP/Elo */}
+                        <td>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <strong style={{ color: 'var(--primary)' }}>{userXP} XP</strong>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{userElo}</span>
+                          </div>
+                        </td>
+
+                        <td>
+                          {u.role === 'admin' ? (
+                             <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#1e293b', color: '#fff' }}>
+                               ADMIN GLOBAL
+                             </span>
+                          ) : (
+                             <span style={{ color: 'var(--text-main)', textTransform: 'uppercase', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                               {u.role}
+                             </span>
+                          )}
+                        </td>
+                        <td>
+                          {u.can_manage_lessons ? (
+                            <span style={{ color: 'var(--primary)', backgroundColor: 'var(--primary-light)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                              ✅ Gerenciar Aulas
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>Apenas Leitura</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="actions-cell">
+                            <button className="btn small" onClick={() => handleOpenUserModal(u)} disabled={u.id === 1} title="Editar Usuário"><Edit size={16} /></button>
+                            <button className="btn small error-btn" onClick={() => handleDeleteUser(u.id)} disabled={u.id === 1} title="Excluir"><Trash2 size={16} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

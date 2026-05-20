@@ -1524,6 +1524,58 @@ async def get_my_performance(
     )
     return result.scalars().all()
 
+# =========================================================================
+# NOVA ROTA: LEADERBOARD GLOBAL (RANKING)
+# =========================================================================
+@app.get("/performance/leaderboard")
+async def get_leaderboard(db: AsyncSession = Depends(get_db)):
+    # Busca todos os registros de simulados do banco
+    result = await db.execute(select(PerformanceRecord).filter(PerformanceRecord.tipo == 'simulado'))
+    records = result.scalars().all()
+    
+    user_stats = {}
+    for r in records:
+        email = r.user_email
+        if email not in user_stats:
+            user_stats[email] = {'simulados': 0, 'acertos': 0, 'questoes': 0}
+        user_stats[email]['simulados'] += 1
+        user_stats[email]['acertos'] += r.nota_obtida
+        user_stats[email]['questoes'] += r.nota_maxima
+        
+    leaderboard = []
+    for email, stats in user_stats.items():
+        acertos = stats['acertos']
+        erros = stats['questoes'] - acertos
+        
+        # NOVA FÓRMULA DE XP COM PUNIÇÃO DE ERROS: 
+        # +50 por simulado concluído | +10 por questão correta | -5 por questão errada
+        xp = (stats['simulados'] * 50) + (acertos * 10) - (erros * 5)
+        xp = max(0, xp) # Impede que o XP fique negativo
+        
+        if xp >= 5000: elo = "💎 Elite"
+        elif xp >= 2000: elo = "🔷 Diamante"
+        elif xp >= 1000: elo = "🏆 Ouro"
+        elif xp >= 500: elo = "🥈 Prata"
+        elif xp >= 100: elo = "🥉 Bronze"
+        else: elo = "Iniciante"
+        
+        leaderboard.append({
+            "email_completo": email, # Usado no frontend para achar a posição do usuário atual
+            "nickname": email.split('@')[0], # Oculta o domínio para manter a privacidade na tabela pública
+            "xp": xp,
+            "elo": elo,
+            "simulados_feitos": stats['simulados']
+        })
+        
+    # Ordena do maior XP para o menor
+    leaderboard.sort(key=lambda x: x['xp'], reverse=True)
+    
+    # Adiciona a posição oficial
+    for i, entry in enumerate(leaderboard):
+        entry['posicao'] = i + 1
+        
+    return leaderboard
+
 @app.post("/analyze")
 async def analyze_syllabus_deep(request: SyllabusRequest):
     if not request.text or not request.text.strip():
