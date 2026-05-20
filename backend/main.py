@@ -65,6 +65,9 @@ class PerformanceRecord(Base):
     nota_obtida = Column(Float)
     nota_maxima = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
+    nivel = Column(String, nullable=True)
+    formato = Column(String, nullable=True)
+    concurso = Column(String, nullable=True)
     
 class SimuladoTopicRequest(BaseModel):
     area: str
@@ -74,6 +77,7 @@ class SimuladoTopicRequest(BaseModel):
     api_key: Optional[str] = None
     qtd_questoes: Optional[int] = 5
     nivel: Optional[str] = "Superior"
+    formato: Optional[str] = "Múltipla Escolha"
     
 class StoredPlan(Base):
     __tablename__ = "study_plans"
@@ -151,6 +155,9 @@ class PerformanceCreate(BaseModel):
     tema: str
     nota_obtida: float
     nota_maxima: float
+    nivel: Optional[str] = None
+    formato: Optional[str] = None
+    concurso: Optional[str] = None
 
 class PerformanceResponse(BaseModel):
     id: int
@@ -158,6 +165,9 @@ class PerformanceResponse(BaseModel):
     tema: str
     nota_obtida: float
     nota_maxima: float
+    nivel: Optional[str] = None
+    formato: Optional[str] = None
+    concurso: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
     
@@ -1464,12 +1474,37 @@ async def save_performance(
     current_user: User = Depends(get_current_user), 
     db: AsyncSession = Depends(get_db)
 ):
+    # Lógica de Substituição (UPSERT)
+    if record.tipo == 'simulado':
+        existing_query = select(PerformanceRecord).filter(
+            PerformanceRecord.user_email == current_user.email,
+            PerformanceRecord.tipo == record.tipo,
+            PerformanceRecord.tema == record.tema,
+            PerformanceRecord.concurso == record.concurso,
+            PerformanceRecord.nivel == record.nivel,
+            PerformanceRecord.formato == record.formato
+        )
+        result = await db.execute(existing_query)
+        existing_record = result.scalars().first()
+
+        if existing_record:
+            # Se for EXATAMENTE o mesmo simulado, apenas atualiza a nota e a data
+            existing_record.nota_obtida = record.nota_obtida
+            existing_record.nota_maxima = record.nota_maxima
+            existing_record.created_at = datetime.utcnow()
+            await db.commit()
+            return {"ok": True, "message": "Desempenho atualizado!"}
+
+    # Se for Discursiva ou for um Simulado diferente (com parâmetros diferentes), cria um novo
     new_record = PerformanceRecord(
         user_email=current_user.email,
         tipo=record.tipo,
         tema=record.tema,
         nota_obtida=record.nota_obtida,
-        nota_maxima=record.nota_maxima
+        nota_maxima=record.nota_maxima,
+        nivel=record.nivel,
+        formato=record.formato,
+        concurso=record.concurso
     )
     db.add(new_record)
     await db.commit()
@@ -1688,20 +1723,37 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
     
     qtd = req.qtd_questoes or 5
     nivel = req.nivel or "Superior"
+    formato = req.formato or "Múltipla Escolha"
+
+    # Define dinamicamente as regras baseadas na escolha
+    regras_formato = ""
+    if formato == "Múltipla Escolha":
+        regras_formato = """
+        2. Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão.
+        3. REGRA CRÍTICA DE MÚLTIPLA ESCOLHA: As alternativas incorretas (distratores) NÃO PODEM ser obviamente absurdas. Crie pegadinhas semânticas ou use exceções à regra.
+        4. Justifique tecnicamente por que cada alternativa está certa ou errada.
+        """
+        json_alternativas = '"alternativas": ["A) ...", "B) ...", "C) ...", "D) ...", "E) ..."],'
+    else:
+        regras_formato = """
+        2. O formato deve ser CERTO ou ERRADO. O campo alternativas deve ter exatamente duas opções: ["A) Certo", "B) Errado"].
+        3. REGRA CRÍTICA CERTO/ERRADO: Formule a afirmação com vocabulário técnico. Se a resposta for "Errado", o erro deve ser extremamente sutil (ex: inverter um conceito).
+        4. Justifique o acerto ou o erro detalhadamente.
+        """
+        json_alternativas = '"alternativas": ["A) Certo", "B) Errado"],'
     
     prompt = f"""
     Atue como Banca Examinadora de Alto Nível ({req.area}).
     Nível de Exigência: Ensino {nivel}. O aprofundamento técnico, o vocabulário e a complexidade da cobrança devem refletir exatamente o rigor de provas de concursos públicos deste nível.
 
-    Sua missão é criar um SIMULADO de fixação. Com base estritamente no conteúdo abaixo, crie EXATAMENTE {qtd} QUESTÕES inéditas de múltipla escolha focadas no tópico "{req.topico}".
+    Sua missão é criar um SIMULADO de fixação. Com base estritamente no conteúdo abaixo, crie EXATAMENTE {qtd} QUESTÕES inéditas focadas no tópico "{req.topico}".
 
     CONTEÚDO BASE PARA AS QUESTÕES:
     {req.conteudo[:8000]}
 
     REGRAS:
     1. Crie exatamente {qtd} questões desafiadoras.
-    2. Gere exatamente 4 alternativas (A, B, C, D) para cada uma.
-    3. Justifique tecnicamente o porquê da correta e o erro das demais.
+    {regras_formato}
 
     RETORNE APENAS ESTE JSON EXATO:
     {{
@@ -1710,13 +1762,12 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
           "contexto_disciplina": "{req.area}",
           "contexto_topico": "{req.topico}",
           "enunciado": "A situação-problema...",
-          "alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],
-          "resposta_correta": "C",
+          {json_alternativas}
+          "resposta_correta": "A",
           "comentario_da_correta": "Explicação técnica...",
           "por_que_as_outras_estao_erradas": {{
-            "A": "Erro da A",
             "B": "Erro da B",
-            "D": "Erro da D"
+            "C": "Erro da C"
           }}
         }}
       ]

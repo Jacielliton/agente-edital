@@ -37,7 +37,7 @@ const getAuthToken = () => {
 };
 
 // NOVA FUNÇÃO: Dispara o salvamento da nota para o backend
-const savePerformance = async (tipo, tema, notaObtida, notaMaxima) => {
+const savePerformance = async (tipo, tema, notaObtida, notaMaxima, nivel, formato, concurso) => {
   const token = getAuthToken();
   if (!token) return; 
 
@@ -53,11 +53,14 @@ const savePerformance = async (tipo, tema, notaObtida, notaMaxima) => {
         tipo: tipo,
         tema: tema,
         nota_obtida: parseFloat(notaObtida) || 0,
-        nota_maxima: parseFloat(notaMaxima) || 10.0
+        nota_maxima: parseFloat(notaMaxima) || 10.0,
+        nivel: nivel || null,
+        formato: formato || null,
+        concurso: concurso || null
       })
     });
   } catch (err) {
-    console.error("Erro ao salvar desempenho silenciosamente:", err);
+    console.error("Erro ao salvar desempenho:", err);
   }
 };
 // NOVA FUNÇÃO: Lê o stream e possui extração inteligente de blocos JSON
@@ -608,6 +611,7 @@ export default function LessonContent({ result }) {
   const [simuladoFinalizado, setSimuladoFinalizado] = useState(false);
   const [simuladoQtd, setSimuladoQtd] = useState(5);
   const [simuladoNivel, setSimuladoNivel] = useState("Superior");
+  const [simuladoFormato, setSimuladoFormato] = useState("Múltipla Escolha");
 
   useEffect(() => {
     const fetchDBSettings = async () => {
@@ -736,8 +740,9 @@ export default function LessonContent({ result }) {
                 conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
                 model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
                 api_key: userApiKey || null,
-                qtd_questoes: parseInt(simuladoQtd, 10), // <-- Adicionado
-                nivel: simuladoNivel                     // <-- Adicionado
+                qtd_questoes: parseInt(simuladoQtd, 10), 
+                nivel: simuladoNivel,
+                formato: simuladoFormato // <--- ADICIONE ESTA LINHA
               })
             });
             
@@ -982,6 +987,21 @@ export default function LessonContent({ result }) {
                 <option value="Superior">Ensino Superior</option>
               </select>
             </div>
+
+            {/* ---> ADICIONE ESTE BLOCO DO FORMATO <--- */}
+            <div style={{ textAlign: 'left' }}>
+              <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Formato:</label>
+              <select 
+                value={simuladoFormato} 
+                onChange={(e) => setSimuladoFormato(e.target.value)} 
+                style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '1rem', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="Múltipla Escolha">Múltipla Escolha (A-E)</option>
+                <option value="Certo/Errado">Certo ou Errado</option>
+              </select>
+            </div>
+            {/* -------------------------------------- */}
+
             <div style={{ textAlign: 'left' }}>
               <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Questões por Módulo:</label>
               <input 
@@ -1050,7 +1070,16 @@ export default function LessonContent({ result }) {
             {!simuladoFinalizado ? (
               <button 
                 onClick={async () => {
-                  await savePerformance("simulado", result?.area_identificada ? `${result.area_identificada} (Simulado Geral)` : "Simulado Geral", simuladoAcertos, simuladoQuestoes.length);
+                  const concursoAtual = result?.banca ? `${result.banca} ${result.concurso || ''}`.trim() : (result?.concurso || "Geral");
+                  await savePerformance(
+                    "simulado", 
+                    result?.area_identificada ? `${result.area_identificada} (Simulado Geral)` : "Simulado Geral", 
+                    simuladoAcertos, 
+                    simuladoQuestoes.length,
+                    simuladoNivel,      // <--- Novo
+                    simuladoFormato,    // <--- Novo
+                    concursoAtual       // <--- Novo
+                  );
                   setSimuladoFinalizado(true);
                 }} 
                 style={{ padding: '15px 30px', background: 'var(--success-bg)', color: 'var(--success-text)', border: '1px solid var(--success-text)', borderRadius: '8px', fontWeight: 'bold', fontSize: '1.2rem', cursor: 'pointer' }}

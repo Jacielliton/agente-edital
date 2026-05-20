@@ -5,20 +5,20 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:senha123@localhost:5445/agente_edital")
-# Ajuste a URL caso o asyncpg exija formato padrão sem o '+asyncpg'
 if DATABASE_URL.startswith("postgresql+asyncpg://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
 
-async def add_column():
+async def update_columns():
     print("Conectando ao banco de dados...")
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        # Adiciona a coluna com valor padrão 1
-        await conn.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER DEFAULT 1')
-        print("✅ Coluna 'session_version' adicionada com sucesso na tabela users!")
+        await conn.execute('ALTER TABLE performance_records ADD COLUMN IF NOT EXISTS nivel VARCHAR(100)')
+        await conn.execute('ALTER TABLE performance_records ADD COLUMN IF NOT EXISTS formato VARCHAR(100)')
+        await conn.execute('ALTER TABLE performance_records ADD COLUMN IF NOT EXISTS concurso VARCHAR(150)')
+        print("✅ Colunas 'nivel', 'formato' e 'concurso' adicionadas com sucesso!")
     except Exception as e:
-        print(f"⚠️ Erro ao alterar tabela: {e}")
+        print(f"⚠️ Erro: {e}")
     finally:
         await conn.close()
 
-asyncio.run(add_column())
+asyncio.run(update_columns())
