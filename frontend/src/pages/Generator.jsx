@@ -35,7 +35,7 @@ function readJsonFile(file) {
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
   for (const storage of storages) {
-    let t = storage.getItem("access_token") || storage.getItem("token");
+    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
     if (t && t.startsWith("eyJ")) return t;
     try {
       const uStr = storage.getItem("user");
@@ -45,19 +45,6 @@ const getAuthToken = () => {
         if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
       }
     } catch(e) {}
-    for (let i = 0; i < storage.length; i++) {
-      const key = storage.key(i);
-      const val = storage.getItem(key);
-      if (typeof val === "string" && val.startsWith("eyJ")) return val;
-      try {
-        if (val && val.startsWith("{")) {
-          const obj = JSON.parse(val);
-          for (let k in obj) {
-            if (typeof obj[k] === "string" && obj[k].startsWith("eyJ")) return obj[k];
-          }
-        }
-      } catch(e) {}
-    }
   }
   return null;
 };
@@ -69,7 +56,7 @@ export default function Generator() {
   const [questionFormat, setQuestionFormat] = useState("Múltipla Escolha");
   const [questionLevel, setQuestionLevel] = useState("Superior");
 
-  // Config do Servidor (Para fallback de Modelos)
+  // Config do Servidor
   const [availableModels, setAvailableModels] = useState([]);
   const [model, setModel] = useState(""); 
 
@@ -80,9 +67,10 @@ export default function Generator() {
   const [userModel, setUserModel] = useState("");
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // Execução
+  // Execução e UX
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [progress, setProgress] = useState(0); // <-- NOVO: Barra de progresso
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
@@ -94,6 +82,18 @@ export default function Generator() {
   const [saveVisibility, setSaveVisibility] = useState("public");
 
   const timeoutsRef = useRef([]);
+
+  // Recupera o rascunho salvo no LocalStorage ao carregar a página
+  useEffect(() => {
+    const draft = localStorage.getItem("generator_draft_text");
+    if (draft) setText(draft);
+  }, []);
+
+  const handleTextChange = (e) => {
+    const newText = e.target.value;
+    setText(newText);
+    localStorage.setItem("generator_draft_text", newText); // <-- NOVO: Auto-save do rascunho
+  };
 
   const fetchConfig = async () => {
     try {
@@ -181,20 +181,25 @@ export default function Generator() {
   };
 
   const run = async () => {
-    // NOVA TRAVA: Se não houver chave individual do utilizador e for gerar, avisa.
-    // Opcionalmente, pode forçar o bloqueio aqui caso o servidor exija.
-    
+    if (text.trim().length < 50) {
+      setError("⚠️ O texto do edital é muito curto. Cole pelo menos um parágrafo válido.");
+      return;
+    }
+
     setError("");
     setResult(null);
     setLoading(true);
-    setStatus("Iniciando análise...");
+    setProgress(5); // Inicia progresso
+    setStatus("Iniciando análise do edital...");
 
     timeoutsRef.current.forEach((id) => clearTimeout(id));
     timeoutsRef.current = [];
 
-    timeoutsRef.current.push(setTimeout(() => setStatus("Arquiteto: estruturando módulos e âncoras..."), 500));
-    timeoutsRef.current.push(setTimeout(() => setStatus("Pesquisador/Professor: criando aulas aprofundadas..."), 1800));
-    timeoutsRef.current.push(setTimeout(() => setStatus("Glossário e questões: consolidando..."), 3500));
+    // <-- NOVO: Progressões de status com preenchimento de barra simulada
+    timeoutsRef.current.push(setTimeout(() => { setStatus("Arquiteto IA: mapeando módulos e estrutura..."); setProgress(25); }, 1500));
+    timeoutsRef.current.push(setTimeout(() => { setStatus("Pesquisador IA: aprofundando conteúdo teórico..."); setProgress(55); }, 5000));
+    timeoutsRef.current.push(setTimeout(() => { setStatus("Professor IA: criando exemplos e analogias..."); setProgress(75); }, 10000));
+    timeoutsRef.current.push(setTimeout(() => { setStatus("Banca IA: elaborando questões e revisando..."); setProgress(90); }, 15000));
 
     try {
       const token = getAuthToken();
@@ -206,22 +211,32 @@ export default function Generator() {
         },
         body: JSON.stringify({ 
           text, 
-          model: userModel || model || null, // Prioriza o modelo individual do utilizador
+          model: userModel || model || null, 
           question_format: questionFormat,
           question_level: questionLevel,
-          api_key: userApiKey || null // Passa a chave individual para o backend caso configurado
+          api_key: userApiKey || null 
         }),
       });
 
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data?.detail || "Erro ao chamar API.");
 
+      setProgress(100);
       setResult(data);
-      setStatus("Concluído ✅");
+      setStatus("Conteúdo gerado com sucesso! ✅");
+      
+      // Limpa o rascunho após sucesso
+      localStorage.removeItem("generator_draft_text");
+      
+      setTimeout(() => {
+        document.getElementById('gerador-resultado')?.scrollIntoView({ behavior: 'smooth' });
+      }, 500);
+
     } catch (e) {
       console.error(e);
-      setError(e.message || "Erro inesperado.");
+      setError(e.message || "Erro inesperado ao gerar a aula.");
       setStatus("");
+      setProgress(0);
     } finally {
       setLoading(false);
       timeoutsRef.current.forEach((id) => clearTimeout(id));
@@ -244,7 +259,6 @@ export default function Generator() {
     }
   };
 
-  // Funções do Modal de Configuração de IA
   const handleConnectAI = () => {
     const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
     window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
@@ -301,8 +315,8 @@ export default function Generator() {
   return (
     <div className="container">
       <header className="header">
-        <h1>Gerador de Aulas</h1>
-        <p>Crie novos conteúdos a partir de editais.</p>
+        <h1 style={{ color: 'var(--heading-color)', margin: '0 0 10px 0' }}>Gerador de Aulas AI</h1>
+        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Transforme editais secos em conteúdos didáticos e simulados incríveis.</p>
       </header>
 
       {/* BARRA SUPERIOR DE CONFIGURAÇÃO UNIFICADA */}
@@ -315,18 +329,25 @@ export default function Generator() {
         </button>
       </div>
 
-      <section className="panel">
+      <section className="panel" style={{ padding: '25px' }}>
         <div className="row">
-          <label className="label">Assunto / Edital</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
+            <label className="label" style={{ margin: 0 }}>Assunto / Edital</label>
+            <span style={{ fontSize: '0.8rem', color: text.length > 50 ? 'var(--success-text)' : 'var(--text-muted)' }}>
+              {text.length} caracteres
+            </span>
+          </div>
           <textarea
             className="textarea"
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Cole aqui o conteúdo..."
+            onChange={handleTextChange}
+            disabled={loading}
+            placeholder="Cole aqui o trecho do edital, lei ou conteúdo programático..."
+            style={{ minHeight: '180px', backgroundColor: 'var(--input-bg)' }}
           />
         </div>
 
-        <div className="row" style={{ display: 'flex', gap: '15px' }}>
+        <div className="row" style={{ display: 'flex', gap: '15px', marginTop: '15px' }}>
           <div style={{ flex: 1 }}>
             <label className="label">Nível das Questões</label>
             <select 
@@ -353,54 +374,77 @@ export default function Generator() {
           </div>
         </div>
 
-        <div className="actions">
-          <button className="btn primary" onClick={run} disabled={loading || !text.trim()}>
-            {loading ? "Gerando..." : "Gerar conteúdo"}
+        {/* FEEDBACK VISUAL DE CARREGAMENTO */}
+        {loading && (
+          <div style={{ marginTop: '20px', background: 'var(--bg)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+              <span>{status}</span>
+              <span>{progress}%</span>
+            </div>
+            <div style={{ width: '100%', backgroundColor: 'var(--border)', height: '10px', borderRadius: '5px', overflow: 'hidden' }}>
+              <div style={{ width: `${progress}%`, backgroundColor: 'var(--primary)', height: '100%', transition: 'width 0.5s ease-out' }}></div>
+            </div>
+          </div>
+        )}
+
+        <div className="actions" style={{ marginTop: '25px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button className="btn primary" onClick={run} disabled={loading || text.trim().length < 10} style={{ flex: '1 1 200px', padding: '12px', fontSize: '1.05rem' }}>
+            {loading ? "A processar..." : "✨ Gerar Material Completo"}
           </button>
 
-          <button
-            className="btn"
-            onClick={() => result && downloadJson(result)}
-            disabled={!result}
-          >
-            Baixar JSON
+          <button className="btn" onClick={() => result && downloadJson(result)} disabled={!result} style={{ flex: '1 1 120px' }}>
+            ⬇️ Baixar JSON
           </button>
 
-          <label className="btn file">
-            Carregar JSON
+          <label className="btn file" style={{ flex: '1 1 120px', textAlign: 'center' }}>
+            📂 Carregar JSON
             <input type="file" accept="application/json" onChange={onLoadJson} hidden />
           </label>
+        </div>
 
-          {/* ÁREA DE SALVAR */}
-          {result && (
-            <div className="save-container" style={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', gap: '10px', marginTop: '1rem', padding: '15px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px' }}>
-              <div style={{ fontWeight: 'bold', color: 'var(--heading-color)', marginBottom: '5px' }}>Salvar Aula no Banco</div>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <input className="input" placeholder="Ano (ex: 2024)" value={saveAno} onChange={e => setSaveAno(e.target.value)} style={{ flex: 1, minWidth: '80px' }} />
-                <input className="input" placeholder="Banca (ex: CESPE)" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ flex: 1, minWidth: '120px' }} />
-                <input className="input" placeholder="Concurso (ex: PF)" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} style={{ flex: 2, minWidth: '150px' }} />
-                
-                <select className="select" value={saveVisibility} onChange={e => setSaveVisibility(e.target.value)} style={{ flex: 1, minWidth: '120px' }}>
+        {!!error && <div className="error" style={{ marginTop: '15px', padding: '10px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', borderRadius: '6px' }}>{error}</div>}
+        {!!status && !loading && !error && <div className="status" style={{ marginTop: '15px', color: 'var(--success-text)', fontWeight: 'bold' }}>{status}</div>}
+
+        {/* ÁREA DE SALVAR (Só aparece após sucesso) */}
+        {result && !loading && (
+          <div className="save-container" style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '25px', padding: '20px', backgroundColor: 'var(--hover-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+            <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>💾 Salvar Aula no Banco de Dados</h3>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '80px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Ano</label>
+                <input className="input" placeholder="Ex: 2024" value={saveAno} onChange={e => setSaveAno(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: '120px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Banca</label>
+                <input className="input" placeholder="Ex: CESPE" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
+              </div>
+              <div style={{ flex: 2, minWidth: '150px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Concurso</label>
+                <input className="input" placeholder="Ex: Polícia Federal" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: '120px' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Visibilidade</label>
+                <select className="select" value={saveVisibility} onChange={e => setSaveVisibility(e.target.value)} style={{ width: '100%', marginTop: '5px' }}>
                   <option value="public">🌍 Público</option>
                   <option value="private">🔒 Privado</option>
                 </select>
               </div>
-              
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <input className="input" placeholder="Nome/Título da Aula..." value={saveTitle} onChange={e => setSaveTitle(e.target.value)} style={{ flex: 1 }} />
-                <button className="btn primary" onClick={saveToDb}>💾 Salvar Aula</button>
-              </div>
             </div>
-          )}
-        </div>
-
-        {!!status && <div className="status">{status}</div>}
-        {!!error && <div className="error">{error}</div>}
-
+            
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Título da Aula</label>
+                <input className="input" placeholder="Digite um título fácil de lembrar..." value={saveTitle} onChange={e => setSaveTitle(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
+              </div>
+              <button className="btn primary" onClick={saveToDb} style={{ padding: '10px 20px', height: '42px' }}>Confirmar e Salvar</button>
+            </div>
+          </div>
+        )}
       </section>
 
+      {/* RENDERIZA O RESULTADO */}
       {result && (
-        <section className="result">
+        <section id="gerador-resultado" className="result" style={{ marginTop: '40px' }}>
           <LessonContent result={result} />
         </section>
       )}

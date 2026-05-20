@@ -109,6 +109,7 @@ class User(Base):
     can_manage_lessons = Column(Boolean, default=False) 
     session_version = Column(Integer, default=1)
 
+
 # ============================================================================
 # 3. SEGURANÇA (JWT & HASH)
 # ============================================================================
@@ -1688,6 +1689,21 @@ async def update_user_settings(settings: UserSettingsUpdate, current_user: User 
     current_user.preferred_model = settings.preferred_model
     await db.commit()
     return {"ok": True, "message": "Configurações de IA atualizadas no banco de dados."}
+
+class PasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.put("/users/me/password")
+async def update_my_password(payload: PasswordUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # 1. Verifica se a senha atual confere
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="A senha atual está incorreta.")
+    
+    # 2. Atualiza para a nova
+    current_user.hashed_password = get_password_hash(payload.new_password)
+    await db.commit()
+    return {"ok": True, "message": "Palavra-passe atualizada com sucesso."}
     
 @app.post("/chat")
 async def chat_tutor(req: ChatMessageRequest):
