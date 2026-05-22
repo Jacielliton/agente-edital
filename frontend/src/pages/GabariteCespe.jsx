@@ -1,0 +1,725 @@
+import React, { useState, useEffect, useRef } from "react";
+import { 
+  Brain, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, 
+  Sparkles, Bot, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
+  X, CheckCircle, AlertCircle
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
+
+// Helper para ler token unificado (mesma lógica do Generator)
+const getAuthToken = () => {
+  const storages = [localStorage, sessionStorage];
+  for (const storage of storages) {
+    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
+    if (t && t.startsWith("eyJ")) return t;
+    try {
+      const uStr = storage.getItem("user");
+      if (uStr && uStr.startsWith("{")) {
+        const uObj = JSON.parse(uStr);
+        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
+        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
+      }
+    } catch(e) {}
+  }
+  return null;
+};
+
+export default function GabariteCespe() {
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+  // --- ESTADOS DA CONFIGURAÇÃO DA IA (Exatamente como no Generator.jsx) ---
+  const [showConfig, setShowConfig] = useState(false);
+  const [tempModel, setTempModel] = useState("");
+  const [userApiKey, setUserApiKey] = useState("");
+  const [userModel, setUserModel] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  // --- ESTADOS DO SIMULADOR ---
+  const [configFocus, setConfigFocus] = useState("completo");
+  const [configDifficulty, setConfigDifficulty] = useState("medio");
+  const [configAmount, setConfigAmount] = useState(10);
+  const [configTextBase, setConfigTextBase] = useState(true);
+  const [configExamMode, setConfigExamMode] = useState(false);
+
+  // --- ESTADOS DO FLUXO (UI) ---
+  const [viewState, setViewState] = useState("initial"); // 'initial', 'loading', 'exam'
+  const [loadingMsg, setLoadingMsg] = useState("");
+  const [error, setError] = useState("");
+  
+  // --- ESTADOS DOS DADOS DA PROVA ---
+  const [currentData, setCurrentData] = useState(null);
+  const [userAnswers, setUserAnswers] = useState({});
+  const [isExamFinished, setIsExamFinished] = useState(false);
+
+  // --- ESTADOS DE ESTATÍSTICAS E MODAIS ---
+  const [stats, setStats] = useState({ total: 0, correct: 0, wrong: 0, topics: {} });
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showLessonModal, setShowLessonModal] = useState(false);
+  const [lessonContent, setLessonContent] = useState("");
+
+  // Carregar Configurações do Utilizador e Estatísticas ao montar
+  useEffect(() => {
+    fetchUserSettings();
+    const savedStats = localStorage.getItem('cespe_stats');
+    if (savedStats) {
+      try { setStats(JSON.parse(savedStats)); } catch (e) { console.error(e); }
+    }
+  }, []);
+
+  const saveStats = (newStats) => {
+    setStats(newStats);
+    localStorage.setItem('cespe_stats', JSON.stringify(newStats));
+  };
+
+  // --- LÓGICA DE CONFIGURAÇÃO DE IA ---
+  const fetchUserSettings = async () => {
+    try {
+      const token = getAuthToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/users/me/settings`, { headers: { "Authorization": `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.api_key) setUserApiKey(data.api_key);
+        if (data.preferred_model) setUserModel(data.preferred_model);
+      }
+    } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
+  };
+
+  const handleConnectAI = () => {
+    const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
+    window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
+  };
+
+  const openConfigModal = () => {
+    setTempModel(userModel || "arcee-ai/trinity-large-thinking:free");
+    setShowConfig(true);
+  };
+
+  const saveConfigToDB = async () => {
+    setSavingConfig(true);
+    try {
+      const token = getAuthToken();
+      if (!token) { alert("Sessão expirada. Faça login."); return; }
+      const res = await fetch(`${API_URL}/users/me/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ api_key: userApiKey, preferred_model: tempModel.trim() })
+      });
+      if (res.ok) {
+        setUserModel(tempModel.trim());
+        setShowConfig(false);
+      } else { alert("Erro ao guardar no servidor."); }
+    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
+  };
+
+  const handleDisconnectAI = async () => {
+    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta?")) return;
+    setSavingConfig(true);
+    try {
+      const token = getAuthToken();
+      if (!token) { alert("Sessão expirada. Faça login."); return; }
+      const res = await fetch(`${API_URL}/users/me/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
+      });
+      if (res.ok) setUserApiKey("");
+      else alert("Erro ao desvincular no servidor."); 
+    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
+  };
+
+  // --- LÓGICA DE GERAÇÃO DA PROVA (API CALL) ---
+  const generateExam = async () => {
+    setError("");
+    setViewState("loading");
+    setLoadingMsg("A Inteligência Artificial está a formular questões inéditas no padrão CESPE...");
+
+    try {
+      const payload = {
+        focus: configFocus,
+        difficulty: configDifficulty,
+        amount: configAmount,
+        generate_text: configTextBase,
+        model: userModel || "arcee-ai/trinity-large-thinking:free",
+        api_key: userApiKey || null
+      };
+
+      // OBS: Crie a rota POST /generate-simulado-cespe no seu backend, semelhante à /analyze
+      const token = getAuthToken();
+      const response = await fetch(`${API_URL}/generate-simulado-cespe`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : ""
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) throw new Error("Falha ao gerar o simulado.");
+      const data = await response.json();
+
+      if (!data.questoes || data.questoes.length === 0) throw new Error("Formato de resposta inválido.");
+
+      setCurrentData(data);
+      setUserAnswers({});
+      setIsExamFinished(false);
+      setViewState("exam");
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Falha ao comunicar com a IA. Tente novamente.");
+      setViewState("initial");
+    }
+  };
+
+  const generateLesson = async (wrongQuestions) => {
+    setViewState("loading");
+    setLoadingMsg("O Professor IA está a preparar a sua aula particular baseada nos seus erros...");
+
+    try {
+      const token = getAuthToken();
+      const response = await fetch(`${API_URL}/generate-lesson-cespe`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : ""
+        },
+        body: JSON.stringify({
+          wrong_questions: wrongQuestions,
+          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          api_key: userApiKey || null
+        })
+      });
+
+      if (!response.ok) throw new Error("Falha ao gerar a aula.");
+      const data = await response.json();
+
+      setLessonContent(data.lesson_markdown || data.text || "Conteúdo não disponível.");
+      setViewState("exam"); 
+      setShowLessonModal(true);
+
+    } catch (err) {
+      console.error(err);
+      alert("Falha ao gerar a aula.");
+      setViewState("exam");
+    }
+  };
+
+  // --- LÓGICA DE INTERAÇÃO COM A PROVA ---
+  const handleAnswer = (qId, answer) => {
+    if (isExamFinished) return;
+
+    if (!configExamMode) {
+      // Modo Normal: Avalia imediatamente
+      if (userAnswers[qId]) return; // Já respondeu
+      const newAnswers = { ...userAnswers, [qId]: answer };
+      setUserAnswers(newAnswers);
+      processSingleAnswer(qId, answer);
+    } else {
+      // Modo Prova: Apenas regista a resposta (pode alterar)
+      const newAnswers = { ...userAnswers };
+      if (newAnswers[qId] === answer) {
+        delete newAnswers[qId]; // Desmarca
+      } else {
+        newAnswers[qId] = answer; // Marca
+      }
+      setUserAnswers(newAnswers);
+    }
+  };
+
+  const processSingleAnswer = (qId, answer) => {
+    const q = currentData.questoes.find(x => x.id === qId);
+    const isCorrect = answer === q.gabarito;
+    
+    let newStats = { ...stats };
+    newStats.total++;
+    if (isCorrect) newStats.correct++; else newStats.wrong++;
+
+    if (!newStats.topics[q.assunto]) newStats.topics[q.assunto] = { correct: 0, wrong: 0 };
+    if (isCorrect) newStats.topics[q.assunto].correct++; else newStats.topics[q.assunto].wrong++;
+
+    saveStats(newStats);
+  };
+
+  const finishExam = () => {
+    if (isExamFinished) return;
+    setIsExamFinished(true);
+
+    let newStats = { ...stats };
+    let right = 0, wrong = 0;
+
+    currentData.questoes.forEach(q => {
+      const ans = userAnswers[q.id];
+      if (ans) {
+        newStats.total++;
+        if (ans === q.gabarito) { 
+          right++; newStats.correct++; 
+        } else { 
+          wrong++; newStats.wrong++; 
+        }
+        
+        if (!newStats.topics[q.assunto]) newStats.topics[q.assunto] = { correct: 0, wrong: 0 };
+        if (ans === q.gabarito) newStats.topics[q.assunto].correct++;
+        else newStats.topics[q.assunto].wrong++;
+      }
+    });
+
+    saveStats(newStats);
+    alert(`Prova finalizada! Pontuação (Padrão CESPE: 1 Erro anula 1 Certo): ${right - wrong}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const getWrongQuestions = () => {
+    if (!currentData) return [];
+    return currentData.questoes.filter(q => {
+      const ans = userAnswers[q.id];
+      return ans && ans !== q.gabarito;
+    });
+  };
+
+  const resetStats = () => {
+    if(window.confirm("Apagar todo o histórico?")) {
+      saveStats({ total: 0, correct: 0, wrong: 0, topics: {} });
+      setShowStatsModal(false);
+    }
+  };
+
+  const wrongCount = getWrongQuestions().length;
+  const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && wrongCount > 0;
+
+  return (
+    <div className="container">
+      {/* HEADER SEMELHANTE AO GENERATOR */}
+      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
+        <div>
+          <h1 style={{ color: 'var(--heading-color)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Brain size={32} color="var(--primary)" /> Gabarite<span style={{ color: 'var(--primary)' }}>CESPE</span>
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Simulador de questões inéditas geradas por IA no padrão da banca.</p>
+        </div>
+        <button onClick={() => setShowStatsModal(true)} className="btn" style={{ fontWeight: 'bold' }}>
+          <BarChart2 size={20} /> O meu Desempenho
+        </button>
+      </header>
+
+      {/* BARRA DE CONFIGURAÇÃO DE IA UNIFICADA */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+          <strong>IA Geradora:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Ativa ({userModel || "Padrão"})</span> : <span>Configure a sua IA gratuitamente para geração contínua.</span>}
+        </div>
+        <button onClick={openConfigModal} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s' }}>
+          ⚙️ Configurar a Minha IA
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
+        {/* LAYOUT SIDEBAR + MAIN (No desktop Sidebar fica ao lado) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
+          
+          {/* SIDEBAR DE CONFIGURAÇÃO */}
+          <aside style={{ display: 'flex', flexDirection: 'column', gap: '20px', gridColumn: '1 / span 1', maxWidth: '350px' }}>
+            <div className="panel" style={{ padding: '20px' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)' }}>
+                <SlidersHorizontal size={20} color="var(--primary)" /> Configurar Simulado
+              </h2>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label className="label">Foco de Estudo</label>
+                <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)}>
+                  <option value="completo">Simulado Completo (Padrão)</option>
+                  <option value="interpretacao">Foco em Interpretação</option>
+                  <option value="gramatica">Gramática Contextualizada</option>
+                  <option value="reescrita">Reescrita de Frases</option>
+                  <option value="semantica">Semântica e Coesão</option>
+                  <option value="hardcore">Modo Hardcore CESPE</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '15px' }}>
+                <label className="label">Dificuldade</label>
+                <select className="select" value={configDifficulty} onChange={e => setConfigDifficulty(e.target.value)}>
+                  <option value="medio">Média (Padrão)</option>
+                  <option value="facil">Fácil</option>
+                  <option value="dificil">Difícil</option>
+                  <option value="avancado">Avançado (Analista/Auditor)</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label className="label">Quantidade de Questões</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {[5, 10, 20, 30].map(val => (
+                    <button 
+                      key={val}
+                      onClick={() => setConfigAmount(val)}
+                      style={{ 
+                        flex: 1, padding: '8px 0', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.9rem', cursor: 'pointer', transition: 'all 0.2s',
+                        background: configAmount === val ? 'var(--primary-light)' : 'var(--bg)',
+                        color: configAmount === val ? 'var(--primary)' : 'var(--text-secondary)',
+                        border: configAmount === val ? '2px solid var(--primary)' : '1px solid var(--border)'
+                      }}
+                    >
+                      {val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', cursor: 'pointer' }} onClick={() => setConfigTextBase(!configTextBase)}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
+                  <FileText size={18} /> Gerar Texto-Base
+                </span>
+                <div style={{ width: '40px', height: '22px', background: configTextBase ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
+                  <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configTextBase ? '20px' : '2px', transition: '0.3s' }}></div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setConfigExamMode(!configExamMode)}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
+                  <BookOpenCheck size={18} /> Modo Prova (Oculta)
+                </span>
+                <div style={{ width: '40px', height: '22px', background: configExamMode ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
+                  <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configExamMode ? '20px' : '2px', transition: '0.3s' }}></div>
+                </div>
+              </div>
+
+              <button 
+                onClick={generateExam} 
+                disabled={viewState === "loading"}
+                className="btn primary" 
+                style={{ width: '100%', marginTop: '25px', padding: '15px', fontSize: '1.05rem', gap: '10px' }}
+              >
+                <Sparkles size={20} /> Gerar Questões IA
+              </button>
+              {error && <div style={{ color: 'var(--error-text)', fontSize: '0.85rem', marginTop: '10px', textAlign: 'center', fontWeight: 'bold' }}>{error}</div>}
+            </div>
+
+            {/* MINI STATS */}
+            <div className="panel" style={{ padding: '20px', background: 'var(--card-bg)' }}>
+              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Hoje / Aproveitamento</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '15px' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)', margin: 0 }}>{stats.correct}</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Acertos</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)', margin: 0 }}>{stats.wrong}</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Erros</p>
+                </div>
+              </div>
+              <div>
+                <div style={{ width: '100%', height: '8px', background: 'var(--hover-bg)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: 'var(--primary)', width: `${stats.total > 0 ? (stats.correct / stats.total) * 100 : 0}%`, transition: 'width 0.5s' }}></div>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* MAIN CONTENT AREA */}
+          <div style={{ gridColumn: 'auto / -1', minWidth: '0' }}>
+            
+            {/* ESTADO INICIAL */}
+            {viewState === "initial" && (
+              <div className="panel" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent', boxShadow: 'none' }}>
+                <div style={{ width: '90px', height: '90px', background: 'var(--primary-light)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' }}>
+                  <Bot size={48} color="var(--primary)" />
+                </div>
+                <h2 style={{ fontSize: '1.5rem', color: 'var(--heading-color)', marginBottom: '10px' }}>Simulador IA CESPE/CEBRASPE</h2>
+                <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginBottom: '25px' }}>
+                  Configure os parâmetros ao lado e deixe a IA gerar cenários complexos, textos-base e assertivas no formato clássico de julgamento.
+                </p>
+                <button onClick={generateExam} className="btn primary" style={{ padding: '10px 25px' }}>Começar agora</button>
+              </div>
+            )}
+
+            {/* ESTADO LOADING */}
+            {viewState === "loading" && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="panel">
+                  <div className="skeleton-box" style={{ width: '200px', height: '24px', marginBottom: '15px' }}></div>
+                  <div className="skeleton-box" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
+                  <div className="skeleton-box" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
+                  <div className="skeleton-box" style={{ width: '70%', height: '16px' }}></div>
+                </div>
+                <div className="panel" style={{ display: 'flex', gap: '15px' }}>
+                  <div className="skeleton-box" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }}></div>
+                  <div style={{ flex: 1 }}>
+                    <div className="skeleton-box" style={{ width: '100%', height: '20px', marginBottom: '10px' }}></div>
+                    <div className="skeleton-box" style={{ width: '80%', height: '20px', marginBottom: '20px' }}></div>
+                    <div style={{ display: 'flex', gap: '15px' }}>
+                      <div className="skeleton-box" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
+                      <div className="skeleton-box" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
+                    </div>
+                  </div>
+                </div>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '20px', fontWeight: 'bold' }}>
+                  <Cpu className="spin" size={20} /> {loadingMsg}
+                </p>
+              </div>
+            )}
+
+            {/* ESTADO DA PROVA */}
+            {viewState === "exam" && currentData && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                
+                {/* Header do Modo Prova */}
+                {configExamMode && !isExamFinished && (
+                  <div style={{ background: 'var(--primary-light)', padding: '15px 20px', borderRadius: '12px', border: '1px solid var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold' }}>
+                      <BookOpenCheck size={20} /> Modo Prova Ativado
+                    </div>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Respostas ocultas. Finalize para corrigir.</span>
+                  </div>
+                )}
+
+                {/* Texto Base */}
+                {configTextBase && currentData.textoBase && (
+                  <div className="panel" style={{ borderLeft: '4px solid var(--primary)', position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: '-15px', left: '-15px', background: 'var(--primary)', color: 'white', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-md)' }}>
+                      <AlignLeft size={16} />
+                    </div>
+                    <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Texto para as questões a seguir</h3>
+                    <div style={{ fontSize: '1rem', lineHeight: '1.8', color: 'var(--text-main)' }}>
+                      {currentData.textoBase.split('\n').filter(p => p.trim()).map((p, i) => (
+                        <p key={i} style={{ textIndent: '2rem', marginBottom: '10px', textAlign: 'justify' }}>{p}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de Questões */}
+                {currentData.questoes.map((q, index) => {
+                  const uAns = userAnswers[q.id];
+                  const showExp = isExamFinished || (!configExamMode && uAns);
+                  const isCorrect = uAns === q.gabarito;
+                  
+                  return (
+                    <div key={q.id} className="quiz-card-container" style={{ 
+                      borderColor: showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--border)',
+                      boxShadow: showExp ? (isCorrect ? '0 0 0 1px var(--success-text)' : '0 0 0 1px var(--error-text)') : 'var(--shadow-sm)'
+                    }}>
+                      <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                        <div style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {index + 1}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ display: 'inline-block', padding: '4px 8px', background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontSize: '0.75rem', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px' }}>
+                            {q.assunto}
+                          </span>
+                          <p style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
+                            {q.enunciado}
+                          </p>
+                          
+                          {/* Botões Certo / Errado */}
+                          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                            <button 
+                              onClick={() => handleAnswer(q.id, 'C')}
+                              disabled={showExp && !configExamMode} // Trava se não for modo prova e já respondeu
+                              style={{
+                                flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+                                border: '2px solid',
+                                borderColor: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                background: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
+                                color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
+                                opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
+                              }}
+                            >
+                              CERTO {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
+                            </button>
+                            <button 
+                              onClick={() => handleAnswer(q.id, 'E')}
+                              disabled={showExp && !configExamMode}
+                              style={{
+                                flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+                                border: '2px solid',
+                                borderColor: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                background: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
+                                color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
+                                opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
+                              }}
+                            >
+                              ERRADO {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
+                            </button>
+                          </div>
+
+                          {/* Explicação */}
+                            {showExp && (
+                            <div className="quiz-explanation" style={{ marginTop: '20px', animation: 'fadeIn 0.3s ease-out' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '8px', color: isCorrect ? 'var(--success-text)' : 'var(--error-text)' }}>
+                                {isCorrect ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                                {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
+                                </div>
+                                {/* ADICIONADO className AQUI E REMOVIDO DO ReactMarkdown */}
+                                <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                                <ReactMarkdown>{q.explicacao}</ReactMarkdown>
+                                </div>
+                            </div>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Ações Pós-Prova */}
+                {configExamMode && !isExamFinished && (
+                  <button onClick={finishExam} className="btn primary" style={{ padding: '15px', fontSize: '1.1rem', margin: '20px auto', display: 'block', maxWidth: '400px', width: '100%' }}>
+                    Entregar Prova e Corrigir
+                  </button>
+                )}
+
+                {/* BOTÃO MÁGICO: GERAR AULA (Apenas se finalizado/corrigido e tiver erros) */}
+                {showLessonAction && (
+                  <div style={{ background: 'var(--warning-bg, #fffbeb)', border: '1px solid #fcd34d', padding: '25px', borderRadius: '12px', textAlign: 'center', margin: '20px auto', maxWidth: '500px', boxShadow: 'var(--shadow-md)' }}>
+                    <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1.2rem' }}>
+                      <GraduationCap size={24} /> Professor Particular IA
+                    </h4>
+                    <p style={{ color: '#92400e', fontSize: '0.95rem', marginBottom: '20px' }}>Você teve {wrongCount} erro(s) nesta sessão. Quer uma explicação didática detalhada focada apenas nos temas que você errou?</p>
+                    <button onClick={() => generateLesson(getWrongQuestions())} className="btn" style={{ background: '#f59e0b', color: 'white', border: 'none', width: '100%', padding: '12px', fontSize: '1.05rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                      <Wand2 size={20} /> Gerar Aula de Revisão
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* --- MODAIS --- */}
+
+      {/* MODAL DE CONFIGURAÇÃO GLOBAL (CHAVE DA IA INDIVIDUAL) */}
+      {showConfig && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
+            
+            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5', background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              Vincule a sua conta do OpenRouter para desbloquear a geração rápida e os recursos avançados. <br/><br/>
+              ✨ É <strong style={{color: 'var(--text-main)'}}>100% gratuito</strong> e você pode conectar-se em 2 segundos usando a sua conta já existente do <strong style={{color: 'var(--text-main)'}}>Google, Discord ou GitHub</strong>.
+            </p>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Integração de Acesso:</label>
+              
+              {userApiKey ? (
+                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>✅ Conta vinculada com sucesso!</span>
+                  <button 
+                    onClick={handleDisconnectAI} 
+                    disabled={savingConfig}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--success-text)', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', textDecoration: 'underline' }}
+                  >
+                    {savingConfig ? "Ags..." : "Desvincular"}
+                  </button>
+                </div>
+              ) : (
+                <button onClick={handleConnectAI} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                  🔗 Conectar IA Gratuitamente
+                </button>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '25px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA (Opcional):</label>
+              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: arcee-ai/trinity-large-thinking:free" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
+              
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
+                O sistema utiliza modelos gratuitos por padrão. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '10px' }}>
+              <button onClick={() => setShowConfig(false)} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--hover-bg)', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>Fechar</button>
+              <button onClick={saveConfigToDB} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>{savingConfig ? "⏳ A guardar..." : "Salvar Modelo"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ESTATÍSTICAS */}
+      {showStatsModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div className="panel" style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)' }}>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <PieChart size={22} color="var(--primary)" /> Histórico de Desempenho
+              </h2>
+              <button onClick={() => setShowStatsModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
+            
+            <div style={{ padding: '20px' }}>
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
+                <div style={{ flex: 1, background: 'var(--bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
+                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{stats.total}</span>
+                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Resolvidas</span>
+                </div>
+                <div style={{ flex: 1, background: 'var(--success-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
+                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)' }}>{stats.correct}</span>
+                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Certas</span>
+                </div>
+                <div style={{ flex: 1, background: 'var(--error-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
+                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)' }}>{stats.wrong}</span>
+                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Erradas</span>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '1rem', color: 'var(--heading-color)', marginBottom: '15px' }}>Desempenho por Assunto</h3>
+              <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '10px' }}>
+                {Object.keys(stats.topics).length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum dado registrado.</p>
+                ) : (
+                  Object.entries(stats.topics).map(([name, data]) => {
+                    const pct = (data.correct + data.wrong) > 0 ? Math.round((data.correct / (data.correct + data.wrong)) * 100) : 0;
+                    return (
+                      <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--text-main)', fontSize: '0.9rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+                        <div style={{ display: 'flex', gap: '15px', fontSize: '0.9rem' }}>
+                          <span style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>{data.correct}C</span>
+                          <span style={{ color: 'var(--error-text)', fontWeight: 'bold' }}>{data.wrong}E</span>
+                          <span style={{ color: pct >= 70 ? 'var(--success-text)' : pct < 50 ? 'var(--error-text)' : '#f59e0b', fontWeight: '900', width: '40px', textAlign: 'right' }}>{pct}%</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              
+              <button onClick={resetStats} style={{ width: '100%', marginTop: '20px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                Zerar Histórico
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL AULA (Professor IA) */}
+      {showLessonModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div className="panel" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out', border: '2px solid #f59e0b' }}>
+            <div style={{ background: '#f59e0b', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <GraduationCap size={24} /> Aula de Revisão Personalizada
+              </h2>
+              <button onClick={() => setShowLessonModal(false)} style={{ background: 'none', border: 'none', color: '#fef3c7', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
+            
+            <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
+              <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
+                <ReactMarkdown>{lessonContent}</ReactMarkdown>
+              </div>
+            </div>
+            
+            <div style={{ background: 'var(--bg)', padding: '15px', borderTop: '1px solid var(--border)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flexShrink: 0 }}>
+              Gerado por Inteligência Artificial baseado nos seus erros recentes.
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}

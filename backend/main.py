@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from dotenv import load_dotenv
+from typing import Literal
 
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -76,7 +77,7 @@ class SimuladoTopicRequest(BaseModel):
     model: Optional[str] = None
     api_key: Optional[str] = None
     qtd_questoes: Optional[int] = 5
-    nivel: Optional[str] = "Superior"
+    nivel: Optional[Literal["Iniciante", "Normal", "Avançado", "Expert"]] = "Normal"
     formato: Optional[str] = "Múltipla Escolha"
     
 class StoredPlan(Base):
@@ -175,9 +176,25 @@ class PerformanceResponse(BaseModel):
 class GlobalEssayRequest(BaseModel):
     area: str
     aulas_titulos: List[str]
+    nivel: Optional[str] = "Normal"
     model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
     api_key: Optional[str] = None
     
+class TreinoDiscursivaRequest(BaseModel):
+    area: str
+    topicos: List[str]
+    tipo_prova: str
+    cargo: str
+    banca: str
+    nivel: Optional[str] = "Normal" # <--- ADICIONADO
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    api_key: Optional[str] = None
+    
+class ExtractTopicsRequest(BaseModel):
+    texto: str
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    api_key: Optional[str] = None
+        
 class EssayCorrectionRequest(BaseModel):
     texto_motivador: str
     comando: str
@@ -189,7 +206,8 @@ class EssayCorrectionRequest(BaseModel):
 class GenerateEssayRequest(BaseModel):
     area: str
     aula_titulo: str
-    lesson_content: Dict[str, Any]
+    lesson_content: dict
+    nivel: Optional[str] = "Normal"
     model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
     api_key: Optional[str] = None
 
@@ -272,7 +290,7 @@ class SyllabusRequest(BaseModel):
     text: str
     model: str | None = None
     question_format: str = "Múltipla Escolha"
-    question_level: str = "Superior"
+    question_level: Literal["Iniciante", "Normal", "Avançado", "Expert"] = "Normal"
 
 class SavePlanRequest(BaseModel):
     title: str
@@ -318,6 +336,20 @@ class UserUpdateAdmin(BaseModel):
 class PaginatedPlansResponse(BaseModel):
     items: List[PlanSummaryResponse]
     total: int
+    
+class SimuladoCespeRequest(BaseModel):
+    subject: str = "Língua Portuguesa" # <-- Adicione este campo
+    focus: str
+    difficulty: str
+    amount: int
+    generate_text: bool
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    api_key: Optional[str] = None
+
+class LessonCespeRequest(BaseModel):
+    wrong_questions: List[Dict[str, Any]]
+    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    api_key: Optional[str] = None
 
 # ============================================================================
 # 5. CLIENTE OPENROUTER
@@ -896,6 +928,84 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
 # ============================================================================
 # 7. AGENTS (OTIMIZADOS PARA GEMINI FLASH-LITE)
 # ============================================================================
+async def agent_cespe_exam_generator(subject: str, focus: str, difficulty: str, amount: int, generate_text: bool, model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    print(f"--- 📝 Gerando Simulado CESPE IA ({subject} | Foco: {focus}) ---")
+    
+    focus_instructions = ""
+    
+    # Tratamento para Raciocínio Lógico
+    if subject == "Raciocínio Lógico":
+        if focus == 'negacao': focus_instructions = "Foque EXCLUSIVAMENTE em leis de De Morgan e negação de proposições lógicas (e, ou, se...então)."
+        elif focus == 'condicional': focus_instructions = "Foque em proposições condicionais (se... então), tabela-verdade, condição suficiente e condição necessária."
+        elif focus == 'equivalencia': focus_instructions = "Foque em equivalências lógicas (contrapositiva, equivalência da disjunção/condicional)."
+        elif focus == 'diagramas': focus_instructions = "Foque em diagramas lógicos (Todo, Algum, Nenhum) e silogismos categóricos."
+        elif focus == 'argumentacao': focus_instructions = "Foque na validade de argumentos lógicos, premissas e conclusões."
+        elif focus == 'probabilidade': focus_instructions = "Foque em probabilidade de eventos, união, intersecção e probabilidade condicional."
+        elif focus == 'combinatoria': focus_instructions = "Foque em análise combinatória (arranjos, permutações e combinações simples)."
+        elif focus == 'sequencias': focus_instructions = "Foque em sequências lógicas numéricas, de palavras ou figuras."
+        else: focus_instructions = "Mescle tabela-verdade, negações lógicas e equivalências em situações hipotéticas."
+    
+    # Tratamento original para Português
+    else: 
+        if focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
+        elif focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
+        elif focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
+        elif focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
+        elif focus == 'hardcore': focus_instructions = "NÍVEL MÁXIMO DE DIFICULDADE CESPE. Pegadinhas sutis e extrapolação."
+        else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
+
+    text_instruction = 'Crie uma situação hipotética base inédita (Ex: Considere as proposições P e Q...)' if generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'
+
+    prompt = f"""
+Você é o mais rigoroso Examinador Sênior da banca CESPE/CEBRASPE. Crie um simulado inédito de {subject}.
+DIRETRIZES: {amount} questões. Dificuldade: {difficulty}. Foco: {focus_instructions}.
+Texto-Base: {text_instruction}
+
+REGRAS CRÍTICAS DE FORMATAÇÃO JSON (EVITAR QUEBRA DE CÓDIGO):
+1. JAMAIS use aspas duplas (") DENTRO dos valores de texto. Se precisar citar algo, use ASPAS SIMPLES (').
+2. JAMAIS use quebras de linha reais dentro das strings. O texto deve ser contínuo.
+3. Responda ESTRITAMENTE com o JSON, sem formatação markdown (```json).
+
+INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
+{{
+    "textoBase": "Situação hipotética ou premissas lógicas iniciais ou deixe vazio.",
+    "questoes": [ 
+        {{ 
+            "id": 1, 
+            "enunciado": "A assertiva lógica para julgamento...", 
+            "assunto": "Tema da questão (ex: Equivalência, Negação)", 
+            "gabarito": "C", 
+            "explicacao": "Explique passo a passo a resolução lógica do gabarito (C ou E)." 
+        }} 
+    ]
+}}
+"""
+    return await get_json_response(prompt, model, temp=0.5, api_key=api_key)
+
+async def agent_cespe_lesson_generator(wrong_questions: List[Dict[str, Any]], model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
+    print("--- 👨‍🏫 Gerando Aula de Revisão CESPE baseada nos erros do aluno ---")
+    
+    prompt = f"""
+Você é um professor de cursinho preparatório de excelência, focado na banca CESPE/CEBRASPE. 
+O aluno acabou de fazer um simulado de Português e ERROU as seguintes questões:
+
+{json.dumps(wrong_questions, ensure_ascii=False, indent=2)}
+
+Sua tarefa: Criar uma AULA DIDÁTICA E MOTIVADORA ensinando os conceitos gramaticais ou interpretativos que o aluno errou.
+- Não apenas repita a explicação da questão, vá além: ensine a "regra do jogo" da CESPE.
+- Mostre o padrão de pegadinha que a banca usou nessas questões.
+- Dê dicas mnemônicas ou macetes se aplicável.
+- Formate a aula usando Markdown (use **negrito** para destacar regras importantes, e tópicos para organizar).
+- Seja encorajador no início e no fim.
+
+Responda ESTRITAMENTE num JSON com o seguinte formato:
+{{
+    "lesson_markdown": "Sua aula completa e formatada em markdown aqui."
+}}
+"""
+    return await get_json_response(prompt, model, temp=0.7, api_key=api_key)
+
+
 async def agent_global_essay_generator(area: str, aulas_titulos: List[str], model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     print(f"--- ✍️  Discursiva Geral: Criando prova CESPE/CEBRASPE integradora... ---")
 
@@ -1022,11 +1132,13 @@ RETORNE APENAS ESTE JSON EXATO:
     {{
       "aspecto": "Nome exato do Aspecto",
       "nota_atribuida": 3.5,
-      "comentario": "Justificativa direta do ponto."
+      "comentario": "Justificativa direta apontando onde o aluno errou ou acertou.",
+      "padrao_esperado": "Espelho de Correção: Escreva um parágrafo altamente didático mostrando exatamente o que o aluno DEVERIA ter escrito para tirar a nota máxima neste tópico."
     }}
   ],
-  "erros_gramaticais": "Apontamento de erros de português.",
-  "feedback_geral": "Parecer final da banca."
+  "erros_gramaticais": "Apontamento de erros gramaticais e SUGESTÃO DE REESCRITA para melhorar a coesão.",
+  "feedback_geral": "Parecer final da banca examinadora.",
+  "dica_estudo": "Dica prática e encorajadora de qual assunto ou lei o candidato precisa revisar com base nos erros que cometeu nesta redação."
 }}
 """
     return await get_json_response(prompt, req.model, temp=0.2, api_key=req.api_key)
@@ -1372,8 +1484,9 @@ async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson
         json_alternativas = '"alternativas": ["A) Certo", "B) Errado"],'
 
     prompt = f"""
-Atue como Banca Examinadora de Alto Nível ({area}).
-Nível de Exigência: Ensino {question_level}. O aprofundamento técnico, o vocabulário e a complexidade da cobrança devem refletir exatamente o rigor de provas de concursos públicos deste nível.
+Atue como Banca Examinadora ({area}).
+Nível de Dificuldade das Questões: {question_level} (Iniciante, Normal, Avançado ou Expert). 
+Ajuste rigorosamente o aprofundamento técnico, o vocabulário, a presença de pegadinhas e a complexidade da cobrança para refletir EXATAMENTE este nível de dificuldade.
 
 Com base SOMENTE no texto da aula abaixo, crie EXATAMENTE 10 QUESTÕES.
 
@@ -1759,7 +1872,8 @@ async def update_my_password(payload: PasswordUpdate, current_user: User = Depen
     
 @app.post("/chat")
 async def chat_tutor(req: ChatMessageRequest):
-    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     hist_text = ""
     if req.historico:
@@ -1787,10 +1901,11 @@ async def chat_tutor(req: ChatMessageRequest):
 
 @app.post("/generate-simulado-topic")
 async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
-    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     qtd = req.qtd_questoes or 5
-    nivel = req.nivel or "Superior"
+    nivel = req.nivel or "Normal"
     formato = req.formato or "Múltipla Escolha"
 
     # Define dinamicamente as regras baseadas na escolha
@@ -1811,8 +1926,9 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
         json_alternativas = '"alternativas": ["A) Certo", "B) Errado"],'
     
     prompt = f"""
-    Atue como Banca Examinadora de Alto Nível ({req.area}).
-    Nível de Exigência: Ensino {nivel}. O aprofundamento técnico, o vocabulário e a complexidade da cobrança devem refletir exatamente o rigor de provas de concursos públicos deste nível.
+    Atue como Banca Examinadora ({req.area}).
+    Nível de Dificuldade das Questões: {nivel} (Iniciante, Normal, Avançado ou Expert). 
+    Ajuste rigorosamente o aprofundamento técnico, o vocabulário, a presença de pegadinhas e a complexidade da cobrança para refletir EXATAMENTE este nível de dificuldade.
 
     Sua missão é criar um SIMULADO de fixação. Com base estritamente no conteúdo abaixo, crie EXATAMENTE {qtd} QUESTÕES inéditas focadas no tópico "{req.topico}".
 
@@ -1846,7 +1962,8 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
 
 @app.post("/correct-essay")
 async def correct_essay(req: EssayCorrectionRequest):
-    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     prompt = f"""
     Atue como CORRETOR RIGOROSO CESPE/CEBRASPE.
@@ -1860,9 +1977,9 @@ async def correct_essay(req: EssayCorrectionRequest):
     {req.resposta_aluno}
 
     DIRETRIZES:
-    1. Avalie o conteúdo técnico. Desconte se for raso.
+    1. Avalie o conteúdo técnico. Desconte se for raso, MAS SEJA REALISTA: o candidato possui um limite físico estrito de 30 linhas (cerca de 240 a 300 palavras para TODA a prova). Não exija detalhamentos doutrinários exaustivos que jamais caberiam nesse espaço.
     2. Dê uma nota exata para cada aspecto (nunca maior que o valor_maximo).
-    3. Avalie gramática e coesão separadamente.
+    3. Avalie gramática e coesão separadamente. No campo 'padrao_esperado', o seu espelho de correção também DEVE ser conciso, cabendo perfeitamente na proporção da resposta exigida (máximo 80-100 palavras por aspecto).
 
     RETORNE APENAS ESTE JSON EXATO:
     {{
@@ -1871,11 +1988,13 @@ async def correct_essay(req: EssayCorrectionRequest):
         {{
           "aspecto": "Nome exato do Aspecto",
           "nota_atribuida": 3.5,
-          "comentario": "Justificativa direta do ponto."
+          "comentario": "Justificativa direta apontando onde o aluno errou ou acertou.",
+          "padrao_esperado": "Espelho de Correção: Escreva um parágrafo altamente didático mostrando exatamente o que o aluno DEVERIA ter escrito para tirar a nota máxima neste tópico."
         }}
       ],
-      "erros_gramaticais": "Apontamento de erros de português.",
-      "feedback_geral": "Parecer final da banca."
+      "erros_gramaticais": "Apontamento de erros gramaticais e SUGESTÃO DE REESCRITA para melhorar a coesão.",
+      "feedback_geral": "Parecer final da banca examinadora.",
+      "dica_estudo": "Dica prática e encorajadora de qual assunto ou lei o candidato precisa revisar com base nos erros que cometeu nesta redação."
     }}
     """
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.2, api_key=req.api_key), media_type="text/plain")
@@ -1883,66 +2002,149 @@ async def correct_essay(req: EssayCorrectionRequest):
 
 @app.post("/generate-essay")
 async def generate_essay_endpoint(req: GenerateEssayRequest):
-    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
+    nivel = req.nivel or "Normal"
     lesson_text = json.dumps(req.lesson_content, ensure_ascii=False)
+    
     prompt = f"""
-    Atue como EXAMINADOR SÊNIOR da banca CESPE/CEBRASPE na área de {req.area}.
-    Sua missão ÚNICA é criar uma questão discursiva focada na aula abaixo.
+    Atue como EXAMINADOR da banca CESPE/CEBRASPE na área de {req.area}.
+    NÍVEL DE DIFICULDADE: {nivel}.
+    Sua missão é criar uma questão discursiva focada na aula abaixo.
 
-    AULA:
-    {lesson_text}
+    AULA: {lesson_text}
 
     DIRETRIZES DE CRIAÇÃO:
-    - DIREITO: Crie "Estudo de Caso" (crime, conflito contratual, etc).
-    - TI/EXATAS: Crie cenário de incidente em produção ou falha de arquitetura.
-    - OUTROS: Situação problema prática da profissão.
-    - Aspectos: 2 a 3 tópicos obrigatórios para o candidato responder. A soma do "valor_maximo" DEVE ser 10.0.
+    1. COMANDO: É OBRIGATÓRIO INCLUIR A INSTRUÇÃO: "Redija seu texto em até 30 linhas".
+    2. COMPLEXIDADE: O cenário deve ser proporcional ao nível {nivel}. Respostas devem ser possíveis de elaborar em até 30 linhas (cerca de 250-300 palavras).
+    3. ASPECTOS: Crie 2 a 3 tópicos obrigatórios. Calibre as perguntas para que possam ser respondidas detalhadamente dentro do limite de 30 linhas.
+    4. PONTUAÇÃO: A soma do campo "valor_maximo" deve ser exatos 10.0.
 
-    RETORNE APENAS ESTE JSON EXATO (SEM NENHUM TEXTO ADICIONAL):
+    RETORNE APENAS ESTE JSON EXATO:
     {{
       "discursiva": {{
-        "texto_motivador": "Descrição detalhada do cenário hipotético.",
-        "comando": "Considerando a situação hipotética, redija um texto abordando:",
+        "texto_motivador": "Descrição detalhada do cenário.",
+        "comando": "Considerando a situação hipotética, redija um texto abordando os pontos abaixo. Redija seu texto em até 30 linhas.",
         "aspectos": [
-          {{ "aspecto": "1. Primeiro ponto...", "valor_maximo": 4.0 }},
-          {{ "aspecto": "2. Segundo ponto...", "valor_maximo": 6.0 }}
+          {{ "aspecto": "1. ...", "valor_maximo": 4.0 }},
+          {{ "aspecto": "2. ...", "valor_maximo": 6.0 }}
         ]
       }}
     }}
     """
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.3, api_key=req.api_key), media_type="text/plain")
 
-
-@app.post("/generate-global-essay")
-async def generate_global_essay_endpoint(req: GlobalEssayRequest):
-    if not req.api_key: raise HTTPException(status_code=403, detail="Chave de API do OpenRouter obrigatória.")
+@app.post("/generate-treino-discursiva")
+async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest):
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
+    tipo = req.tipo_prova
+    banca = req.banca
+    cargo = req.cargo
+    nivel = req.nivel or "Normal"
+
+    # REGRAS DINÂMICAS DE COMPLEXIDADE (TRAVA PARA A IA)
+    regras_dificuldade = ""
+    if nivel == "Iniciante":
+        regras_dificuldade = "Cenário curto, direto e BÁSICO (máximo 4 linhas). Exija APENAS a identificação de conceitos primários. PROIBIDO exigir jurisprudência profunda, artigos específicos de leis esparsas ou múltiplas infrações simultâneas. O objetivo é facilitar a vida do aluno iniciante."
+    elif nivel == "Normal":
+        regras_dificuldade = "Cenário de complexidade média. O caso deve envolver 1 ou 2 problemas centrais diretos. Foque na lei seca e na doutrina predominante."
+    elif nivel == "Avançado":
+        regras_dificuldade = "Cenário complexo. Exija conhecimento de jurisprudência (STF/STJ), conflito aparente de normas e múltiplas tipificações ou problemas procedimentais."
+    elif nivel == "Expert":
+        regras_dificuldade = "Cenário caótico, longo e extremamente desafiador (nível Delegado/Juiz/Auditor). Exija teses defensivas, visão crítica, jurisprudência minoritária/recentes e cruzamento de múltiplas áreas do direito."
+
+    if tipo == "Redação (Atualidades/Temas Gerais)":
+        diretrizes = "Crie um tema de redação dissertativo-argumentativa."
+    elif tipo == "Peça Prático-Profissional":
+        diretrizes = "Crie um cenário fático exigindo a elaboração de uma Peça Prático-Profissional."
+    else:
+        if nivel == "Iniciante":
+            diretrizes = "Crie um estudo de caso BÁSICO E SIMPLES, avaliando conhecimentos introdutórios."
+        else:
+            diretrizes = "Crie um estudo de caso técnico ou situação hipotética exigindo identificação de problemas e aplicação da teoria."
+
     prompt = f"""
-    Atue como EXAMINADOR SÊNIOR da banca CEBRASPE/CESPE.
+    Atue como EXAMINADOR da banca {banca}.
+    Cargo Alvo do Concurso: {cargo}
+    NÍVEL DE DIFICULDADE EXIGIDO: {nivel.upper()}
+
     A área geral de conhecimento do candidato é: {req.area}.
+    Tópicos específicos exigidos pelo edital: {json.dumps(req.topicos, ensure_ascii=False)}
 
-    Lista de tópicos estudados nesta disciplina:
-    {json.dumps(req.aulas_titulos, ensure_ascii=False)}
+    Sua missão ÚNICA é criar UMA {tipo} simulando o padrão da banca {banca} para o cargo de {cargo}, RIGOROSAMENTE ADAPTADA AO NÍVEL DE DIFICULDADE ({nivel}).
 
-    Sua missão ÚNICA é criar UMA questão discursiva integradora de alto nível, simulando exatamente o padrão real de prova da banca CEBRASPE.
-
-    DIRETRIZES DE CRIAÇÃO:
-    1. SELEÇÃO: Escolha aleatoriamente EXATAMENTE 2 (dois) temas distintos da lista acima para compor a narrativa. Adapte-se à área de conhecimento informada.
-    2. TEXTO MOTIVADOR: Crie um cenário hipotético, rico em detalhes (ex: "Em março de 2023, uma situação ocorreu...").
-    3. COMANDO: Use estritamente o padrão da banca.
-    4. ASPECTOS (TÓPICOS): Crie de 2 a 3 itens numerados que o candidato deve responder obrigatoriamente.
-    5. PONTUAÇÃO: A soma do campo "valor_maximo" de todos os aspectos DEVE ser exatos 19.0 pontos.
+    DIRETRIZES OBRIGATÓRIAS (ATENÇÃO AO NÍVEL):
+    1. COMPLEXIDADE GERAL: {regras_dificuldade}
+    2. ESTILO: {diretrizes} Use os tópicos base como contexto.
+    3. TEXTO MOTIVADOR: Crie o cenário. Se o nível for 'Iniciante', o texto DEVE ser curtíssimo e sem pegadinhas.
+    4. COMANDO: Use o vocabulário da banca. É OBRIGATÓRIO INCLUIR A INSTRUÇÃO: "Redija seu texto em até 30 linhas".
+    5. ASPECTOS: Crie de 2 a 3 itens numerados. ATENÇÃO CRÍTICA: Os aspectos devem ser passíveis de resposta completa dentro do limite físico de 30 linhas manuscritas (cerca de 240 a 300 palavras totais). Não exija o impossível. Se for 'Iniciante', faça perguntas muito diretas.
+    6. PONTUAÇÃO: A soma do campo "valor_maximo" dos aspectos DEVE ser exatos 19.0 pontos.
 
     RETORNE APENAS ESTE JSON EXATO:
     {{
       "discursiva": {{
-        "texto_motivador": "Descrição detalhada do cenário narrado...",
-        "comando": "Considerando a situação narrada, redija um texto dissertativo em atendimento ao que se pede a seguir.",
+        "texto_motivador": "Descrição do cenário...",
+        "comando": "Considerando a situação, redija um texto...",
         "aspectos": [
-          {{ "aspecto": "1. Explique o conceito X...", "valor_maximo": 6.0 }},
-          {{ "aspecto": "2. Mencione o papel de Y...", "valor_maximo": 8.0 }},
-          {{ "aspecto": "3. Descreva o processo Z...", "valor_maximo": 5.0 }}
+          {{ "aspecto": "1. Pergunta ou tópico...", "valor_maximo": 9.0 }},
+          {{ "aspecto": "2. Pergunta ou tópico...", "valor_maximo": 10.0 }}
+        ]
+      }}
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.6, api_key=req.api_key), media_type="text/plain")
+
+@app.post("/extract-topics")
+async def extract_topics_endpoint(req: ExtractTopicsRequest):
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
+    
+    prompt = f"""
+    Atue como um Especialista Sênior em Análise de Editais de Concurso. 
+    Leia o trecho bruto do edital/conteúdo programático abaixo e extraia a disciplina principal (área de conhecimento) e os tópicos específicos descritos.
+    
+    TEXTO DO EDITAL:
+    {req.texto[:5000]}
+    
+    RETORNE APENAS ESTE JSON EXATO:
+    {{
+      "area": "Nome da Disciplina Principal (ex: Direito Penal, Arquitetura de Software)",
+      "topicos": "Lista de todos os tópicos encontrados, rigorosamente separados por vírgula (ex: Crimes contra a vida, Dolo e culpa, Tipicidade)"
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.1, api_key=req.api_key), media_type="text/plain")
+
+@app.post("/generate-global-essay")
+async def generate_global_essay_endpoint(req: GlobalEssayRequest):
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
+    
+    nivel = req.nivel or "Normal"
+    prompt = f"""
+    Atue como EXAMINADOR SÊNIOR da banca CEBRASPE/CESPE.
+    NÍVEL DE DIFICULDADE: {nivel}.
+    Área do candidato: {req.area}.
+
+    Tópicos para integrar: {json.dumps(req.aulas_titulos, ensure_ascii=False)}
+
+    DIRETRIZES DE CRIAÇÃO:
+    1. SELEÇÃO: Escolha 2 temas distintos da lista acima.
+    2. COMANDO: É OBRIGATÓRIO INCLUIR A INSTRUÇÃO: "Redija seu texto em até 30 linhas".
+    3. CALIBRAGEM: O cenário e os aspectos devem ser desenhados para que o candidato consiga responder tudo com qualidade em até 30 linhas (limite de 300 palavras). Não peça respostas que exijam textos de 500+ palavras.
+    4. PONTUAÇÃO: A soma do campo "valor_maximo" deve ser exatos 19.0.
+
+    RETORNE APENAS ESTE JSON EXATO:
+    {{
+      "discursiva": {{
+        "texto_motivador": "Descrição do cenário hipotético.",
+        "comando": "Considerando a situação narrada, redija um texto dissertativo em atendimento ao que se pede a seguir. Redija seu texto em até 30 linhas.",
+        "aspectos": [
+          {{ "aspecto": "1. ...", "valor_maximo": 9.0 }},
+          {{ "aspecto": "2. ...", "valor_maximo": 10.0 }}
         ]
       }}
     }}
@@ -1978,6 +2180,42 @@ async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: Use
     except Exception as e:
         print(f"Erro no OAuth OpenRouter: {e}")
         raise HTTPException(status_code=500, detail="Erro ao comunicar com o OpenRouter.")
-            
+    
+@app.post("/generate-simulado-cespe")
+async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
+    
+    try:
+        result = await agent_cespe_exam_generator(
+            subject=req.subject, # <-- Repassando o assunto para a IA
+            focus=req.focus,
+            difficulty=req.difficulty,
+            amount=req.amount,
+            generate_text=req.generate_text,
+            model=req.model,
+            api_key=req.api_key
+        )
+        return result
+    except Exception as e:
+        print(f"Erro ao gerar simulado CESPE: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate-lesson-cespe")
+async def generate_lesson_cespe_endpoint(req: LessonCespeRequest):
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
+    
+    try:
+        result = await agent_cespe_lesson_generator(
+            wrong_questions=req.wrong_questions,
+            model=req.model,
+            api_key=req.api_key
+        )
+        return result
+    except Exception as e:
+        print(f"Erro ao gerar aula CESPE: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+                
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

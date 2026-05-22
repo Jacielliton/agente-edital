@@ -1,11 +1,10 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, PlusCircle, Settings, BookOpen, LogOut, LogIn, Moon, Sun, Menu, X, UserCircle } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Settings, BookOpen, LogOut, LogIn, Moon, Sun, Menu, X, UserCircle, Wrench } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import "./App.css";
 
 // 1. LAZY LOADING (Code Splitting)
-// Isso faz com que o navegador só baixe o código da página quando ela for acessada, deixando o site muito mais rápido.
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 const GerenciarAulas = lazy(() => import("./pages/GerenciarAulas")); 
@@ -15,6 +14,10 @@ const Login = lazy(() => import("./pages/Login"));
 const Performance = lazy(() => import('./components/Performance'));
 const OpenRouterCallback = lazy(() => import("./pages/OpenRouterCallback"));
 const Profile = lazy(() => import("./pages/Profile"));
+const TreinoDiscursiva = lazy(() => import("./pages/TreinoDiscursiva"));
+const Ferramentas = lazy(() => import("./pages/Ferramentas")); // <-- NOVO IMPORT
+const GabariteCespe = lazy(() => import("./pages/GabariteCespe"));
+const GabariteLogica = lazy(() => import("./pages/GabariteLogica"));
 
 // Componente de Carregamento para o Suspense
 const LoadingFallback = () => (
@@ -51,7 +54,7 @@ function NavBar() {
   const location = useLocation();
 
   const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // 2. Estado do Menu Mobile
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
 
   useEffect(() => {
     if (isDark) {
@@ -77,7 +80,7 @@ function NavBar() {
         <button 
           className="mobile-menu-btn" 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', display: 'none' }} // Requer ajuste no CSS (abaixo)
+          style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', display: 'none' }}
         >
           {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -97,6 +100,9 @@ function NavBar() {
           {user ? (
             <>
               <Link to="/" className="nav-item"><LayoutDashboard size={18}/> Dashboard</Link>
+              
+              {/* NOVA OPÇÃO NO MENU: HUB DE FERRAMENTAS */}
+              <Link to="/ferramentas" className="nav-item"><Wrench size={18}/> Utilitários</Link>
 
               {podeGerenciar && (
                 <>
@@ -110,7 +116,7 @@ function NavBar() {
               )}
 
               {/* Link para a página de perfil */}
-              <Link to="/profile" className="nav-item user-info" style={{ cursor: 'pointer', transition: 'color 0.2s' }} title="Aceder ao Perfil">
+              <Link to="/profile" className="nav-item user-info" style={{ cursor: 'pointer', transition: 'color 0.2s' }} title="Acessar Perfil">
                 <UserCircle size={18}/> <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{user.email.split('@')[0]}</span>
               </Link>
 
@@ -133,7 +139,6 @@ export default function App() {
       <BrowserRouter>
         <NavBar />
         <div className="main-content">
-          {/* O Suspense envolve as rotas para mostrar o LoadingFallback enquanto o arquivo não termina de ser baixado */}
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
@@ -143,13 +148,19 @@ export default function App() {
               <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
               <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
               <Route path="/callback" element={<PrivateRoute><OpenRouterCallback /></PrivateRoute>} />
+              
+              {/* ROTAS DAS FERRAMENTAS */}
+              <Route path="/ferramentas" element={<PrivateRoute><Ferramentas /></PrivateRoute>} />
+              <Route path="/treino" element={<PrivateRoute><TreinoDiscursiva /></PrivateRoute>} />
+              <Route path="/gabarite-cespe" element={<PrivateRoute><GabariteCespe /></PrivateRoute>} />
+              <Route path="/gabarite-logica" element={<PrivateRoute><GabariteLogica /></PrivateRoute>} />
 
               <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
               <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
               
               <Route path="/admin" element={<PrivateRoute adminOnly={true}><AdminPanel /></PrivateRoute>} />
 
-              {/* 3. ROTA 404 (Catch-all) */}
+              {/* ROTA 404 (Catch-all) */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

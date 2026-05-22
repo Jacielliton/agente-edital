@@ -227,11 +227,16 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   const [loading, setLoading] = useState(false);
   const [loadingGen, setLoadingGen] = useState(false);
   const [error, setError] = useState(null);
-  
+  const [nivel, setNivel] = useState("Normal"); // <-- ESTADO DO NÍVEL
+
   if (!discursiva || !discursiva.comando) return null;
 
+  // LÓGICA DO TERMÔMETRO DE LINHAS
+  const palavrasCount = answer.trim() === "" ? 0 : answer.trim().split(/\s+/).length;
+  const linhasEstimadas = Math.ceil(palavrasCount / 9); // Média de 9 palavras por linha manuscrita
+  const excedeuLinhas = linhasEstimadas > 30;
+
   const handleCorrect = async () => {
-    // --- NOVA TRAVA ---
     if (!userApiKey) { onOpenConfig(); return; }
 
     if (answer.trim().length < 50) {
@@ -254,18 +259,15 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
         })
       });
       
-      // --- NOVA LÓGICA: O JS SOMA A NOTA E IGNORA A MATEMÁTICA DA IA ---
       const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
         ? data.avaliacoes_aspectos.reduce((acc, curr) => acc + (parseFloat(curr.nota_atribuida) || 0), 0)
         : (parseFloat(data.nota_final) || 0);
         
-      data.nota_final_calculada = notaCalculada; // Guarda o valor correto
-      // ------------------------------------------------------------------
-
+      data.nota_final_calculada = notaCalculada; 
       setCorrection(data);
       
-      // Salva a nota real no banco
-      await savePerformance("discursiva", area ? `${area} - ${aula?.titulo || 'Tópico'}` : "Prova Discursiva", notaCalculada, 10.0);
+      // Salva a nota com o nível de dificuldade
+      await savePerformance("discursiva", area ? `${area} - ${aula?.titulo || 'Tópico'}` : "Prova Discursiva", notaCalculada, 10.0, nivel);
       
     } catch (err) {
       setError("A IA corretora falhou. Verifique se a sua Chave de API está correta nas configurações.");
@@ -275,11 +277,9 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   };
 
   const handleGenerateNew = async () => {
-    setLoadingGen(true);
-    setError(null);
-    setCorrection(null);
-    setAnswer("");
-    
+    if (!userApiKey) { onOpenConfig(); return; }
+
+    setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
       const data = await fetchStreamAsJson(`${apiUrl}/generate-essay`, {
@@ -289,22 +289,19 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           area: area || "Assunto Geral",
           aula_titulo: aula.titulo || "Aula",
           lesson_content: aula, 
+          nivel: nivel, // <-- ENVIANDO O NÍVEL PARA A API
           model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
       });
-
       
       const novaQuestao = data.discursiva ? data.discursiva : data;
-
       if (novaQuestao && novaQuestao.comando) {
         setDiscursiva(novaQuestao); 
       } else {
-        console.error("Retorno inválido da IA:", data);
         setError("A IA não retornou um formato válido. Tente clicar em Gerar novamente.");
       }
     } catch (err) {
-      console.error(err);
       setError("Falha ao gerar nova discursiva. Tente novamente.");
     } finally {
       setLoadingGen(false);
@@ -343,49 +340,100 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           </ul>
         </div>
         
-        <textarea 
-          className="essay-textarea" 
-          placeholder="Rascunho Oficial: Digite aqui o seu texto dissertativo..." 
-          value={answer} 
-          onChange={(e) => setAnswer(e.target.value)} 
-          disabled={loading || loadingGen || correction !== null} 
-          style={{ width: '100%', minHeight: '150px', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '15px', resize: 'vertical', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
-        />
+        {/* RASCUNHO OFICIAL COM TERMÔMETRO DE LINHAS */}
+        <div style={{ position: 'relative' }}>
+          <textarea 
+            className="essay-textarea" 
+            placeholder="Rascunho Oficial: Digite aqui o seu texto dissertativo..." 
+            value={answer} 
+            onChange={(e) => setAnswer(e.target.value)} 
+            disabled={loading || loadingGen || correction !== null} 
+            style={{ width: '100%', minHeight: '200px', padding: '15px', paddingBottom: '40px', borderRadius: '8px', border: excedeuLinhas ? '2px solid var(--error-text)' : '1px solid var(--border)', marginBottom: '15px', resize: 'vertical', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
+          />
+          <div style={{ position: 'absolute', bottom: '25px', right: '15px', fontSize: '0.85rem', backgroundColor: 'var(--card-bg)', padding: '4px 8px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', color: excedeuLinhas ? 'var(--error-text)' : (linhasEstimadas > 25 ? 'var(--warning-text)' : 'var(--text-muted)'), fontWeight: 'bold' }}>
+            {palavrasCount} palavras (~{linhasEstimadas}/30 linhas)
+            {excedeuLinhas && " ⚠️ Excedeu limite!"}
+          </div>
+        </div>
         
         {!correction && (
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button className="essay-button" onClick={handleCorrect} disabled={loading || loadingGen || answer.trim().length === 0} style={{ flex: 2, padding: '12px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="essay-button" onClick={handleCorrect} disabled={loading || loadingGen || answer.trim().length === 0} style={{ flex: 2, minWidth: '200px', padding: '12px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
               {loading ? "⏳ A avaliar..." : "✔️ Submeter à Correção da IA"}
             </button>
-            <button className="essay-button" onClick={handleGenerateNew} disabled={loadingGen} style={{ flex: 1, backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-              {loadingGen ? "⏳ A gerar..." : "🔄 Gerar Nova Prova"}
-            </button>
+            <div style={{ display: 'flex', flex: 1, minWidth: '300px', gap: '8px' }}>
+              <select value={nivel} onChange={e => setNivel(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }}>
+                <option value="Iniciante">Iniciante</option>
+                <option value="Normal">Normal</option>
+                <option value="Avançado">Avançado</option>
+                <option value="Expert">Expert</option>
+              </select>
+              <button className="essay-button" onClick={handleGenerateNew} disabled={loadingGen} style={{ flex: 1, backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                {loadingGen ? "⏳ A gerar..." : "🔄 Nova Prova"}
+              </button>
+            </div>
           </div>
         )}
 
         {error && (<div className="correction-error" style={{ color: 'var(--error-text)', backgroundColor: 'var(--error-bg)', padding: '10px', borderRadius: '6px', border: '1px solid var(--error-text)', marginTop: '10px' }}><strong>⚠️ Erro: </strong> {error}</div>)}
         
+        {/* BLOCO DIDÁTICO DE CORREÇÃO */}
         {correction && (
-          <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--success-text)', borderBottom: '2px solid var(--success-text)', paddingBottom: '10px' }}>📊 Resultado Final: {safeString(correction.nota_final_calculada?.toFixed(1))} / 10.0</h3>
-            <div style={{fontStyle: 'italic', color: 'var(--text-secondary)'}}><strong>Parecer da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown></div>
-            <h4 style={{ marginTop: '20px', color: 'var(--heading-color)' }}>🔹 Avaliação por Aspecto:</h4>
+          <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+            <div style={{ background: 'var(--success-bg)', padding: '15px 20px', borderBottom: '1px solid var(--success-text)', display: 'flex', alignItems: 'center', gap: '10px', borderRadius: '8px 8px 0 0', margin: '-20px -20px 20px -20px' }}>
+              <h3 style={{ margin: 0, color: 'var(--success-text)' }}>✅ Nota Final: {safeString(correction.nota_final_calculada?.toFixed(1))} / 10.0</h3>
+            </div>
+            
+            <div style={{fontStyle: 'italic', marginBottom: '25px', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '15px', borderRadius: '8px'}}>
+              <strong>Parecer da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown>
+            </div>
+            
+            <h4 style={{ color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Avaliação e Padrão de Resposta (Espelho)</h4>
             {safeArray(correction.avaliacoes_aspectos).map((av, k) => (
-              <div key={k} style={{ marginBottom: '15px', background: 'var(--card-bg)', padding: '15px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                <div style={{fontWeight: 'bold', color: 'var(--text-main)'}}>{safeString(av.aspecto)}</div>
-                <div style={{ color: 'var(--primary)', fontWeight: 'bold', margin: '5px 0' }}>Nota: {safeString(av.nota_atribuida)}</div>
-                <div style={{fontSize: '0.9em', color: 'var(--text-secondary)'}}><em><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></em></div>
+              <div key={k} style={{ marginBottom: '25px', background: 'var(--bg)', padding: '20px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                <div style={{fontWeight: 'bold', color: 'var(--text-main)', fontSize: '1.05rem'}}>{safeString(av.aspecto)}</div>
+                <div style={{ color: 'var(--primary)', fontWeight: 'bold', margin: '10px 0', fontSize: '1.1rem' }}>Nota Obtida: {safeString(av.nota_atribuida)}</div>
+                
+                <div style={{fontSize: '0.95em', color: 'var(--text-secondary)', marginBottom: '15px'}}>
+                  <strong>Análise do seu texto:</strong>
+                  <div style={{ marginTop: '5px' }}><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></div>
+                </div>
+
+                {av.padrao_esperado && (
+                  <div style={{ background: 'var(--success-bg)', border: '1px dashed var(--success-text)', padding: '15px', borderRadius: '8px', marginTop: '10px' }}>
+                    <strong style={{ color: 'var(--success-text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      💡 Espelho de Correção (Como responder perfeitamente):
+                    </strong>
+                    <div style={{ color: 'var(--text-main)', marginTop: '8px', fontSize: '0.95em', lineHeight: '1.5' }}>
+                      <ReactMarkdown>{safeString(av.padrao_esperado)}</ReactMarkdown>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
-            <h4 style={{ marginTop: '20px', color: 'var(--heading-color)' }}>🔹 Descontos Gramaticais / Estruturais:</h4>
-            <div style={{fontSize: '0.9em', color: 'var(--error-text)'}}><ReactMarkdown>{safeString(correction.erros_gramaticais)}</ReactMarkdown></div>
+
+            <h4 style={{ marginTop: '30px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Estrutura e Aspectos Gramaticais</h4>
+            <div style={{fontSize: '0.95em', color: 'var(--error-text)', background: 'var(--error-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--error-text)'}}>
+              <ReactMarkdown>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
+            </div>
             
-            <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
-              <button onClick={() => {setCorrection(null); setAnswer("");}} style={{background: 'none', color: 'var(--primary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline'}}>
-                🔄 Tentar responder a esta prova novamente
+            {correction.dica_estudo && (
+              <div style={{ marginTop: '30px', padding: '20px', background: 'var(--primary-light)', borderRadius: '8px', border: '1px solid var(--primary)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                <strong style={{ color: 'var(--primary)', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📚 Plano de Ação / Dica de Estudo:
+                </strong>
+                <div style={{ color: 'var(--text-main)', marginTop: '10px', fontSize: '1rem', lineHeight: '1.6' }}>
+                  <ReactMarkdown>{safeString(correction.dica_estudo)}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '20px', marginTop: '35px', flexWrap: 'wrap' }}>
+              <button onClick={() => {setCorrection(null); setAnswer("");}} style={{flex: 1, background: 'var(--bg)', color: 'var(--primary)', border: '1px solid var(--border)', padding: '12px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                🔄 Refazer esta redação
               </button>
-              <button onClick={handleGenerateNew} disabled={loadingGen} style={{background: 'none', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline'}}>
-                {loadingGen ? "⏳ A gerar nova questão..." : "🆕 Gerar um novo cenário"}
+              <button onClick={handleGenerateNew} disabled={loadingGen} style={{flex: 1, background: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '12px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {loadingGen ? "⏳ A gerar..." : "🆕 Gerar Nova Discursiva Inédita"}
               </button>
             </div>
           </div>
@@ -405,17 +453,17 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
   const [loading, setLoading] = useState(false);
   const [loadingGen, setLoadingGen] = useState(false);
   const [error, setError] = useState(null);
+  const [nivel, setNivel] = useState("Normal"); // <-- ESTADO DO NÍVEL GLOBAL
+
+  // LÓGICA DO TERMÔMETRO DE LINHAS
+  const palavrasCount = answer.trim() === "" ? 0 : answer.trim().split(/\s+/).length;
+  const linhasEstimadas = Math.ceil(palavrasCount / 9);
+  const excedeuLinhas = linhasEstimadas > 30;
 
   const handleGenerateNew = async () => {
-    // --- NOVA TRAVA ---
     if (!userApiKey) { onOpenConfig(); return; }
-    // ------------------
     
-    setLoadingGen(true);
-    setError(null);
-    setCorrection(null);
-    setAnswer("");
-    
+    setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
       const aulasTitulos = aulas.map(a => a.titulo);
@@ -426,20 +474,19 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         body: JSON.stringify({
           area: area || "Assunto Geral",
           aulas_titulos: aulasTitulos,
+          nivel: nivel, // <-- ENVIANDO O NÍVEL PARA A API
           model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         })
       });
       
       const novaQuestao = data.discursiva ? data.discursiva : data;
-
       if (novaQuestao && novaQuestao.comando) {
         setDiscursiva(novaQuestao);
       } else {
         setError("A IA não retornou um formato válido. Tente gerar novamente.");
       }
     } catch (err) {
-      console.error(err);
       setError("Falha de conexão ao gerar a discursiva geral.");
     } finally {
       setLoadingGen(false);
@@ -447,7 +494,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
   };
 
   const handleCorrect = async () => {
-    // --- NOVA TRAVA ---
     if (!userApiKey) { onOpenConfig(); return; }
 
     if (answer.trim().length < 50) {
@@ -470,18 +516,15 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         })
       });      
       
-      // --- NOVA LÓGICA: O JS SOMA A NOTA E IGNORA A MATEMÁTICA DA IA ---
       const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
         ? data.avaliacoes_aspectos.reduce((acc, curr) => acc + (parseFloat(curr.nota_atribuida) || 0), 0)
         : (parseFloat(data.nota_final) || 0);
         
-      data.nota_final_calculada = notaCalculada; // Guarda o valor correto
-      // ------------------------------------------------------------------
-
+      data.nota_final_calculada = notaCalculada; 
       setCorrection(data); 
       
-      // Salva a nota real no banco
-      await savePerformance("discursiva", area ? `${area} (Simulado Global)` : "Discursiva Global", notaCalculada, 20.0);
+      // Salva a nota com o nível 
+      await savePerformance("discursiva", area ? `${area} (Simulado Global)` : "Discursiva Global", notaCalculada, 20.0, nivel);
       
     } catch (err) {
       setError("A IA corretora falhou ao processar a redação.");
@@ -493,6 +536,15 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
   if (!discursiva) {
     return (
       <div style={{ textAlign: 'center', marginTop: '20px' }}>
+        <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+          <label style={{ color: 'var(--text-main)', fontWeight: 'bold' }}>Nível de Dificuldade:</label>
+          <select value={nivel} onChange={(e) => setNivel(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none', cursor: 'pointer' }}>
+            <option value="Iniciante">Iniciante</option>
+            <option value="Normal">Normal</option>
+            <option value="Avançado">Avançado</option>
+            <option value="Expert">Expert</option>
+          </select>
+        </div>
         <button onClick={handleGenerateNew} disabled={loadingGen} style={{ padding: '15px 30px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)' }}>
           {loadingGen ? "⏳ A sortear temas e gerar prova..." : "📝 Gerar Prova Discursiva Oficial"}
         </button>
@@ -526,50 +578,100 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         </ul>
       </div>
       
-      <textarea 
-        className="essay-textarea" 
-        placeholder="FOLHA DE TEXTO DEFINITIVO: Digite aqui a sua resposta estruturada..." 
-        value={answer} 
-        onChange={(e) => setAnswer(e.target.value)} 
-        disabled={loading || loadingGen || correction !== null} 
-        style={{ width: '100%', minHeight: '200px', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '15px', resize: 'vertical', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
-      />
+      {/* RASCUNHO OFICIAL COM TERMÔMETRO DE LINHAS */}
+      <div style={{ position: 'relative' }}>
+        <textarea 
+          className="essay-textarea" 
+          placeholder="FOLHA DE TEXTO DEFINITIVO: Digite aqui a sua resposta estruturada..." 
+          value={answer} 
+          onChange={(e) => setAnswer(e.target.value)} 
+          disabled={loading || loadingGen || correction !== null} 
+          style={{ width: '100%', minHeight: '250px', padding: '15px', paddingBottom: '40px', borderRadius: '8px', border: excedeuLinhas ? '2px solid var(--error-text)' : '1px solid var(--border)', marginBottom: '15px', resize: 'vertical', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
+        />
+        <div style={{ position: 'absolute', bottom: '25px', right: '15px', fontSize: '0.85rem', backgroundColor: 'var(--card-bg)', padding: '4px 8px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', color: excedeuLinhas ? 'var(--error-text)' : (linhasEstimadas > 25 ? 'var(--warning-text)' : 'var(--text-muted)'), fontWeight: 'bold' }}>
+          {palavrasCount} palavras (~{linhasEstimadas}/30 linhas)
+          {excedeuLinhas && " ⚠️ Excedeu limite!"}
+        </div>
+      </div>
       
       {!correction && (
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="essay-button" onClick={handleCorrect} disabled={loading || loadingGen || answer.trim().length === 0} style={{ flex: 2, padding: '15px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1.05rem' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button className="essay-button" onClick={handleCorrect} disabled={loading || loadingGen || answer.trim().length === 0} style={{ flex: 2, minWidth: '200px', padding: '15px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1.05rem' }}>
             {loading ? "⏳ Avaliando sua redação..." : "✔️ Enviar para a Banca IA (Correção)"}
           </button>
-          <button className="essay-button" onClick={handleGenerateNew} disabled={loadingGen} style={{ flex: 1, backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-            {loadingGen ? "⏳..." : "🔄 Sortear Outro Tema"}
-          </button>
+          
+          <div style={{ display: 'flex', flex: 1, minWidth: '300px', gap: '8px' }}>
+            <select value={nivel} onChange={(e) => setNivel(e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }}>
+              <option value="Iniciante">Iniciante</option>
+              <option value="Normal">Normal</option>
+              <option value="Avançado">Avançado</option>
+              <option value="Expert">Expert</option>
+            </select>
+            <button className="essay-button" onClick={handleGenerateNew} disabled={loadingGen} style={{ flex: 1, backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+              {loadingGen ? "⏳..." : "🔄 Sortear Outro Tema"}
+            </button>
+          </div>
         </div>
       )}
 
       {error && (<div className="correction-error" style={{ color: 'var(--error-text)', backgroundColor: 'var(--error-bg)', padding: '10px', borderRadius: '6px', border: '1px solid var(--error-text)', marginTop: '10px' }}><strong>⚠️ Erro: </strong> {error}</div>)}
       
+      {/* BLOCO DIDÁTICO DE CORREÇÃO (GLOBAL) */}
       {correction && (
         <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <h3 style={{ marginTop: 0, color: 'var(--success-text)', borderBottom: '2px solid var(--success-text)', paddingBottom: '10px' }}>📊 Nota no Domínio do Conteúdo: {safeString(correction.nota_final_calculada?.toFixed(1))} / 19.0</h3>
-          <div style={{fontStyle: 'italic', marginBottom: '20px', color: 'var(--text-secondary)'}}><strong>Parecer Oficial da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown></div>
+          <div style={{ background: 'var(--success-bg)', padding: '15px 20px', borderBottom: '1px solid var(--success-text)', display: 'flex', alignItems: 'center', gap: '10px', borderRadius: '8px 8px 0 0', margin: '-20px -20px 20px -20px' }}>
+            <h3 style={{ margin: 0, color: 'var(--success-text)' }}>✅ Nota Final: {safeString(correction.nota_final_calculada?.toFixed(1))} / 20.0</h3>
+          </div>
           
-          <h4 style={{ color: 'var(--heading-color)' }}>🔹 Detalhamento por Aspecto:</h4>
+          <div style={{fontStyle: 'italic', marginBottom: '20px', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '15px', borderRadius: '8px'}}>
+            <strong>Parecer Oficial da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown>
+          </div>
+          
+          <h4 style={{ color: 'var(--heading-color)' }}>🔹 Detalhamento e Padrão de Resposta (Espelho)</h4>
           {safeArray(correction.avaliacoes_aspectos).map((av, k) => (
-            <div key={k} style={{ marginBottom: '15px', background: 'var(--bg)', padding: '15px', borderRadius: '8px', borderLeft: '4px solid var(--primary)' }}>
-              <div style={{fontWeight: 'bold', color: 'var(--text-main)'}}>{safeString(av.aspecto)}</div>
-              <div style={{ color: 'var(--primary)', fontWeight: 'bold', margin: '5px 0' }}>Nota Atribuída: {safeString(av.nota_atribuida)}</div>
-              <div style={{fontSize: '0.9em', color: 'var(--text-secondary)'}}><em><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></em></div>
+            <div key={k} style={{ marginBottom: '25px', background: 'var(--bg)', padding: '20px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <div style={{fontWeight: 'bold', color: 'var(--text-main)', fontSize: '1.05rem'}}>{safeString(av.aspecto)}</div>
+              <div style={{ color: 'var(--primary)', fontWeight: 'bold', margin: '10px 0', fontSize: '1.1rem' }}>Nota Atribuída: {safeString(av.nota_atribuida)}</div>
+              
+              <div style={{fontSize: '0.95em', color: 'var(--text-secondary)', marginBottom: '15px'}}>
+                <strong>Análise do seu texto:</strong>
+                <div style={{ marginTop: '5px' }}><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></div>
+              </div>
+
+              {av.padrao_esperado && (
+                <div style={{ background: 'var(--success-bg)', border: '1px dashed var(--success-text)', padding: '15px', borderRadius: '8px', marginTop: '10px' }}>
+                  <strong style={{ color: 'var(--success-text)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    💡 Espelho de Correção (Como responder perfeitamente):
+                  </strong>
+                  <div style={{ color: 'var(--text-main)', marginTop: '8px', fontSize: '0.95em', lineHeight: '1.5' }}>
+                    <ReactMarkdown>{safeString(av.padrao_esperado)}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 
-          <h4 style={{ marginTop: '20px', color: 'var(--heading-color)' }}>🔹 Estrutura e Aspectos Gramaticais (Vale até 1.0 ponto):</h4>
-          <div style={{fontSize: '0.95em', color: 'var(--error-text)', background: 'var(--error-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--error-text)'}}><ReactMarkdown>{safeString(correction.erros_gramaticais)}</ReactMarkdown></div>
+          <h4 style={{ marginTop: '30px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Estrutura e Aspectos Gramaticais (Vale até 1.0)</h4>
+          <div style={{fontSize: '0.95em', color: 'var(--error-text)', background: 'var(--error-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--error-text)'}}>
+            <ReactMarkdown>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
+          </div>
           
-          <div style={{ display: 'flex', gap: '20px', marginTop: '25px' }}>
-            <button onClick={() => {setCorrection(null); setAnswer("");}} style={{background: 'var(--bg)', color: 'var(--primary)', border: '1px solid var(--border)', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+          {correction.dica_estudo && (
+            <div style={{ marginTop: '30px', padding: '20px', background: 'var(--primary-light)', borderRadius: '8px', border: '1px solid var(--primary)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+              <strong style={{ color: 'var(--primary)', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                📚 Plano de Ação / Dica de Estudo:
+              </strong>
+              <div style={{ color: 'var(--text-main)', marginTop: '10px', fontSize: '1rem', lineHeight: '1.6' }}>
+                <ReactMarkdown>{safeString(correction.dica_estudo)}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+          
+          <div style={{ display: 'flex', gap: '20px', marginTop: '35px', flexWrap: 'wrap' }}>
+            <button onClick={() => {setCorrection(null); setAnswer("");}} style={{flex: 1, background: 'var(--bg)', color: 'var(--primary)', border: '1px solid var(--border)', padding: '12px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
               🔄 Refazer esta redação
             </button>
-            <button onClick={handleGenerateNew} disabled={loadingGen} style={{background: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+            <button onClick={handleGenerateNew} disabled={loadingGen} style={{flex: 1, background: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '12px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
               {loadingGen ? "⏳ A gerar..." : "🆕 Gerar Nova Discursiva Inédita"}
             </button>
           </div>
@@ -610,7 +712,7 @@ export default function LessonContent({ result }) {
   const [simuladoAcertos, setSimuladoAcertos] = useState(0);
   const [simuladoFinalizado, setSimuladoFinalizado] = useState(false);
   const [simuladoQtd, setSimuladoQtd] = useState(5);
-  const [simuladoNivel, setSimuladoNivel] = useState("Superior");
+  const [simuladoNivel, setSimuladoNivel] = useState("Normal"); // <-- ALTERADO O VALOR DEFAULT
   const [simuladoFormato, setSimuladoFormato] = useState("Múltipla Escolha");
 
   useEffect(() => {
@@ -977,14 +1079,16 @@ export default function LessonContent({ result }) {
         {!simuladoLoading && !simuladoQuestoes && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '25px', flexWrap: 'wrap' }}>
             <div style={{ textAlign: 'left' }}>
-              <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Nível de Exigência:</label>
+              <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Nível de Dificuldade:</label>
               <select 
                 value={simuladoNivel} 
                 onChange={(e) => setSimuladoNivel(e.target.value)} 
                 style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '1rem', outline: 'none', cursor: 'pointer' }}
               >
-                <option value="Médio">Ensino Médio</option>
-                <option value="Superior">Ensino Superior</option>
+                <option value="Iniciante">Iniciante</option>
+                <option value="Normal">Normal</option>
+                <option value="Avançado">Avançado</option>
+                <option value="Expert">Expert</option>
               </select>
             </div>
 

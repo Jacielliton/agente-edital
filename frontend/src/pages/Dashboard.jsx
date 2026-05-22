@@ -115,7 +115,7 @@ export default function Dashboard() {
         <h1 style={{ margin: 0 }}>Minhas Aulas</h1>
         <Link to="/performance" className="btn" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-main)', fontWeight: 'bold' }}>
           <TrendingUp size={18} color="var(--primary)" /> Meu Desempenho
-        </Link>
+        </Link>        
       </header>
 
       {/* Barra de Filtros */}
