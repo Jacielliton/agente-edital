@@ -15,17 +15,22 @@ const getAuthToken = () => {
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
 
-const fetchStreamAsJson = async (url, options) => {
+const fetchStreamAsJson = async (url, options, onProgress = null) => {
   const res = await fetch(url, options);
   if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
   const reader = res.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let rawText = "";
+  let bytesReceived = 0;
+  
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    bytesReceived += value.length;
+    if (onProgress) onProgress(bytesReceived); // Desbloqueia a reatividade da UI
     rawText += decoder.decode(value, { stream: true });
   }
+  
   try {
     let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
     const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);

@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
-// Helper para ler token unificado (mesma lógica do Generator)
+// Helper para ler token unificado
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
   for (const storage of storages) {
@@ -24,7 +24,39 @@ const getAuthToken = () => {
   return null;
 };
 
-export default function GabariteCespe() {
+// ==========================================
+// COLE A FUNÇÃO AQUI (Antes do export default)
+// ==========================================
+const fetchStreamAsJson = async (url, options, onProgress = null) => {
+  const res = await fetch(url, options);
+  if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let rawText = "";
+  let bytesReceived = 0;
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytesReceived += value.length;
+    if (onProgress) onProgress(bytesReceived);
+    rawText += decoder.decode(value, { stream: true });
+  }
+  
+  try {
+    let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
+    const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (jsonMatch) cleanText = jsonMatch[0];
+    cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+    return JSON.parse(cleanText);
+  } catch (e) {
+    throw new Error("A IA gerou um formato inválido. Tente novamente.");
+  }
+};
+
+// ==========================================
+
+export default function GabariteCespe() { // Ou GabariteLogica
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA (Exatamente como no Generator.jsx) ---
@@ -132,35 +164,57 @@ export default function GabariteCespe() {
   const generateExam = async () => {
     setError("");
     setViewState("loading");
-    setLoadingMsg("A Inteligência Artificial está a formular questões inéditas no padrão CESPE...");
 
     try {
-      const payload = {
-        focus: configFocus,
-        difficulty: configDifficulty,
-        amount: configAmount,
-        generate_text: configTextBase,
-        model: userModel || "arcee-ai/trinity-large-thinking:free",
-        api_key: userApiKey || null
-      };
-
-      // OBS: Crie a rota POST /generate-simulado-cespe no seu backend, semelhante à /analyze
       const token = getAuthToken();
-      const response = await fetch(`${API_URL}/generate-simulado-cespe`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : ""
-        },
-        body: JSON.stringify(payload)
-      });
+      let todasQuestoes = [];
+      let textoBaseGeral = "";
+      
+      // Fatiamento (Chunking): Impede a sobrecarga da IA pedindo tudo de uma vez
+      const batchSize = 5; 
+      const batches = Math.ceil(configAmount / batchSize);
 
-      if (!response.ok) throw new Error("Falha ao gerar o simulado.");
-      const data = await response.json();
+      for (let i = 0; i < batches; i++) {
+        setLoadingMsg(`A formular questões inéditas... (Lote ${i + 1} de ${batches})`);
+        const currentBatchSize = Math.min(batchSize, configAmount - (i * batchSize));
 
-      if (!data.questoes || data.questoes.length === 0) throw new Error("Formato de resposta inválido.");
+        const payload = {
+          focus: configFocus,
+          difficulty: configDifficulty,
+          amount: currentBatchSize,
+          generate_text: i === 0 ? configTextBase : false, // Gera texto-base apenas no 1º lote
+          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          api_key: userApiKey || null
+        };
 
-      setCurrentData(data);
+        // Usa a função de streaming para não sofrer timeout do servidor
+        const data = await fetchStreamAsJson(`${API_URL}/generate-simulado-cespe`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": token ? `Bearer ${token}` : ""
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!data.questoes || data.questoes.length === 0) {
+            throw new Error("A IA retornou um formato vazio neste lote.");
+        }
+
+        if (i === 0 && data.textoBase) {
+          textoBaseGeral = data.textoBase;
+        }
+
+        // Garante que os IDs não se repitam entre os lotes gerados separadamente
+        const questoesCorrigidas = data.questoes.map((q, idx) => ({
+          ...q,
+          id: `q_cespe_${i}_${idx}`
+        }));
+
+        todasQuestoes = [...todasQuestoes, ...questoesCorrigidas];
+      }
+
+      setCurrentData({ textoBase: textoBaseGeral, questoes: todasQuestoes });
       setUserAnswers({});
       setIsExamFinished(false);
       setViewState("exam");

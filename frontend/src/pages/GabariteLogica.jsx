@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Calculator, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, 
   Sparkles, Bot, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
@@ -24,7 +24,39 @@ const getAuthToken = () => {
   return null;
 };
 
-export default function GabariteLogica() {
+// ==========================================
+// COLE A FUNÇÃO AQUI (Antes do export default)
+// ==========================================
+const fetchStreamAsJson = async (url, options, onProgress = null) => {
+  const res = await fetch(url, options);
+  if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let rawText = "";
+  let bytesReceived = 0;
+  
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytesReceived += value.length;
+    if (onProgress) onProgress(bytesReceived);
+    rawText += decoder.decode(value, { stream: true });
+  }
+  
+  try {
+    let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
+    const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (jsonMatch) cleanText = jsonMatch[0];
+    cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+    return JSON.parse(cleanText);
+  } catch (e) {
+    throw new Error("A IA gerou um formato inválido. Tente novamente.");
+  }
+};
+
+// ==========================================
+
+export default function GabariteLogica() { // Ou GabariteLogica
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
@@ -129,35 +161,55 @@ export default function GabariteLogica() {
   const generateExam = async () => {
     setError("");
     setViewState("loading");
-    setLoadingMsg("A IA está analisando as premissas e formulando proposições lógicas...");
 
     try {
-      const payload = {
-        subject: "Raciocínio Lógico", // <-- AVISA O BACKEND DA MATÉRIA
-        focus: configFocus,
-        difficulty: configDifficulty,
-        amount: configAmount,
-        generate_text: configTextBase,
-        model: userModel || "arcee-ai/trinity-large-thinking:free",
-        api_key: userApiKey || null
-      };
-
       const token = getAuthToken();
-      const response = await fetch(`${API_URL}/generate-simulado-cespe`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : ""
-        },
-        body: JSON.stringify(payload)
-      });
+      let todasQuestoes = [];
+      let textoBaseGeral = "";
+      
+      const batchSize = 5; 
+      const batches = Math.ceil(configAmount / batchSize);
 
-      if (!response.ok) throw new Error("Falha ao gerar o simulado de RLM.");
-      const data = await response.json();
+      for (let i = 0; i < batches; i++) {
+        setLoadingMsg(`A formular proposições lógicas... (Lote ${i + 1} de ${batches})`);
+        const currentBatchSize = Math.min(batchSize, configAmount - (i * batchSize));
 
-      if (!data.questoes || data.questoes.length === 0) throw new Error("Formato de resposta inválido.");
+        const payload = {
+          subject: "Raciocínio Lógico",
+          focus: configFocus,
+          difficulty: configDifficulty,
+          amount: currentBatchSize,
+          generate_text: i === 0 ? configTextBase : false, 
+          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          api_key: userApiKey || null
+        };
 
-      setCurrentData(data);
+        const data = await fetchStreamAsJson(`${API_URL}/generate-simulado-cespe`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": token ? `Bearer ${token}` : ""
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!data.questoes || data.questoes.length === 0) {
+            throw new Error("A IA retornou um formato vazio neste lote.");
+        }
+
+        if (i === 0 && data.textoBase) {
+          textoBaseGeral = data.textoBase;
+        }
+
+        const questoesCorrigidas = data.questoes.map((q, idx) => ({
+          ...q,
+          id: `q_logica_${i}_${idx}`
+        }));
+
+        todasQuestoes = [...todasQuestoes, ...questoesCorrigidas];
+      }
+
+      setCurrentData({ textoBase: textoBaseGeral, questoes: todasQuestoes });
       setUserAnswers({});
       setIsExamFinished(false);
       setViewState("exam");
