@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight, UserPlus, X } from "lucide-react";
+import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight, UserPlus, X, Search, Filter } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function GerenciarAulas() {
@@ -12,6 +12,9 @@ export default function GerenciarAulas() {
   const [currentPlanPage, setCurrentPlanPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const limitPlansPerPage = 10;
+
+  // Estado do Filtro
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Estados de Edição
   const [editingPlan, setEditingPlan] = useState(null);
@@ -46,7 +49,10 @@ export default function GerenciarAulas() {
     setLoadingPlans(true);
     const token = getAuthToken();
 
-    fetch(`${API_URL}/plans?page=${page}&limit=${limitPlansPerPage}&manage_mode=true`, {
+    // Adiciona o parâmetro de busca na URL dinamicamente
+    const queryParams = `page=${page}&limit=${limitPlansPerPage}&manage_mode=true${searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''}`;
+
+    fetch(`${API_URL}/plans?${queryParams}`, {
       headers: { "Authorization": token ? `Bearer ${token}` : "" }
     })
       .then((res) => {
@@ -90,12 +96,24 @@ export default function GerenciarAulas() {
 
   const handleSaveEdit = async () => {
     setSavingPlan(true);
-    const token = getAuthToken(); 
+    const token = getAuthToken();
+
+    // 1. Criar um objeto de dados normalizado, garantindo caixa alta
+    const normalizedData = {
+      ...editFormData,
+      concurso: editFormData.concurso ? editFormData.concurso.trim().toUpperCase() : '',
+      banca: editFormData.banca ? editFormData.banca.trim().toUpperCase() : '',
+      area: editFormData.area ? editFormData.area.trim() : ''
+    };
+
     try {
       const res = await fetch(`${API_URL}/plans/${editingPlan.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": token ? `Bearer ${token}` : "" },
-        body: JSON.stringify(editFormData)
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : ""
+        },
+        body: JSON.stringify(normalizedData) // 2. Passar o objeto recém-criado em vez do editFormData cru
       });
       if (res.ok) {
         setEditingPlan(null);
@@ -161,11 +179,33 @@ export default function GerenciarAulas() {
       </div>
 
       <div className="panel">
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
           <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Aulas Cadastradas</h3>
-          <button className="btn small" onClick={() => fetchPlans(currentPlanPage)}>
-            <RefreshCw size={14}/> Atualizar Tabela
-          </button>
+          
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {/* NOVO CAMPO DE FILTRO COM ÍCONE DE BUSCA */}
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <Search size={16} color="var(--text-muted)" style={{ position: "absolute", left: "10px" }} />
+              <input 
+                type="text" 
+                placeholder="Pesquisar aulas..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchPlans(1)}
+                style={{ padding: "8px 10px 8px 32px", borderRadius: "6px", border: "1px solid var(--border)", backgroundColor: "var(--input-bg)", color: "var(--text-main)", fontSize: "0.9rem", width: "220px" }}
+              />
+            </div>
+            
+            {/* BOTÃO DE APLICAR FILTRO */}
+            <button className="btn small" onClick={() => fetchPlans(1)} title="Aplicar Filtro" style={{ backgroundColor: 'var(--primary)', color: '#fff' }}>
+              <Filter size={14}/> Filtrar
+            </button>
+
+            {/* BOTÃO DE ATUALIZAR */}
+            <button className="btn small" onClick={() => fetchPlans(currentPlanPage)}>
+              <RefreshCw size={14}/> Atualizar
+            </button>
+          </div>
         </div>
 
         {loadingPlans ? <div className="status">A carregar aulas...</div> : (

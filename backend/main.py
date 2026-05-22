@@ -540,6 +540,7 @@ async def list_plans(
     ano: Optional[str] = None, 
     banca: Optional[str] = None, 
     concurso: Optional[str] = None, 
+    search: Optional[str] = None, # <--- 1. NOVO PARÂMETRO ADICIONADO AQUI
     page: int = 1,
     limit: int = 30,
     manage_mode: bool = False,
@@ -567,6 +568,19 @@ async def list_plans(
                 )
             )
     
+    # <--- 2. LÓGICA DO FILTRO DE BUSCA ADICIONADA AQUI --->
+    if search and search.strip():
+        search_term = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                StoredPlan.title.ilike(search_term),
+                StoredPlan.concurso.ilike(search_term),
+                StoredPlan.banca.ilike(search_term),
+                StoredPlan.area.ilike(search_term)
+            )
+        )
+    # <--------------------------------------------------->
+
     if ano and ano.strip():
         query = query.where(StoredPlan.ano.ilike(f"%{ano.strip()}%"))
     if banca and banca.strip():

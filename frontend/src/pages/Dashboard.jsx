@@ -99,8 +99,10 @@ export default function Dashboard() {
   const groupedPlans = useMemo(() => {
     const groups = {};
     plans.forEach(plan => {
-      const concursoName = plan.concurso?.trim() || "Outros / Sem Concurso Vinculado";
-      const areaName = plan.area?.trim() || "Assuntos Gerais";
+      // Adicionando o toUpperCase() para padronizar tudo em maiúsculo no momento de agrupar
+      const concursoName = plan.concurso?.trim().toUpperCase() || "SEM CONCURSO VINCULADO";
+      const areaName = plan.area?.trim().toUpperCase() || "ASSUNTOS GERAIS";
+      
       if (!groups[concursoName]) groups[concursoName] = {};
       if (!groups[concursoName][areaName]) groups[concursoName][areaName] = [];
       groups[concursoName][areaName].push(plan);
