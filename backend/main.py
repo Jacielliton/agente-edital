@@ -2200,36 +2200,79 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
-    try:
-        result = await agent_cespe_exam_generator(
-            subject=req.subject, # <-- Repassando o assunto para a IA
-            focus=req.focus,
-            difficulty=req.difficulty,
-            amount=req.amount,
-            generate_text=req.generate_text,
-            model=req.model,
-            api_key=req.api_key
-        )
-        return result
-    except Exception as e:
-        print(f"Erro ao gerar simulado CESPE: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    focus_instructions = ""
+    # Tratamento para Raciocínio Lógico
+    if req.subject == "Raciocínio Lógico":
+        if req.focus == 'negacao': focus_instructions = "Foque EXCLUSIVAMENTE em leis de De Morgan e negação de proposições lógicas (e, ou, se...então)."
+        elif req.focus == 'condicional': focus_instructions = "Foque em proposições condicionais (se... então), tabela-verdade, condição suficiente e condição necessária."
+        elif req.focus == 'equivalencia': focus_instructions = "Foque em equivalências lógicas (contrapositiva, equivalência da disjunção/condicional)."
+        elif req.focus == 'diagramas': focus_instructions = "Foque em diagramas lógicos (Todo, Algum, Nenhum) e silogismos categóricos."
+        elif req.focus == 'argumentacao': focus_instructions = "Foque na validade de argumentos lógicos, premissas e conclusões."
+        elif req.focus == 'probabilidade': focus_instructions = "Foque em probabilidade de eventos, união, intersecção e probabilidade condicional."
+        elif req.focus == 'combinatoria': focus_instructions = "Foque em análise combinatória (arranjos, permutações e combinações simples)."
+        elif req.focus == 'sequencias': focus_instructions = "Foque em sequências lógicas numéricas, de palavras ou figuras."
+        else: focus_instructions = "Mescle tabela-verdade, negações lógicas e equivalências em situações hipotéticas."
+    # Tratamento original para Português/Outros
+    else: 
+        if req.focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
+        elif req.focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
+        elif req.focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
+        elif req.focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
+        elif req.focus == 'hardcore': focus_instructions = "NÍVEL MÁXIMO DE DIFICULDADE CESPE. Pegadinhas sutis e extrapolação."
+        else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
+
+    text_instruction = 'Crie uma situação hipotética base inédita (Ex: Considere as proposições P e Q...)' if req.generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'
+
+    prompt = f"""
+    Você é o mais rigoroso Examinador Sênior da banca CESPE/CEBRASPE. Crie um simulado inédito de {req.subject}.
+    DIRETRIZES: {req.amount} questões. Dificuldade: {req.difficulty}. Foco: {focus_instructions}.
+    Texto-Base: {text_instruction}
+
+    REGRAS CRÍTICAS DE FORMATAÇÃO JSON (EVITAR QUEBRA DE CÓDIGO):
+    1. JAMAIS use aspas duplas (") DENTRO dos valores de texto. Se precisar citar algo, use ASPAS SIMPLES (').
+    2. JAMAIS use quebras de linha reais dentro das strings. O texto deve ser contínuo.
+    3. Responda ESTRITAMENTE com o JSON, sem formatação markdown (```json).
+
+    INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
+    {{
+        "textoBase": "Situação hipotética ou premissas lógicas iniciais ou deixe vazio.",
+        "questoes": [ 
+            {{ 
+                "id": 1, 
+                "enunciado": "A assertiva lógica para julgamento...", 
+                "assunto": "Tema da questão (ex: Equivalência, Negação)", 
+                "gabarito": "C", 
+                "explicacao": "Explique passo a passo a resolução lógica do gabarito (C ou E)." 
+            }} 
+        ]
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.5, api_key=req.api_key), media_type="text/plain")
 
 @app.post("/generate-lesson-cespe")
 async def generate_lesson_cespe_endpoint(req: LessonCespeRequest):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
-    try:
-        result = await agent_cespe_lesson_generator(
-            wrong_questions=req.wrong_questions,
-            model=req.model,
-            api_key=req.api_key
-        )
-        return result
-    except Exception as e:
-        print(f"Erro ao gerar aula CESPE: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    prompt = f"""
+    Você é um professor de cursinho preparatório de excelência, focado na banca CESPE/CEBRASPE. 
+    O aluno acabou de fazer um simulado e ERROU as seguintes questões:
+
+    {json.dumps(req.wrong_questions, ensure_ascii=False, indent=2)}
+
+    Sua tarefa: Criar uma AULA DIDÁTICA E MOTIVADORA ensinando os conceitos que o aluno errou.
+    - Não apenas repita a explicação da questão, vá além: ensine a "regra do jogo" da CESPE.
+    - Mostre o padrão de pegadinha que a banca usou nessas questões.
+    - Dê dicas mnemônicas ou macetes se aplicável.
+    - Formate a aula usando Markdown (use **negrito** para destacar regras importantes, e tópicos para organizar).
+    - Seja encorajador no início e no fim.
+
+    Responda ESTRITAMENTE num JSON com o seguinte formato:
+    {{
+        "lesson_markdown": "Sua aula completa e formatada em markdown aqui."
+    }}
+    """
+    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.7, api_key=req.api_key), media_type="text/plain")
                 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
