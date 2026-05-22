@@ -343,6 +343,7 @@ class SimuladoCespeRequest(BaseModel):
     difficulty: str
     amount: int
     generate_text: bool
+    formato: Optional[str] = "Certo/Errado"
     model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
     api_key: Optional[str] = None
 
@@ -2201,7 +2202,6 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     focus_instructions = ""
-    # Tratamento para Raciocínio Lógico
     if req.subject == "Raciocínio Lógico":
         if req.focus == 'negacao': focus_instructions = "Foque EXCLUSIVAMENTE em leis de De Morgan e negação de proposições lógicas (e, ou, se...então)."
         elif req.focus == 'condicional': focus_instructions = "Foque em proposições condicionais (se... então), tabela-verdade, condição suficiente e condição necessária."
@@ -2212,7 +2212,6 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         elif req.focus == 'combinatoria': focus_instructions = "Foque em análise combinatória (arranjos, permutações e combinações simples)."
         elif req.focus == 'sequencias': focus_instructions = "Foque em sequências lógicas numéricas, de palavras ou figuras."
         else: focus_instructions = "Mescle tabela-verdade, negações lógicas e equivalências em situações hipotéticas."
-    # Tratamento original para Português/Outros
     else: 
         if req.focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
         elif req.focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
@@ -2223,30 +2222,46 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
 
     text_instruction = 'Crie uma situação hipotética base inédita (Ex: Considere as proposições P e Q...)' if req.generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'
 
+    # --- LÓGICA DO FORMATO (MÚLTIPLA ESCOLHA OU CERTO/ERRADO) ---
+    if req.formato == "Múltipla Escolha":
+        regra_formato = "Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão. O gabarito deve ser a letra correta."
+        json_questao = """{ 
+            "id": 1, 
+            "enunciado": "A pergunta da questão...", 
+            "alternativas": ["A) ...", "B) ...", "C) ...", "D) ...", "E) ..."],
+            "assunto": "Tema da questão", 
+            "gabarito": "A", 
+            "explicacao": "Explique por que a correta é a certa e o erro das demais." 
+        }"""
+    else:
+        regra_formato = "O formato deve ser CERTO ou ERRADO. O gabarito deve ser 'C' ou 'E'."
+        json_questao = """{ 
+            "id": 1, 
+            "enunciado": "A assertiva para julgamento...", 
+            "assunto": "Tema da questão", 
+            "gabarito": "C", 
+            "explicacao": "Explique passo a passo a resolução." 
+        }"""
+
     prompt = f"""
-    Você é o mais rigoroso Examinador Sênior da banca CESPE/CEBRASPE. Crie um simulado inédito de {req.subject}.
-    DIRETRIZES: {req.amount} questões. Dificuldade: {req.difficulty}. Foco: {focus_instructions}.
-    Texto-Base: {text_instruction}
+Você é o mais rigoroso Examinador Sênior da banca CESPE/CEBRASPE. Crie um simulado inédito de {req.subject}.
+DIRETRIZES: {req.amount} questões. Dificuldade: {req.difficulty}. Foco: {focus_instructions}.
+Formato Exigido: {regra_formato}
+Texto-Base: {text_instruction}
 
-    REGRAS CRÍTICAS DE FORMATAÇÃO JSON (EVITAR QUEBRA DE CÓDIGO):
-    1. JAMAIS use aspas duplas (") DENTRO dos valores de texto. Se precisar citar algo, use ASPAS SIMPLES (').
-    2. JAMAIS use quebras de linha reais dentro das strings. O texto deve ser contínuo.
-    3. Responda ESTRITAMENTE com o JSON, sem formatação markdown (```json).
+REGRAS CRÍTICAS DE FORMATAÇÃO JSON:
+1. JAMAIS use aspas duplas (") DENTRO dos valores de texto. Use ASPAS SIMPLES (').
+2. JAMAIS use quebras de linha reais dentro das strings.
+3. Responda ESTRITAMENTE com o JSON.
 
-    INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
-    {{
-        "textoBase": "Situação hipotética ou premissas lógicas iniciais ou deixe vazio.",
-        "questoes": [ 
-            {{ 
-                "id": 1, 
-                "enunciado": "A assertiva lógica para julgamento...", 
-                "assunto": "Tema da questão (ex: Equivalência, Negação)", 
-                "gabarito": "C", 
-                "explicacao": "Explique passo a passo a resolução lógica do gabarito (C ou E)." 
-            }} 
-        ]
-    }}
-    """
+INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
+{{
+    "textoBase": "Situação hipotética ou premissas lógicas iniciais ou deixe vazio.",
+    "questoes": [ 
+        {json_questao}
+    ]
+}}
+"""
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.5, api_key=req.api_key), media_type="text/plain")
 
 @app.post("/generate-lesson-cespe")

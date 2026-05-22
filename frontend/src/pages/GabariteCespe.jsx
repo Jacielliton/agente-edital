@@ -25,7 +25,7 @@ const getAuthToken = () => {
 };
 
 // ==========================================
-// COLE A FUNÇÃO AQUI (Antes do export default)
+// NOVA FUNÇÃO ANTI-ERRO
 // ==========================================
 const fetchStreamAsJson = async (url, options, onProgress = null) => {
   const res = await fetch(url, options);
@@ -44,13 +44,24 @@ const fetchStreamAsJson = async (url, options, onProgress = null) => {
   }
   
   try {
+    // 1. Remove blocos de raciocínio da IA
     let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
+    
+    // 2. Extrai apenas o bloco principal do JSON
     const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) cleanText = jsonMatch[0];
+    
+    // 3. VACINA 1: Remove quebras de linha literais (Enters) dentro das strings
+    // Isso é o que mais causa "Formato Inválido" na Múltipla Escolha
+    cleanText = cleanText.replace(/[\n\r\t]+/g, ' ');
+
+    // 4. VACINA 2: Remove vírgulas no final de arrays/objetos
     cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+    
     return JSON.parse(cleanText);
   } catch (e) {
-    throw new Error("A IA gerou um formato inválido. Tente novamente.");
+    console.error("TEXTO COM ERRO DA IA:", rawText);
+    throw new Error("A IA gerou um formato inválido.");
   }
 };
 
@@ -69,6 +80,7 @@ export default function GabariteCespe() { // Ou GabariteLogica
   // --- ESTADOS DO SIMULADOR ---
   const [configFocus, setConfigFocus] = useState("completo");
   const [configDifficulty, setConfigDifficulty] = useState("medio");
+  const [configFormato, setConfigFormato] = useState("Certo/Errado");
   const [configAmount, setConfigAmount] = useState(10);
   const [configTextBase, setConfigTextBase] = useState(true);
   const [configExamMode, setConfigExamMode] = useState(false);
@@ -170,7 +182,6 @@ export default function GabariteCespe() { // Ou GabariteLogica
       let todasQuestoes = [];
       let textoBaseGeral = "";
       
-      // Fatiamento (Chunking): Impede a sobrecarga da IA pedindo tudo de uma vez
       const batchSize = 5; 
       const batches = Math.ceil(configAmount / batchSize);
 
@@ -179,36 +190,54 @@ export default function GabariteCespe() { // Ou GabariteLogica
         const currentBatchSize = Math.min(batchSize, configAmount - (i * batchSize));
 
         const payload = {
+          subject: "Língua Portuguesa", 
           focus: configFocus,
           difficulty: configDifficulty,
           amount: currentBatchSize,
-          generate_text: i === 0 ? configTextBase : false, // Gera texto-base apenas no 1º lote
+          generate_text: i === 0 ? configTextBase : false, 
+          formato: configFormato,
           model: userModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
         };
 
-        // Usa a função de streaming para não sofrer timeout do servidor
-        const data = await fetchStreamAsJson(`${API_URL}/generate-simulado-cespe`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Authorization": token ? `Bearer ${token}` : ""
-          },
-          body: JSON.stringify(payload)
-        });
+        // --- SISTEMA DE AUTO-RETRY (Auto-recuperação de erros da IA) ---
+        let data = null;
+        let tentativas = 0;
+        const maxTentativas = 2;
 
-        if (!data.questoes || data.questoes.length === 0) {
-            throw new Error("A IA retornou um formato vazio neste lote.");
+        while (tentativas < maxTentativas) {
+          try {
+            data = await fetchStreamAsJson(`${API_URL}/generate-simulado-cespe`, {
+              method: "POST",
+              headers: { 
+                "Content-Type": "application/json",
+                "Authorization": token ? `Bearer ${token}` : ""
+              },
+              body: JSON.stringify(payload)
+            });
+            
+            if (data && data.questoes && data.questoes.length > 0) {
+              break; // Sai do loop se teve sucesso
+            } else {
+              throw new Error("O lote veio vazio.");
+            }
+          } catch (e) {
+            tentativas++;
+            if (tentativas >= maxTentativas) {
+              throw new Error("A IA falhou seguidamente ao formatar as opções. Tente novamente.");
+            }
+            setLoadingMsg(`Corrigindo formato da IA... (A repetir o Lote ${i + 1})`);
+          }
         }
+        // ----------------------------------------------------------------
 
         if (i === 0 && data.textoBase) {
           textoBaseGeral = data.textoBase;
         }
 
-        // Garante que os IDs não se repitam entre os lotes gerados separadamente
         const questoesCorrigidas = data.questoes.map((q, idx) => ({
           ...q,
-          id: `q_cespe_${i}_${idx}`
+          id: `q_prova_${i}_${idx}`
         }));
 
         todasQuestoes = [...todasQuestoes, ...questoesCorrigidas];
@@ -400,6 +429,14 @@ export default function GabariteCespe() { // Ou GabariteLogica
                 </select>
               </div>
 
+              <div style={{ marginBottom: '15px' }}>
+                <label className="label">Formato da Questão</label>
+                <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', width: '100%' }}>
+                  <option value="Certo/Errado">Certo / Errado (Padrão CESPE)</option>
+                  <option value="Múltipla Escolha">Múltipla Escolha (A, B, C, D, E)</option>
+                </select>
+              </div>
+
               <div style={{ marginBottom: '20px' }}>
                 <label className="label">Quantidade de Questões</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -568,35 +605,62 @@ export default function GabariteCespe() { // Ou GabariteLogica
                           </p>
                           
                           {/* Botões Certo / Errado */}
-                          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                            <button 
-                              onClick={() => handleAnswer(q.id, 'C')}
-                              disabled={showExp && !configExamMode} // Trava se não for modo prova e já respondeu
-                              style={{
-                                flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                                border: '2px solid',
-                                borderColor: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                background: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                                color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
-                                opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
-                              }}
-                            >
-                              CERTO {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
-                            </button>
-                            <button 
-                              onClick={() => handleAnswer(q.id, 'E')}
-                              disabled={showExp && !configExamMode}
-                              style={{
-                                flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                                border: '2px solid',
-                                borderColor: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                background: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                                color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
-                                opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
-                              }}
-                            >
-                              ERRADO {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
-                            </button>
+                          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
+                            {q.alternativas && q.alternativas.length > 0 ? (
+                              q.alternativas.map((alt, altIdx) => {
+                                const letra = alt.charAt(0).toUpperCase(); // Pega 'A', 'B', 'C', etc.
+                                const isCorrectAlt = q.gabarito.toUpperCase() === letra;
+                                return (
+                                  <button 
+                                    key={altIdx}
+                                    onClick={() => handleAnswer(q.id, letra)}
+                                    disabled={showExp && !configExamMode}
+                                    style={{
+                                      padding: '12px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.95rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
+                                      border: '2px solid',
+                                      borderColor: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                      background: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary-light)') : 'transparent',
+                                      color: uAns === letra && !showExp ? 'var(--primary)' : (showExp && uAns === letra ? 'inherit' : 'var(--text-secondary)'),
+                                      opacity: (showExp && uAns !== letra && !isCorrectAlt) ? 0.5 : 1
+                                    }}
+                                  >
+                                    <span style={{ flex: 1 }}>{alt}</span>
+                                    {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)" style={{ flexShrink: 0, marginLeft: '10px' }}/>}
+                                  </button>
+                                )
+                              })
+                            ) : (
+                              <>
+                                <button 
+                                  onClick={() => handleAnswer(q.id, 'C')}
+                                  disabled={showExp && !configExamMode} 
+                                  style={{
+                                    flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+                                    border: '2px solid',
+                                    borderColor: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                    background: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
+                                    color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
+                                    opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
+                                  }}
+                                >
+                                  CERTO {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
+                                </button>
+                                <button 
+                                  onClick={() => handleAnswer(q.id, 'E')}
+                                  disabled={showExp && !configExamMode}
+                                  style={{
+                                    flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+                                    border: '2px solid',
+                                    borderColor: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                    background: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
+                                    color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
+                                    opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
+                                  }}
+                                >
+                                  ERRADO {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
+                                </button>
+                              </>
+                            )}
                           </div>
 
                           {/* Explicação */}
