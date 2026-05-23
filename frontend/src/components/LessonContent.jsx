@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import QuizCard from "../QuizCard";
 import Mermaid from "./Mermaid";
 
@@ -175,7 +176,7 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
             {messages.map((msg, idx) => (
               <div key={idx} className={`chat-msg ${msg.role}`} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', padding: '10px 15px', borderRadius: '12px', backgroundColor: msg.role === 'user' ? 'var(--primary)' : 'var(--card-bg)', color: msg.role === 'user' ? '#fff' : 'var(--text-main)', border: msg.role === 'assistant' ? '1px solid var(--border)' : 'none' }}>
                 {msg.role === 'assistant' ? (
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                 ) : (
                   msg.content
                 )}
@@ -318,14 +319,14 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
         <div style={{ marginBottom: '15px' }}>
           <strong style={{color: 'var(--text-main)'}}>📋 Cenário / Texto Motivador:</strong>
           <div className="essay-text" style={{color: 'var(--text-secondary)'}}>
-            <ReactMarkdown>{safeString(discursiva.texto_motivador)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.texto_motivador)}</ReactMarkdown>
           </div>
         </div>
         
         <div style={{ marginBottom: '15px', background: 'var(--bg)', padding: '10px', borderRadius: '4px', borderLeft: '4px solid var(--primary)' }}>
           <strong style={{color: 'var(--text-main)'}}>📝 Comando da Questão:</strong>
           <div className="essay-text" style={{ fontWeight: '500', margin: '5px 0 0 0', color: 'var(--text-main)' }}>
-            <ReactMarkdown>{safeString(discursiva.comando)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.comando)}</ReactMarkdown>
           </div>
         </div>
         
@@ -385,7 +386,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
             </div>
             
             <div style={{fontStyle: 'italic', marginBottom: '25px', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '15px', borderRadius: '8px'}}>
-              <strong>Parecer da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown>
+              <strong>Parecer da Banca:</strong> <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.feedback_geral)}</ReactMarkdown>
             </div>
             
             <h4 style={{ color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Avaliação e Padrão de Resposta (Espelho)</h4>
@@ -396,7 +397,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
                 
                 <div style={{fontSize: '0.95em', color: 'var(--text-secondary)', marginBottom: '15px'}}>
                   <strong>Análise do seu texto:</strong>
-                  <div style={{ marginTop: '5px' }}><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></div>
+                  <div style={{ marginTop: '5px' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.comentario)}</ReactMarkdown></div>
                 </div>
 
                 {av.padrao_esperado && (
@@ -405,7 +406,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
                       💡 Espelho de Correção (Como responder perfeitamente):
                     </strong>
                     <div style={{ color: 'var(--text-main)', marginTop: '8px', fontSize: '0.95em', lineHeight: '1.5' }}>
-                      <ReactMarkdown>{safeString(av.padrao_esperado)}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.padrao_esperado)}</ReactMarkdown>
                     </div>
                   </div>
                 )}
@@ -414,7 +415,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
 
             <h4 style={{ marginTop: '30px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Estrutura e Aspectos Gramaticais</h4>
             <div style={{fontSize: '0.95em', color: 'var(--error-text)', background: 'var(--error-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--error-text)'}}>
-              <ReactMarkdown>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
             </div>
             
             {correction.dica_estudo && (
@@ -423,7 +424,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
                   📚 Plano de Ação / Dica de Estudo:
                 </strong>
                 <div style={{ color: 'var(--text-main)', marginTop: '10px', fontSize: '1rem', lineHeight: '1.6' }}>
-                  <ReactMarkdown>{safeString(correction.dica_estudo)}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.dica_estudo)}</ReactMarkdown>
                 </div>
               </div>
             )}
@@ -557,13 +558,13 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
     <div className="essay-container" style={{ padding: '20px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '20px' }}>
       <div style={{ marginBottom: '15px' }}>
         <strong style={{color: 'var(--text-main)'}}>📋 Cenário / Texto Motivador:</strong>
-        <div className="essay-text" style={{color: 'var(--text-secondary)'}}><ReactMarkdown>{safeString(discursiva.texto_motivador)}</ReactMarkdown></div>
+        <div className="essay-text" style={{color: 'var(--text-secondary)'}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.texto_motivador)}</ReactMarkdown></div>
       </div>
       
       <div style={{ marginBottom: '15px', background: 'var(--card-bg)', padding: '10px', borderRadius: '4px', borderLeft: '4px solid var(--primary)' }}>
         <strong style={{color: 'var(--text-main)'}}>📝 Comando da Questão:</strong>
         <div className="essay-text" style={{ fontWeight: '500', margin: '5px 0 0 0', color: 'var(--text-main)' }}>
-          <ReactMarkdown>{safeString(discursiva.comando)}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.comando)}</ReactMarkdown>
         </div>
       </div>
       
@@ -624,7 +625,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
           </div>
           
           <div style={{fontStyle: 'italic', marginBottom: '20px', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '15px', borderRadius: '8px'}}>
-            <strong>Parecer Oficial da Banca:</strong> <ReactMarkdown>{safeString(correction.feedback_geral)}</ReactMarkdown>
+            <strong>Parecer Oficial da Banca:</strong> <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.feedback_geral)}</ReactMarkdown>
           </div>
           
           <h4 style={{ color: 'var(--heading-color)' }}>🔹 Detalhamento e Padrão de Resposta (Espelho)</h4>
@@ -635,7 +636,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
               
               <div style={{fontSize: '0.95em', color: 'var(--text-secondary)', marginBottom: '15px'}}>
                 <strong>Análise do seu texto:</strong>
-                <div style={{ marginTop: '5px' }}><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></div>
+                <div style={{ marginTop: '5px' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.comentario)}</ReactMarkdown></div>
               </div>
 
               {av.padrao_esperado && (
@@ -644,7 +645,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
                     💡 Espelho de Correção (Como responder perfeitamente):
                   </strong>
                   <div style={{ color: 'var(--text-main)', marginTop: '8px', fontSize: '0.95em', lineHeight: '1.5' }}>
-                    <ReactMarkdown>{safeString(av.padrao_esperado)}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.padrao_esperado)}</ReactMarkdown>
                   </div>
                 </div>
               )}
@@ -653,7 +654,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
 
           <h4 style={{ marginTop: '30px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Estrutura e Aspectos Gramaticais (Vale até 1.0)</h4>
           <div style={{fontSize: '0.95em', color: 'var(--error-text)', background: 'var(--error-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--error-text)'}}>
-            <ReactMarkdown>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
           </div>
           
           {correction.dica_estudo && (
@@ -662,7 +663,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
                 📚 Plano de Ação / Dica de Estudo:
               </strong>
               <div style={{ color: 'var(--text-main)', marginTop: '10px', fontSize: '1rem', lineHeight: '1.6' }}>
-                <ReactMarkdown>{safeString(correction.dica_estudo)}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.dica_estudo)}</ReactMarkdown>
               </div>
             </div>
           )}
@@ -942,7 +943,7 @@ export default function LessonContent({ result }) {
         <div className="summaryItem" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
           <div className="summaryLabel" style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>Resumo do Cargo/Objetivo</div>
           <div className="summaryValue" style={{ color: 'var(--text-main)' }}>
-            <ReactMarkdown>{safeString(result?.resumo_cargo)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(result?.resumo_cargo)}</ReactMarkdown>
           </div>
         </div>
       </div>
@@ -950,7 +951,7 @@ export default function LessonContent({ result }) {
       {!!safeString(result?.plano_estudo) && (
         <details className="details" style={{ margin: '20px 0', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--card-bg)' }}>
           <summary className="summaryTitle" style={{ padding: '15px', background: 'var(--hover-bg)', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer' }}>📅 Plano de Estudo Estratégico</summary>
-          <div className="md" style={{ padding: '20px', color: 'var(--text-main)' }}><ReactMarkdown>{safeString(result?.plano_estudo)}</ReactMarkdown></div>
+          <div className="md" style={{ padding: '20px', color: 'var(--text-main)' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(result?.plano_estudo)}</ReactMarkdown></div>
         </details>
       )}
 
@@ -978,7 +979,7 @@ export default function LessonContent({ result }) {
                 📖 Aula Teórica Aprofundada
               </summary>
               <div className="md markdown-format" style={{ padding: '20px', color: 'var(--text-main)' }}>
-                <ReactMarkdown>{safeString(aula?.aula_teorica_aprofundada)}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(aula?.aula_teorica_aprofundada)}</ReactMarkdown>
               </div>
             </details>
 
@@ -1007,7 +1008,7 @@ export default function LessonContent({ result }) {
                   💡 Analogias e Contexto
                 </summary>
                 <div className="md markdown-format" style={{ padding: '20px', color: 'var(--text-main)' }}>
-                  <ReactMarkdown>{safeString(aula.analogias_contexto)}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(aula.analogias_contexto)}</ReactMarkdown>
                 </div>
               </details>
             )}
@@ -1019,7 +1020,7 @@ export default function LessonContent({ result }) {
                   🛠️ Aplicação Prática / Exemplos
                 </summary>
                 <div className="md markdown-format" style={{ padding: '20px', color: 'var(--text-main)' }}>
-                  <ReactMarkdown>{safeString(aula.aplicacao_pratica_exemplos)}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(aula.aplicacao_pratica_exemplos)}</ReactMarkdown>
                 </div>
               </details>
             )}

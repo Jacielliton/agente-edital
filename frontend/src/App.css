@@ -1234,6 +1234,59 @@ html {
   margin-bottom: 0.75rem !important;
 }
 
+/* --- ESTILOS PARA TABELAS MARKDOWN GERADAS PELA IA --- */
+.markdown-format table,
+.chat-msg table,
+.essay-text table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.95rem;
+  display: block; /* Permite rolagem horizontal em telas pequenas */
+  overflow-x: auto;
+  white-space: nowrap;
+  background-color: var(--card-bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.markdown-format th,
+.chat-msg th,
+.essay-text th,
+.markdown-format td,
+.chat-msg td,
+.essay-text td {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  text-align: left;
+  color: var(--text-main);
+}
+
+.markdown-format th,
+.chat-msg th,
+.essay-text th {
+  background-color: var(--hover-bg);
+  color: var(--heading-color);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+/* Zebrar as linhas para melhor leitura */
+.markdown-format tr:nth-child(even),
+.chat-msg tr:nth-child(even),
+.essay-text tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+html.dark .markdown-format tr:nth-child(even),
+html.dark .chat-msg tr:nth-child(even),
+html.dark .essay-text tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+
 /*CONFIGURAÇÕES MOBILE*/
 
 /* Configurações para telas menores (Smartphones) */
