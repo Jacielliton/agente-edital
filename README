@@ -1,3 +1,11 @@
+ATULIZAR NA VPS:
+root@srv1189857:~# cd /opt/agente-edital
+root@srv1189857:/opt/agente-edital# git fetch origin
+root@srv1189857:/opt/agente-edital# git reset --hard origin/main
+root@srv1189857:/opt/agente-edital# chmod +x deploy.sh
+root@srv1189857:/opt/agente-edital# ./deploy.sh
+
+
 gerar estrutura
 for /f "delims=" %i in ('dir "G:\PROJETOS-CODER\SITES\agente-edital" /b /s ^| findstr /v /i "venv" ^| findstr /v /i "node_modules" ^| findstr /v /i ".git" ^| findstr /v /i ".next"') do @echo %i >> lista.txt
 

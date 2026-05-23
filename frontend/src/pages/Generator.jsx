@@ -54,7 +54,7 @@ export default function Generator() {
   
   // Estados para as Questões
   const [questionFormat, setQuestionFormat] = useState("Múltipla Escolha");
-  const [questionLevel, setQuestionLevel] = useState("Superior");
+  const [questionLevel, setQuestionLevel] = useState("Normal");
 
   // Config do Servidor
   const [availableModels, setAvailableModels] = useState([]);
@@ -356,8 +356,10 @@ export default function Generator() {
               onChange={(e) => setQuestionLevel(e.target.value)}
               disabled={loading}
             >
-              <option value="Superior">Ensino Superior</option>
-              <option value="Médio">Ensino Médio</option>
+              <option value="Iniciante">Iniciante</option>
+              <option value="Normal">Normal</option>
+              <option value="Avançado">Avançado</option>
+              <option value="Expert">Expert</option>
             </select>
           </div>
           <div style={{ flex: 1 }}>

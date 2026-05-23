@@ -291,6 +291,7 @@ class SyllabusRequest(BaseModel):
     model: str | None = None
     question_format: str = "Múltipla Escolha"
     question_level: Literal["Iniciante", "Normal", "Avançado", "Expert"] = "Normal"
+    api_key: Optional[str] = None
 
 class SavePlanRequest(BaseModel):
     title: str
