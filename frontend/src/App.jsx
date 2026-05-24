@@ -18,6 +18,7 @@ const TreinoDiscursiva = lazy(() => import("./pages/TreinoDiscursiva"));
 const Ferramentas = lazy(() => import("./pages/Ferramentas")); // <-- NOVO IMPORT
 const GabariteCespe = lazy(() => import("./pages/GabariteCespe"));
 const GabariteLogica = lazy(() => import("./pages/GabariteLogica"));
+const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe")); // <-- NOVO IMPORT
 
 // Componente de Carregamento para o Suspense
 const LoadingFallback = () => (
@@ -154,7 +155,8 @@ export default function App() {
               <Route path="/treino" element={<PrivateRoute><TreinoDiscursiva /></PrivateRoute>} />
               <Route path="/gabarite-cespe" element={<PrivateRoute><GabariteCespe /></PrivateRoute>} />
               <Route path="/gabarite-logica" element={<PrivateRoute><GabariteLogica /></PrivateRoute>} />
-
+              <Route path="/gabarite-sintaxe" element={<PrivateRoute><GabariteSintaxe /></PrivateRoute>} />
+              
               <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
               <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
               

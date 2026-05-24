@@ -968,6 +968,12 @@ async def agent_cespe_exam_generator(subject: str, focus: str, difficulty: str, 
         elif focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
         elif focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
         elif focus == 'hardcore': focus_instructions = "NÍVEL MÁXIMO DE DIFICULDADE CESPE. Pegadinhas sutis e extrapolação."
+        # 👇 NOVA ROTA ESPECÍFICA PARA A FERRAMENTA DE SINTAXE 👇
+        elif focus.startswith('Sintaxe:'): 
+            tema_exato = focus.replace('Sintaxe:', '').strip()
+            focus_instructions = f"Foque ESPECIFICAMENTE E EXCLUSIVAMENTE nas regras sintáticas e pegadinhas gramaticais sobre: {tema_exato}."
+            
+        # 👇 FALLBACK ORIGINAL MANTIDO INTACTO (Protege o GabariteCespe) 👇
         else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
 
     text_instruction = 'Crie uma situação hipotética base inédita (Ex: Considere as proposições P e Q...)' if generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'
@@ -2219,6 +2225,11 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         elif req.focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
         elif req.focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
         elif req.focus == 'hardcore': focus_instructions = "NÍVEL MÁXIMO DE DIFICULDADE CESPE. Pegadinhas sutis e extrapolação."
+        # 👇 NOVA ROTA ESPECÍFICA PARA A FERRAMENTA DE SINTAXE 👇
+        elif req.focus.startswith('Sintaxe:'): 
+            tema_exato = req.focus.replace('Sintaxe:', '').strip()
+            focus_instructions = f"Foque ESPECIFICAMENTE E EXCLUSIVAMENTE nas regras sintáticas e pegadinhas gramaticais sobre: {tema_exato}."            
+        # 👇 FALLBACK ORIGINAL MANTIDO INTACTO (Protege o GabariteCespe) 👇
         else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
 
     text_instruction = 'Crie uma situação hipotética base inédita (Ex: Considere as proposições P e Q...)' if req.generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'

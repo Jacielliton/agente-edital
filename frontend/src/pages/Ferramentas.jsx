@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { PenTool, Wrench, Lock, Brain, Calculator } from "lucide-react";
+import { PenTool, Wrench, Lock, Brain, Calculator, FileText } from "lucide-react";
 
 export default function Ferramentas() {
   return (
@@ -19,25 +19,9 @@ export default function Ferramentas() {
         {/* FERRAMENTA 1: DISCURSIVA */}
         <Link to="/treino" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div 
-            style={{ 
-              background: 'var(--card-bg)', 
-              border: '1px solid var(--border)', 
-              borderRadius: '12px', 
-              padding: '20px', 
-              transition: 'transform 0.2s, box-shadow 0.2s', 
-              cursor: 'pointer', 
-              height: '100%', 
-              display: 'flex', 
-              flexDirection: 'column' 
-            }}
-            onMouseOver={(e) => { 
-              e.currentTarget.style.transform = 'translateY(-5px)'; 
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)'; 
-            }}
-            onMouseOut={(e) => { 
-              e.currentTarget.style.transform = 'none'; 
-              e.currentTarget.style.boxShadow = 'none'; 
-            }}
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
           >
             <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
               <PenTool size={28} color="var(--primary)" />
@@ -52,25 +36,9 @@ export default function Ferramentas() {
         {/* FERRAMENTA 2: GABARITE CESPE */}
         <Link to="/gabarite-cespe" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div 
-            style={{ 
-              background: 'var(--card-bg)', 
-              border: '1px solid var(--border)', 
-              borderRadius: '12px', 
-              padding: '20px', 
-              transition: 'transform 0.2s, box-shadow 0.2s', 
-              cursor: 'pointer', 
-              height: '100%', 
-              display: 'flex', 
-              flexDirection: 'column' 
-            }}
-            onMouseOver={(e) => { 
-              e.currentTarget.style.transform = 'translateY(-5px)'; 
-              e.currentTarget.style.boxShadow = 'var(--shadow-md)'; 
-            }}
-            onMouseOut={(e) => { 
-              e.currentTarget.style.transform = 'none'; 
-              e.currentTarget.style.boxShadow = 'none'; 
-            }}
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
           >
             <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
               <Brain size={28} color="var(--primary)" />
@@ -83,23 +51,40 @@ export default function Ferramentas() {
         </Link>
 
         {/* FERRAMENTA 3: GABARITE LÓGICA */}
-            <Link to="/gabarite-logica" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div 
-                style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-                onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-            >
-                <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-                <Calculator size={28} color="var(--primary)" />
-                </div>
-                <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Gabarite Lógica CESPE | IA</h3>
-                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-                Treino direcionado de Raciocínio Lógico (Tabelas-verdade, Negações, Equivalências) com correção passo-a-passo.
-                </p>
+        <Link to="/gabarite-logica" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div 
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
+              <Calculator size={28} color="var(--primary)" />
             </div>
-            </Link>
+            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Gabarite Lógica CESPE | IA</h3>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
+              Treino direcionado de Raciocínio Lógico (Tabelas-verdade, Negações, Equivalências) com correção passo-a-passo.
+            </p>
+          </div>
+        </Link>
 
-        {/* FERRAMENTA 3: SLOT PARA FUTURAS (EM BREVE) */}
+        {/* FERRAMENTA 4: GABARITE SINTAXE (NOVA) */}
+        <Link to="/gabarite-sintaxe" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div 
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
+              <FileText size={28} color="var(--primary)" />
+            </div>
+            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Sintaxe para Concursos CESPE</h3>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
+              Aprenda a teoria gramatical e gere simulados de múltipla escolha para validar seu conhecimento com pegadinhas de bancas.
+            </p>
+          </div>
+        </Link>
+
+        {/* SLOT FUTURO */}
         <div style={{ background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '20px', opacity: 0.7, height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ background: 'var(--hover-bg)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
               <Lock size={28} color="var(--text-muted)" />
