@@ -185,9 +185,17 @@ export default function GabariteSintaxe() {
         setLoadingMsg(`A formular questões inéditas... (Lote ${i + 1} de ${batches})`);
         const currentBatchSize = Math.min(batchSize, configAmount - (i * batchSize));
 
+        // Extrai o conteúdo da aula e remove quebras de linha para não quebrar o JSON
+        const regrasDaAula = `
+          Definição: ${currentTopic.def} | 
+          Como cai no CESPE: ${currentTopic.cespeTip} | 
+          Pegadinhas: ${currentTopic.trap}
+        `.replace(/[\n\r]+/g, " ");
+
         const payload = {
           subject: "Língua Portuguesa",
-          focus: `Sintaxe: ${currentTopic.title}`, 
+          // Amarra a IA ao conteúdo específico da aula usando a string interpolada
+          focus: `Sintaxe: ${currentTopic.title}. ATENÇÃO EXAMINADOR: É OBRIGATÓRIO basear o cenário das questões, os gabaritos e os distratores ESTRITAMENTE nas seguintes regras, dicas e pegadinhas desta aula: ${regrasDaAula}`, 
           difficulty: "dificil", 
           amount: currentBatchSize,
           generate_text: false,

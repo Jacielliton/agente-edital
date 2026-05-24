@@ -194,7 +194,7 @@ export default function GabariteCespe() { // Ou GabariteLogica
           focus: configFocus,
           difficulty: configDifficulty,
           amount: currentBatchSize,
-          generate_text: i === 0 ? configTextBase : false, 
+          generate_text: configTextBase, // Agora solicita texto em todos os lotes
           formato: configFormato,
           model: userModel || "arcee-ai/trinity-large-thinking:free",
           api_key: userApiKey || null
@@ -231,19 +231,17 @@ export default function GabariteCespe() { // Ou GabariteLogica
         }
         // ----------------------------------------------------------------
 
-        if (i === 0 && data.textoBase) {
-          textoBaseGeral = data.textoBase;
-        }
-
         const questoesCorrigidas = data.questoes.map((q, idx) => ({
           ...q,
-          id: `q_prova_${i}_${idx}`
+          id: `q_prova_${i}_${idx}`,
+          // Injeta o texto-base gerado neste lote apenas na PRIMEIRA questão dele
+          textoVinculado: (idx === 0 && configTextBase && data.textoBase) ? data.textoBase : null
         }));
 
         todasQuestoes = [...todasQuestoes, ...questoesCorrigidas];
       }
 
-      setCurrentData({ textoBase: textoBaseGeral, questoes: todasQuestoes });
+      setCurrentData({ questoes: todasQuestoes });
       setUserAnswers({});
       setIsExamFinished(false);
       setViewState("exam");
@@ -566,21 +564,7 @@ export default function GabariteCespe() { // Ou GabariteLogica
                   </div>
                 )}
 
-                {/* Texto Base */}
-                {configTextBase && currentData.textoBase && (
-                  <div className="panel" style={{ borderLeft: '4px solid var(--primary)', position: 'relative' }}>
-                    <div style={{ position: 'absolute', top: '-15px', left: '-15px', background: 'var(--primary)', color: 'white', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-md)' }}>
-                      <AlignLeft size={16} />
-                    </div>
-                    <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Texto para as questões a seguir</h3>
-                    <div style={{ fontSize: '1rem', lineHeight: '1.8', color: 'var(--text-main)' }}>
-                      {currentData.textoBase.split('\n').filter(p => p.trim()).map((p, i) => (
-                        <p key={i} style={{ textIndent: '2rem', marginBottom: '10px', textAlign: 'justify' }}>{p}</p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
+                
                 {/* Lista de Questões */}
                 {currentData.questoes.map((q, index) => {
                   const uAns = userAnswers[q.id];
@@ -588,10 +572,27 @@ export default function GabariteCespe() { // Ou GabariteLogica
                   const isCorrect = uAns === q.gabarito;
                   
                   return (
-                    <div key={q.id} className="quiz-card-container" style={{ 
-                      borderColor: showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--border)',
-                      boxShadow: showExp ? (isCorrect ? '0 0 0 1px var(--success-text)' : '0 0 0 1px var(--error-text)') : 'var(--shadow-sm)'
-                    }}>
+                    <React.Fragment key={q.id}>
+                      {/* RENDERIZA O TEXTO-BASE INTERCALADO (Se for a 1ª questão de um lote) */}
+                      {q.textoVinculado && (
+                        <div className="panel" style={{ borderLeft: '4px solid var(--primary)', position: 'relative', marginTop: index > 0 ? '30px' : '0', marginBottom: '20px' }}>
+                          <div style={{ position: 'absolute', top: '-15px', left: '-15px', background: 'var(--primary)', color: 'white', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-md)' }}>
+                            <AlignLeft size={16} />
+                          </div>
+                          <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Texto para as questões a seguir</h3>
+                          <div style={{ fontSize: '1rem', lineHeight: '1.8', color: 'var(--text-main)' }}>
+                            {q.textoVinculado.split('\n').filter(p => p.trim()).map((p, i) => (
+                              <p key={`p_${i}`} style={{ textIndent: '2rem', marginBottom: '10px', textAlign: 'justify' }}>{p}</p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* CARD DA QUESTÃO (Mantém-se igual, só perdendo a prop "key" que foi para o Fragment acima) */}
+                      <div className="quiz-card-container" style={{ 
+                        borderColor: showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--border)',
+                        boxShadow: showExp ? (isCorrect ? '0 0 0 1px var(--success-text)' : '0 0 0 1px var(--error-text)') : 'var(--shadow-sm)'
+                      }}>
                       <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                         <div style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                           {index + 1}
@@ -679,6 +680,7 @@ export default function GabariteCespe() { // Ou GabariteLogica
                         </div>
                       </div>
                     </div>
+                    </React.Fragment>
                   );
                 })}
 
