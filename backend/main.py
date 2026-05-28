@@ -37,7 +37,13 @@ load_dotenv(override=True)
 ENV_FILE_PATH = os.getenv("ENV_FILE_PATH", ".env")
 
 # String de conexão com o banco
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:senha123@localhost:5445/agente_edital")
+raw_db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost/agente_edital")
+
+# O Railway injeta "postgresql://", mas o SQLAlchemy com asyncpg exige "postgresql+asyncpg://"
+if raw_db_url.startswith("postgresql://"):
+    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    DATABASE_URL = raw_db_url
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 
@@ -2302,4 +2308,6 @@ async def generate_lesson_cespe_endpoint(req: LessonCespeRequest):
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.7, api_key=req.api_key), media_type="text/plain")
                 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # O Railway injeta dinamicamente a variável de ambiente PORT. Se não achar, usa 8000.
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
