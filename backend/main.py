@@ -34,7 +34,7 @@ from openai import AsyncOpenAI
 load_dotenv(override=True)
 ENV_FILE_PATH = os.getenv("ENV_FILE_PATH", ".env")
 
-# ⚠️ IMPORTAÇÃO DIRETA DO DATABASE.PY (Evita duplicação de Engine e Base)
+# Importação direta do database.py (Evita duplicação e Erro 500)
 from database import engine, Base, AsyncSessionLocal, get_db
 
 # ============================================================================
