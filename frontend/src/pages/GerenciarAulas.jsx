@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight, UserPlus, X, Search, Filter } from "lucide-react";
+import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight, UserPlus, X, Search, Filter, Download } from "lucide-react";
 import { Link } from "react-router-dom";
+import JSZip from "jszip";
 
 export default function GerenciarAulas() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-
+  
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
   
@@ -20,7 +21,8 @@ export default function GerenciarAulas() {
   const [editingPlan, setEditingPlan] = useState(null);
   const [editFormData, setEditFormData] = useState({ title: '', area: '', ano: '', banca: '', concurso: '', visibility: 'public' });
   const [savingPlan, setSavingPlan] = useState(false);
-
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   // Novos Estados de Compartilhamento (Acesso Privado)
   const [sharingPlan, setSharingPlan] = useState(null);
   const [sharedEmails, setSharedEmails] = useState([]);
@@ -169,6 +171,145 @@ export default function GerenciarAulas() {
     } catch (e) { console.error(e); }
   };
 
+  const handleDownloadPlan = async (plan) => {
+    try {
+      setDownloadingId(plan.id);
+      const token = getAuthToken();
+      
+      // Busca o conteúdo completo da aula no backend
+      const res = await fetch(`${API_URL}/plans/${plan.id}`, {
+        headers: { "Authorization": token ? `Bearer ${token}` : "" }
+      });
+
+      if (!res.ok) throw new Error("Erro ao buscar o conteúdo da aula.");
+
+      const content = await res.json();
+      
+      // Estrutura os dados para incluir os metadados da aula junto com o conteúdo
+      const exportData = {
+        meta: {
+          id: plan.id,
+          title: plan.title,
+          area: plan.area,
+          banca: plan.banca,
+          concurso: plan.concurso,
+          ano: plan.ano,
+          visibility: plan.visibility
+        },
+        content: content
+      };
+
+      // Converte para JSON formatado (com indentação de 2 espaços)
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      
+      // Cria um link temporário para forçar o download
+      const link = document.createElement("a");
+      link.href = url;
+      
+      // Limpa o título para usar no nome do ficheiro
+      const safeTitle = plan.title ? plan.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'aula';
+      link.download = `aula_${safeTitle}.json`;
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      // Limpeza
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao tentar baixar a aula.");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDownloadAllPlans = async () => {
+    if (!window.confirm("Deseja gerar um backup em ZIP de TODAS as aulas? Isso pode demorar alguns segundos.")) return;
+
+    setIsDownloadingAll(true);
+    const token = getAuthToken();
+
+    try {
+      // 1. Busca a lista de todas as aulas
+      const summaryRes = await fetch(`${API_URL}/plans?limit=1000&manage_mode=true`, {
+        headers: { "Authorization": token ? `Bearer ${token}` : "" }
+      });
+
+      if (!summaryRes.ok) throw new Error("Erro ao buscar a lista de aulas.");
+      const summaryData = await summaryRes.json();
+      const plansToDownload = summaryData.items || [];
+
+      if (plansToDownload.length === 0) {
+        alert("Não há aulas para gerar backup.");
+        setIsDownloadingAll(false);
+        return;
+      }
+
+      // 2. Inicializa o JSZip e cria uma pasta interna
+      const zip = new JSZip();
+      const folder = zip.folder("backup_aulas");
+
+      // 3. Busca o conteúdo detalhado de cada aula e adiciona ao ZIP
+      for (const plan of plansToDownload) {
+        const detailRes = await fetch(`${API_URL}/plans/${plan.id}`, {
+          headers: { "Authorization": token ? `Bearer ${token}` : "" }
+        });
+
+        if (detailRes.ok) {
+          const content = await detailRes.json();
+          const exportData = {
+            meta: {
+              id: plan.id,
+              title: plan.title,
+              area: plan.area,
+              banca: plan.banca,
+              concurso: plan.concurso,
+              ano: plan.ano,
+              visibility: plan.visibility
+            },
+            content: content
+          };
+
+          const dataStr = JSON.stringify(exportData, null, 2);
+          
+          // Formata o nome do ficheiro (ex: 12_aula_de_portugues.json)
+          const safeTitle = plan.title ? plan.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'aula';
+          const fileName = `${plan.id}_${safeTitle}.json`;
+          
+          // Adiciona o ficheiro à pasta no ZIP
+          folder.file(fileName, dataStr);
+        }
+      }
+
+      // 4. Gera o ficheiro ZIP final e força o download
+      const zipContent = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipContent);
+      
+      const link = document.createElement("a");
+      link.href = url;
+      
+      // Nomeia o ZIP com a data de hoje
+      const date = new Date().toISOString().split('T')[0];
+      link.download = `backup_aulas_${date}.zip`;
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      // Limpeza da memória
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao tentar gerar o ficheiro ZIP.");
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  };
+
   return (
     <div className="container">
       <div className="header" style={{ textAlign: "left" }}>
@@ -199,6 +340,17 @@ export default function GerenciarAulas() {
             {/* BOTÃO DE APLICAR FILTRO */}
             <button className="btn small" onClick={() => fetchPlans(1)} title="Aplicar Filtro" style={{ backgroundColor: 'var(--primary)', color: '#fff' }}>
               <Filter size={14}/> Filtrar
+            </button>
+
+            {/* NOVO BOTÃO: BAIXAR TODAS (BACKUP) */}
+            <button 
+              className="btn small" 
+              onClick={handleDownloadAllPlans} 
+              disabled={isDownloadingAll}
+              style={{ backgroundColor: 'var(--success-bg, #d4edda)', color: 'var(--success-text, #155724)', borderColor: 'transparent' }}
+            >
+              {isDownloadingAll ? <RefreshCw size={14} className="spin" /> : <Download size={14} />} 
+              {isDownloadingAll ? "A gerar backup..." : "Baixar Todas"}
             </button>
 
             {/* BOTÃO DE ATUALIZAR */}
@@ -242,6 +394,22 @@ export default function GerenciarAulas() {
                       <div className="actions-cell">
                         <Link to={`/aula/${plan.id}`} className="btn small" title="Ver"><Eye size={16} /></Link>
                         
+                        {/* Botão de Download */}
+                        <button 
+                          className="btn small" 
+                          onClick={() => handleDownloadPlan(plan)} 
+                          title="Baixar Backup (JSON)"
+                          disabled={downloadingId === plan.id}
+                          style={{ 
+                            backgroundColor: 'var(--success-bg, #d4edda)', 
+                            color: 'var(--success-text, #155724)', 
+                            borderColor: 'transparent',
+                            opacity: downloadingId === plan.id ? 0.5 : 1
+                          }}
+                        >
+                          {downloadingId === plan.id ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
+                        </button>
+
                         {/* NOVO BOTÃO: Só aparece se a aula for privada */}
                         {plan.visibility === 'private' && (
                           <button className="btn small" onClick={() => handleOpenShare(plan)} title="Gerenciar Acesso" style={{ backgroundColor: 'var(--primary-light)', borderColor: 'var(--primary)', color: 'var(--primary)' }}><UserPlus size={16} /></button>

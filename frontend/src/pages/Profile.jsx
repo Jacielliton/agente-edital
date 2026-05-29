@@ -12,6 +12,8 @@ export default function Profile() {
   const [isChangingPass, setIsChangingPass] = useState(false);
 
   // Estados para configuração de IA
+  const [providerTab, setProviderTab] = useState("openrouter");
+  const [tempApiKey, setTempApiKey] = useState("");
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
   const [isSavingAI, setIsSavingAI] = useState(false);
@@ -27,8 +29,14 @@ export default function Profile() {
         });
         if (res.ok) {
           const data = await res.json();
-          setUserApiKey(data.api_key || "");
+          const key = data.api_key || "";
+          setUserApiKey(key);
+          setTempApiKey(key);
           setUserModel(data.preferred_model || "arcee-ai/trinity-large-thinking:free");
+          
+          if (key && !key.startsWith("sk-or-")) {
+            setProviderTab("aistudio");
+          }
         }
       } catch (err) { console.error(err); }
     };
@@ -74,16 +82,19 @@ export default function Profile() {
   const handleSaveAIConfig = async () => {
     setIsSavingAI(true);
     try {
+      const keyToSave = providerTab === "aistudio" ? tempApiKey.trim() : userApiKey;
+
       const res = await fetch(`${API_URL}/users/me/settings`, {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": `Bearer ${getAuthToken()}` 
         },
-        body: JSON.stringify({ api_key: userApiKey, preferred_model: userModel })
+        body: JSON.stringify({ api_key: keyToSave, preferred_model: userModel })
       });
 
       if (res.ok) {
+        setUserApiKey(keyToSave);
         alert("Configurações de IA guardadas com sucesso!");
       } else {
         alert("Erro ao guardar definições.");
@@ -107,6 +118,7 @@ export default function Profile() {
         body: JSON.stringify({ api_key: "", preferred_model: userModel })
       });
       setUserApiKey("");
+      setTempApiKey("");
     } catch (e) {}
     setIsSavingAI(false);
   };
@@ -152,28 +164,89 @@ export default function Profile() {
         {/* BLOCO 2: INTELIGÊNCIA ARTIFICIAL */}
         <div style={{ background: 'var(--card-bg)', padding: '25px', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
           <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-            <Cpu size={20} color="var(--primary)" /> Integração de IA (OpenRouter)
+            <Cpu size={20} color="var(--primary)" /> Integração de Inteligência Artificial
           </h3>
+
+          <div style={{ display: 'flex', gap: '10px', marginTop: '20px', marginBottom: '20px' }}>
+            <button
+              onClick={() => {
+                setProviderTab("openrouter");
+                setUserModel("google/gemini-2.5-flash");
+              }}
+              className={`btn ${providerTab === "openrouter" ? "primary" : ""}`}
+              style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
+            >
+              OpenRouter
+            </button>
+            <button
+              onClick={() => {
+                setProviderTab("aistudio");
+                setUserModel("gemini-2.5-flash");
+              }}
+              className={`btn ${providerTab === "aistudio" ? "primary" : ""}`}
+              style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
+            >
+              Google AI Studio
+            </button>
+          </div>
           
           <div style={{ marginTop: '15px' }}>
-            {userApiKey ? (
-              <div style={{ padding: '15px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
-                  <strong style={{ color: 'var(--success-text)', display: 'block' }}>✅ Conta de IA Vinculada</strong>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Pode usar o Gerador de Simulados, Redações e Tutor de forma ilimitada.</span>
-                </div>
-                <button onClick={handleDisconnectAI} disabled={isSavingAI} className="btn small error-btn" style={{ background: 'transparent', border: '1px solid var(--error-text)', color: 'var(--error-text)' }}>
-                  {isSavingAI ? "Aguarde..." : "Desvincular Conta"}
-                </button>
-              </div>
-            ) : (
-              <div style={{ padding: '15px', background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: '8px' }}>
-                <p style={{ margin: '0 0 15px 0', color: 'var(--text-secondary)' }}>A sua conta ainda não está conectada a nenhum motor de Inteligência Artificial. Conecte gratuitamente para desbloquear simulados inéditos e correção de redações.</p>
-                <button onClick={handleConnectAI} className="btn primary">🔗 Conectar IA Gratuitamente</button>
-              </div>
+            {providerTab === "openrouter" && (
+              <>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '15px' }}>Conecte a sua conta OpenRouter para aceder a dezenas de modelos de IA. O login é automático e sem fricção.</p>
+                {userApiKey && userApiKey.startsWith("sk-or-") ? (
+                  <div style={{ padding: '15px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <strong style={{ color: 'var(--success-text)', display: 'block' }}>✅ OpenRouter Vinculado</strong>
+                    </div>
+                    <button onClick={handleDisconnectAI} disabled={isSavingAI} className="btn small error-btn" style={{ background: 'transparent', border: '1px solid var(--error-text)', color: 'var(--error-text)' }}>
+                      {isSavingAI ? "Aguarde..." : "Desvincular"}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ padding: '15px', background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: '8px' }}>
+                    <button onClick={handleConnectAI} className="btn primary">🔗 Conectar OpenRouter</button>
+                  </div>
+                )}
+              </>
             )}
 
-            <div style={{ marginTop: '20px' }}>
+            {providerTab === "aistudio" && (
+              <>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '15px' }}>
+                  O Google AI Studio requer a geração manual da chave. Clique no botão abaixo para gerar gratuitamente e cole no campo:
+                </p>
+                <a 
+                  href="https://aistudio.google.com/app/apikey" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="btn" 
+                  style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', textDecoration: 'none', fontWeight: 'bold' }}
+                >
+                  1️⃣ Obter Chave no AI Studio (Grátis)
+                </a>
+                
+                <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px', fontSize: '0.9rem' }}>
+                  2️⃣ Cole a Chave Gerada:
+                </label>
+                <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+                  <input
+                    type="password"
+                    value={tempApiKey}
+                    onChange={(e) => setTempApiKey(e.target.value)}
+                    placeholder="Ex: AIzaSy... ou AQ.Ab8..."
+                    style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
+                  />
+                  {userApiKey && !userApiKey.startsWith("sk-or-") && tempApiKey === userApiKey && (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--success-text)', fontWeight: 'bold' }}>
+                      ✅ Chave AI Studio salva e ativa no sistema!
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--border)' }}>
               <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '8px', color: 'var(--text-main)' }}>Modelo de IA Preferido</label>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <input 
@@ -182,11 +255,13 @@ export default function Profile() {
                   onChange={(e) => setUserModel(e.target.value)} 
                   className="input" 
                   style={{ flex: 1, backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} 
-                  placeholder="ex: arcee-ai/trinity-large-thinking:free"
+                  placeholder="ex: gemini-2.5-flash"
                 />
-                <button onClick={handleSaveAIConfig} disabled={isSavingAI} className="btn primary">{isSavingAI ? "..." : "Salvar Modelo"}</button>
+                <button onClick={handleSaveAIConfig} disabled={isSavingAI} className="btn primary">{isSavingAI ? "..." : "Salvar Configurações"}</button>
               </div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block' }}>Recomendamos deixar o modelo padrão gratuito, mas se souber o que está a fazer, pode colocar qualquer ID do OpenRouter.</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block' }}>
+                Recomendamos deixar o modelo padrão gerado automaticamente pela aba escolhida.
+              </span>
             </div>
           </div>
         </div>

@@ -123,8 +123,8 @@ export default function GabariteSintaxe() {
   };
 
   const openConfigModal = () => {
-    // Detecta o provedor atual com base no prefixo da chave (Google AI Studio sempre começa com AIza)
-    const isAIStudio = userApiKey && userApiKey.startsWith("AIza");
+    // Agora verificamos se NÃO é OpenRouter
+    const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
     setProviderTab(isAIStudio ? "aistudio" : "openrouter");
     setTempApiKey(userApiKey || "");
     setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash" : "google/gemini-2.5-flash"));
@@ -135,22 +135,39 @@ export default function GabariteSintaxe() {
     setSavingConfig(true);
     try {
       const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
+      if (!token) { 
+        alert("Sessão expirada. Faça login."); 
+        return; 
+      }
 
-      // Se for OpenRouter a chave já deve estar salva via Auth. Se for AI Studio salva o que foi digitado.
+      // Lógica da Opção 1: Se for AI Studio, captura o que o usuário digitou no input.
+      // Se for OpenRouter, mantém a chave que já veio do OAuth.
       const keyToSave = providerTab === "aistudio" ? tempApiKey.trim() : userApiKey;
 
       const res = await fetch(`${API_URL}/users/me/settings`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: keyToSave, preferred_model: tempModel.trim() })
+        headers: { 
+          "Content-Type": "application/json", 
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify({ 
+          api_key: keyToSave, 
+          preferred_model: tempModel.trim() 
+        })
       });
+      
       if (res.ok) {
         setUserModel(tempModel.trim());
         setUserApiKey(keyToSave);
         setShowConfig(false);
-      } else { alert("Erro ao guardar no servidor."); }
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
+      } else { 
+        alert("Erro ao guardar no servidor."); 
+      }
+    } catch (err) { 
+      alert("Falha de conexão."); 
+    } finally { 
+      setSavingConfig(false); 
+    }
   };
 
   const handleDisconnectAI = async () => {
@@ -705,7 +722,7 @@ export default function GabariteSintaxe() {
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
                   Conecte sua conta OpenRouter para acesso a dezenas de modelos de IA. O login é automático.
                 </p>
-                {userApiKey && !userApiKey.startsWith("AIza") ? (
+                {userApiKey && userApiKey.startsWith("sk-or-") ? (
                   <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                     <span>✅ OpenRouter Conectado!</span>
                     <button onClick={handleDisconnectAI} disabled={savingConfig} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Desvincular</button>
@@ -721,10 +738,23 @@ export default function GabariteSintaxe() {
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px', lineHeight: '1.4' }}>
                   O Google AI Studio exige a geração manual da chave de acesso utilizando o seu Gmail. Siga os passos:
                 </p>
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="btn" style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', textDecoration: 'none', fontWeight: 'bold' }}>
+                
+                {/* PASSO 1: Link direto para a criação da chave no Google */}
+                <a 
+                  href="https://aistudio.google.com/app/apikey" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="btn" 
+                  style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', textDecoration: 'none', fontWeight: 'bold' }}
+                >
                   1️⃣ Obter Chave no AI Studio (Grátis)
                 </a>
-                <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>2️⃣ Cole a Chave Gerada:</label>
+                
+                <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>
+                  2️⃣ Cole a Chave Gerada:
+                </label>
+                
+                {/* PASSO 2: Input manual da chave */}
                 <input
                   type="password"
                   value={tempApiKey}
@@ -732,7 +762,9 @@ export default function GabariteSintaxe() {
                   placeholder="AIzaSy..."
                   style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
                 />
-                {userApiKey && userApiKey.startsWith("AIza") && tempApiKey === userApiKey && (
+                
+                {/* Feedback visual de sucesso */}
+                {userApiKey && !userApiKey.startsWith("sk-or-") && tempApiKey === userApiKey && (
                   <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'var(--success-text)', fontWeight: 'bold' }}>
                     ✅ Chave AI Studio salva no sistema!
                   </div>

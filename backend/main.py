@@ -693,9 +693,24 @@ async def remove_plan_share(plan_id: int, email: str, current_user: User = Depen
 # 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)
 # ============================================================================
 async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None):
-    """Lê o stream do OpenRouter e repassa os chunks em tempo real para manter a conexão viva."""
+    """Lê o stream e repassa os chunks em tempo real para manter a conexão viva."""
+    
+    # === CORREÇÃO DE ROTEAMENTO DE API ===
     if api_key and api_key.strip():
-        client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key.strip())
+        chave_limpa = api_key.strip()
+        
+        # Roteador Dinâmico
+        if chave_limpa.startswith("sk-or-"):
+            url_base = "https://openrouter.ai/api/v1"
+        else:
+            url_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+            
+            # --- VACINA ANTI-ERRO 404 ---
+            # Remove o prefixo se a requisição estiver indo direto para o Google
+            if model_name and model_name.startswith("google/"):
+                model_name = model_name.replace("google/", "")
+                
+        client = AsyncOpenAI(base_url=url_base, api_key=chave_limpa)
     else:
         client = get_openrouter_client()
         if not client: 
@@ -879,8 +894,23 @@ def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
     return out
 
 async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None) -> Any:
+    
+    # === CORREÇÃO DE ROTEAMENTO DE API ===
     if api_key and api_key.strip():
-        client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key.strip())
+        chave_limpa = api_key.strip()
+        
+        # Roteador Dinâmico
+        if chave_limpa.startswith("sk-or-"):
+            url_base = "https://openrouter.ai/api/v1"
+        else:
+            url_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+            
+            # --- VACINA ANTI-ERRO 404 ---
+            # Remove o prefixo se a requisição estiver indo direto para o Google
+            if model_name and model_name.startswith("google/"):
+                model_name = model_name.replace("google/", "")
+                
+        client = AsyncOpenAI(base_url=url_base, api_key=chave_limpa)
     else:
         client = get_openrouter_client()
         if not client: raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY não encontrado no ambiente (.env).")
@@ -1855,9 +1885,21 @@ async def get_user_settings(current_user: User = Depends(get_current_user)):
     }
 
 @app.put("/users/me/settings")
-async def update_user_settings(settings: UserSettingsUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    current_user.api_key = settings.api_key
-    current_user.preferred_model = settings.preferred_model
+async def update_user_settings(
+    settings: UserSettingsUpdate, 
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Recebe a chave de API (Manual do Google ou OAuth do OpenRouter) 
+    e salva diretamente no perfil do usuário logado.
+    """
+    if settings.api_key is not None:
+        current_user.api_key = settings.api_key
+        
+    if settings.preferred_model is not None:
+        current_user.preferred_model = settings.preferred_model
+        
     await db.commit()
     return {"ok": True, "message": "Configurações de IA atualizadas no banco de dados."}
 
@@ -2189,8 +2231,12 @@ async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: Use
     
 @app.post("/generate-simulado-cespe")
 async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
+    # Se o usuário não configurou a chave manual nem fez o login OAuth, bloqueia a requisição.
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
-        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
+        raise HTTPException(
+            status_code=403, 
+            detail="Por favor, configure sua chave de API nas configurações."
+        )
     
     focus_instructions = ""
     if req.subject == "Raciocínio Lógico":
@@ -2258,7 +2304,10 @@ INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
     ]
 }}
 """
-    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.5, api_key=req.api_key), media_type="text/plain")
+    return StreamingResponse(
+        stream_json_response(prompt, req.model, temp=0.5, api_key=req.api_key), 
+        media_type="text/plain"
+    )
 
 @app.post("/generate-lesson-cespe")
 async def generate_lesson_cespe_endpoint(req: LessonCespeRequest):

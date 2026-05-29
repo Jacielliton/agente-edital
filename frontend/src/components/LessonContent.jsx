@@ -64,7 +64,7 @@ const savePerformance = async (tipo, tema, notaObtida, notaMaxima, nivel, format
     console.error("Erro ao salvar desempenho:", err);
   }
 };
-// NOVA FUNÇÃO: Lê o stream e possui extração inteligente de blocos JSON
+// NOVA FUNÇÃO: Lê o stream e possui extração inteligente e VACINA ANTI-QUEBRA
 const fetchStreamAsJson = async (url, options) => {
   const res = await fetch(url, options);
   
@@ -84,22 +84,43 @@ const fetchStreamAsJson = async (url, options) => {
   }
   
   try {
-    // 1. Limpa tags de raciocínio da IA
+    // 1. Limpa tags de raciocínio e blocos markdown embutidos erradamente
     let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
+    cleanText = cleanText.replace(/^```json/i, "").replace(/```$/i, "").trim();
     
-    // 2. Extração Robusta: Pega apenas o que estiver entre a primeira e a última chave { } ou [ ]
+    // 2. Extração Robusta
     const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) {
       cleanText = jsonMatch[0];
     }
     
-    // 3. Remove vírgulas sobrando no final de listas (erro clássico de LLMs)
+    // 3. VACINA 1: Escapa quebras de linha literais (preserva a formatação markdown no chat e discursiva)
+    // Isso evita o erro no JSON.parse quando a IA devolve parágrafos reais
+    cleanText = cleanText.replace(/\n/g, "\\n").replace(/\r/g, "");
+    
+    // 4. VACINA 2: Remove vírgulas presas no fim de arrays
     cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+
+    // 5. VACINA 3: RECUPERAÇÃO DE STRING CORTADA (Cut-off)
+    // Se a string não fechar, forçamos o fechamento do JSON para tentar salvar
+    if (!cleanText.endsWith("}") && !cleanText.endsWith("]")) {
+        cleanText += '"}'; 
+    }
     
     return JSON.parse(cleanText);
   } catch (e) {
-    console.error("Erro ao parsear JSON. Texto recebido:", rawText);
-    throw new Error("A IA gerou um formato inválido ou incompleto.");
+    console.error("Erro ao parsear JSON. Texto bruto recebido:", rawText);
+    
+    // ULTIMA LINHA DE DEFESA (Fallback Extremo para o Chat do Tutor)
+    // Se o JSON quebrar de vez por interrupção de rede, tentamos extrair o campo "resposta" via Regex
+    const fallbackMatch = rawText.match(/"resposta"\s*:\s*"([\s\S]*)/);
+    if (fallbackMatch && fallbackMatch[1]) {
+        let extracted = fallbackMatch[1].replace(/"\s*\}\s*$/, ''); // Remove sujeiras do final
+        extracted = extracted.replace(/\\n/g, '\n'); // Restaura as quebras de linha para o ReactMarkdown
+        return { resposta: extracted + "..." }; // Retorna a string com reticências indicando o corte
+    }
+    
+    throw new Error("A IA gerou um formato invisível inválido ou a conexão foi interrompida.");
   }
 };
 // ==========================================
@@ -488,7 +509,8 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         setError("A IA não retornou um formato válido. Tente gerar novamente.");
       }
     } catch (err) {
-      setError("Falha de conexão ao gerar a discursiva geral.");
+      // Passamos o err.message real para sabermos exatamente o que falhou!
+      setError(err.message || "Falha ao comunicar com os servidores da IA.");
     } finally {
       setLoadingGen(false);
     }
@@ -693,13 +715,13 @@ export default function LessonContent({ result }) {
   
   // ESTADO GLOBAL DE CONFIGURAÇÃO DE IA
   const [showConfig, setShowConfig] = useState(false);
+  const [providerTab, setProviderTab] = useState("openrouter");
   const [tempKey, setTempKey] = useState("");
   const [tempModel, setTempModel] = useState("");
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // ---> NOVA FUNÇÃO: Redireciona para o OpenRouter
   const handleConnectAI = () => {
     const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
     window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
@@ -736,8 +758,10 @@ export default function LessonContent({ result }) {
   }, []);
 
   const openConfigModal = () => {
-    setTempKey(userApiKey);
-    setTempModel(userModel || result?.modelo_utilizado || "arcee-ai/trinity-large-thinking:free");
+    const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
+    setProviderTab(isAIStudio ? "aistudio" : "openrouter");
+    setTempKey(userApiKey || "");
+    setTempModel(userModel || result?.modelo_utilizado || (isAIStudio ? "gemini-2.5-flash" : "google/gemini-2.5-flash"));
     setShowConfig(true);
   };
 
@@ -747,13 +771,17 @@ export default function LessonContent({ result }) {
       const token = getAuthToken();
       if (!token) { alert("Sessão expirada. Faça login."); return; }
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      
+      const keyToSave = providerTab === "aistudio" ? tempKey.trim() : userApiKey;
+
       const res = await fetch(`${apiUrl}/users/me/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: userApiKey, preferred_model: tempModel.trim() })
+        body: JSON.stringify({ api_key: keyToSave, preferred_model: tempModel.trim() })
       });
       if (res.ok) {
         setUserModel(tempModel.trim());
+        setUserApiKey(keyToSave);
         setShowConfig(false);
       } else { alert("Erro ao guardar no servidor."); }
     } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
@@ -768,7 +796,6 @@ export default function LessonContent({ result }) {
       if (!token) { alert("Sessão expirada. Faça login."); return; }
       
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      // Envia uma string vazia para apagar a chave no banco de dados
       const res = await fetch(`${apiUrl}/users/me/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
@@ -776,15 +803,12 @@ export default function LessonContent({ result }) {
       });
       
       if (res.ok) {
-        setUserApiKey(""); // Limpa do estado da tela imediatamente
+        setUserApiKey(""); 
+        setTempKey("");
       } else { 
         alert("Erro ao desvincular no servidor."); 
       }
-    } catch (err) { 
-      alert("Falha de conexão."); 
-    } finally { 
-      setSavingConfig(false); 
-    }
+    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
   const handleDownloadSVG = (titulo) => {
@@ -813,11 +837,16 @@ export default function LessonContent({ result }) {
     setSimuladoAcertos(0);
     setSimuladoFinalizado(false);
     setSimuladoLoading(true);
-    setSimuladoQuestoes(null);
+    setSimuladoQuestoes([]); // NOVO: Inicia com Array Vazio para preenchimento em tempo real
     setSimuladoProgress(0);
     
-    let questoesGeradas = [];
+    let errorGlobal = false;
     const totalAulas = safeArray(result?.aulas).length;
+
+    // Desce a tela logo no início para o utilizador acompanhar a renderização ao vivo
+    setTimeout(() => {
+      document.getElementById('simulado-progress-anchor')?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -825,14 +854,13 @@ export default function LessonContent({ result }) {
       for (let i = 0; i < totalAulas; i++) {
         const aula = result.aulas[i];
         
-        // --- INÍCIO DA LÓGICA DE TENTATIVAS DA IA ---
         let maxTentativas = 3;
         let tentativaAtual = 0;
         let sucessoNoTopico = false;
 
         while (tentativaAtual < maxTentativas && !sucessoNoTopico) {
           try {
-            setSimuladoProgress(Math.round((i / totalAulas) * 100)); // Atualiza progresso
+            setSimuladoProgress(Math.round((i / totalAulas) * 100)); 
 
             const data = await fetchStreamAsJson(`${apiUrl}/generate-simulado-topic`, {
               method: "POST",
@@ -845,61 +873,47 @@ export default function LessonContent({ result }) {
                 api_key: userApiKey || null,
                 qtd_questoes: parseInt(simuladoQtd, 10), 
                 nivel: simuladoNivel,
-                formato: simuladoFormato // <--- ADICIONE ESTA LINHA
+                formato: simuladoFormato
               })
             });
             
-            // Verifica se a API da IA repassou um erro de limite (Rate Limit 429)
-            if (data && data.error) {
-              throw new Error(data.error); 
-            }
+            if (data && data.error) throw new Error(data.error); 
             
-            // Salva as questões geradas
+            // NOVO: Adiciona imediatamente à tela em vez de esperar tudo terminar
             if (data && data.simulado) {
-              questoesGeradas.push(...data.simulado);
+              setSimuladoQuestoes(prev => [...prev, ...data.simulado]);
               sucessoNoTopico = true;
             } else if (Array.isArray(data)) {
-              questoesGeradas.push(...data);
+              setSimuladoQuestoes(prev => [...prev, ...data]);
               sucessoNoTopico = true;
             } else {
-              throw new Error("O JSON retornou vazio ou em formato imprevisto.");
+              throw new Error("O JSON retornou vazio.");
             }
             
           } catch (err) {
             tentativaAtual++;
-            console.warn(`⚠️ IA falhou no tópico ${i+1} (Tentativa ${tentativaAtual}/${maxTentativas}). Refazendo... Motivo:`, err.message);
-            
-            if (tentativaAtual >= maxTentativas) {
-              throw new Error(`A IA falhou repetidamente ao processar o tópico "${aula.titulo}". Isso geralmente ocorre devido a sobrecarga no provedor do modelo gratuito.`);
-            }
-            // Aguarda 2.5 segundos antes de tentar novamente (Evita bloqueios por excesso de requisições)
+            console.warn(`⚠️ Falha no tópico ${i+1} (Tentativa ${tentativaAtual}/${maxTentativas}).`, err.message);
+            if (tentativaAtual >= maxTentativas) throw new Error(`Falha crítica no tópico "${aula.titulo}".`);
             await new Promise(resolve => setTimeout(resolve, 2500));
           }
         }
-        // --- FIM DA LÓGICA DE TENTATIVAS ---
-      } // Fim do Loop For
+      }
       
       setSimuladoProgress(100);
-      
-      if (questoesGeradas.length === 0) {
-        alert("Não foi possível gerar as questões. A IA retornou respostas vazias consecutivamente.");
-        setSimuladoLoading(false);
-        return;
-      }
-
-      // Mistura as questões antes de as apresentar
-      questoesGeradas = questoesGeradas.sort(() => 0.5 - Math.random());
-      setSimuladoQuestoes(questoesGeradas);
-      
-      setTimeout(() => {
-        document.getElementById('simulado-section')?.scrollIntoView({ behavior: 'smooth' });
-      }, 300);
 
     } catch (err) {
       console.error(err);
-      alert(err.message || "Ocorreu um erro de conexão ininterrupto ao tentar gerar o simulado.");
+      alert(err.message || "Ocorreu um erro ao gerar algumas questões. O processo foi interrompido.");
+      errorGlobal = true;
     } finally {
       setSimuladoLoading(false);
+      setSimuladoQuestoes(prev => {
+        if (prev.length === 0 && !errorGlobal) {
+          alert("Não foi possível gerar as questões.");
+          return null;
+        }
+        return prev;
+      });
     }
   };
 
@@ -1143,7 +1157,9 @@ export default function LessonContent({ result }) {
         )}
       </div>
 
-      {simuladoQuestoes && (
+      <div id="simulado-progress-anchor"></div> {/* ÂNCORA PARA A ROLAGEM SUAVE */}
+
+      {simuladoQuestoes && simuladoQuestoes.length > 0 && (
         <div id="simulado-section" style={{ marginTop: '40px', padding: '30px', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid var(--border)', paddingBottom: '20px', marginBottom: '30px' }}>
             <h2 style={{ margin: 0, color: 'var(--heading-color)', fontSize: '1.6rem' }}>🎓 Simulado Geral ({simuladoQuestoes.length} Questões)</h2>
@@ -1297,50 +1313,95 @@ export default function LessonContent({ result }) {
         </div>
       )}
 
-      {/* MODAL DE CONFIGURAÇÃO GLOBAL (CHAVE DA IA) */}
+      {/* MODAL DE CONFIGURAÇÃO DE IA COM ABAS (OPENROUTER / AISTUDIO) */}
       {showConfig && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
             <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
             
-            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5', background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              Vincule a sua conta do OpenRouter para desbloquear o Tutor IA e a Correção de Redações. <br/><br/>
-              ✨ É <strong style={{color: 'var(--text-main)'}}>100% gratuito</strong> e você pode conectar-se em 2 segundos usando a sua conta já existente do <strong style={{color: 'var(--text-main)'}}>Google, Discord ou GitHub</strong>.
-            </p>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Integração de Acesso:</label>
-              
-              {userApiKey ? (
-                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>✅ Conta vinculada com sucesso!</span>
-                  <button 
-                    onClick={handleDisconnectAI} 
-                    disabled={savingConfig}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--success-text)', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', textDecoration: 'underline' }}
-                  >
-                    {savingConfig ? "Ags..." : "Desvincular"}
-                  </button>
-                </div>
-              ) : (
-                <button onClick={handleConnectAI} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                  🔗 Conectar IA Gratuitamente
-                </button>
-              )}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+              <button
+                onClick={() => {
+                  setProviderTab("openrouter");
+                  setTempModel("google/gemini-2.5-flash");
+                }}
+                className={`btn ${providerTab === "openrouter" ? "primary" : ""}`}
+                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
+              >
+                OpenRouter
+              </button>
+              <button
+                onClick={() => {
+                  setProviderTab("aistudio");
+                  setTempModel("gemini-2.5-flash");
+                }}
+                className={`btn ${providerTab === "aistudio" ? "primary" : ""}`}
+                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
+              >
+                Google AI Studio
+              </button>
             </div>
+
+            {providerTab === "openrouter" && (
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                  Conecte sua conta OpenRouter para acesso a dezenas de modelos de IA. O login é automático.
+                </p>
+                {userApiKey && userApiKey.startsWith("sk-or-") ? (
+                  <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <span>✅ OpenRouter Conectado!</span>
+                    <button onClick={handleDisconnectAI} disabled={savingConfig} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Desvincular</button>
+                  </div>
+                ) : (
+                  <button onClick={handleConnectAI} className="btn primary" style={{ width: '100%', padding: '12px' }}>🔗 Conectar OpenRouter</button>
+                )}
+              </div>
+            )}
+
+            {providerTab === "aistudio" && (
+              <div style={{ marginBottom: '20px' }}>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px', lineHeight: '1.4' }}>
+                  O Google AI Studio exige a geração manual da chave de acesso utilizando o seu Gmail. Siga os passos:
+                </p>
+                
+                <a 
+                  href="https://aistudio.google.com/app/apikey" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="btn" 
+                  style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', textDecoration: 'none', fontWeight: 'bold', padding: '12px' }}
+                >
+                  1️⃣ Obter Chave no AI Studio (Grátis)
+                </a>
+                
+                <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px', fontSize: '0.9rem' }}>
+                  2️⃣ Cole a Chave Gerada:
+                </label>
+                
+                <input
+                  type="password"
+                  value={tempKey}
+                  onChange={(e) => setTempKey(e.target.value)}
+                  placeholder="AIzaSy... ou AQ.Ab8..."
+                  style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
+                />
+                
+                {userApiKey && !userApiKey.startsWith("sk-or-") && tempKey === userApiKey && (
+                  <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'var(--success-text)', fontWeight: 'bold' }}>
+                    ✅ Chave AI Studio salva no sistema!
+                  </div>
+                )}
+              </div>
+            )}
 
             <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA (Opcional):</label>
-              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: google/gemini-2.5-flash-lite" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
-              
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
-                O sistema já utiliza um modelo rápido e gratuito por padrão. Se desejar, você pode escolher outras opções de IAs gratuitas. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.
-              </span>
+              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA:</label>
+              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '10px' }}>
-              <button onClick={() => setShowConfig(false)} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--hover-bg)', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>Fechar</button>
-              <button onClick={saveConfigToDB} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>{savingConfig ? "⏳ A guardar..." : "Salvar Modelo"}</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+              <button onClick={() => setShowConfig(false)} className="btn">Fechar</button>
+              <button onClick={saveConfigToDB} className="btn primary">{savingConfig ? "⏳ Salvando..." : "Salvar Configurações"}</button>
             </div>
           </div>
         </div>
