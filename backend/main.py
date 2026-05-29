@@ -24,8 +24,6 @@ from sqlalchemy import Column, Float, Integer, String, DateTime, JSON, select, d
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 
-import requests
-
 # Cliente OpenAI/OpenRouter
 from openai import AsyncOpenAI
 
@@ -36,28 +34,8 @@ from openai import AsyncOpenAI
 load_dotenv(override=True)
 ENV_FILE_PATH = os.getenv("ENV_FILE_PATH", ".env")
 
-# String de conexão com o banco
-raw_db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost/agente_edital")
-
-# O Railway injeta "postgresql://", mas o SQLAlchemy com asyncpg exige "postgresql+asyncpg://"
-if raw_db_url.startswith("postgresql://"):
-    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-else:
-    DATABASE_URL = raw_db_url
-
-engine = create_async_engine(DATABASE_URL, echo=False)
-
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
-
-Base = declarative_base()
-
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        yield session
+# ⚠️ IMPORTAÇÃO DIRETA DO DATABASE.PY (Evita duplicação de Engine e Base)
+from database import engine, Base, AsyncSessionLocal, get_db
 
 # ============================================================================
 # 2. MODELOS DE BANCO DE DADOS (ORM)

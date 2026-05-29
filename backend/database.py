@@ -1,15 +1,21 @@
 # backend/database.py
 import os
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 
-# Lembre-se de adicionar DATABASE_URL no seu .env
-# Ex: DATABASE_URL=postgresql+asyncpg://usuario:senha@localhost/nome_do_banco
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost/agente_edital")
+# Captura a URL injetada pelo Railway (ou usa a local por padrão)
+raw_db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost/agente_edital")
+
+# O Railway injeta "postgresql://", mas o SQLAlchemy com asyncpg exige "postgresql+asyncpg://"
+if raw_db_url.startswith("postgresql://"):
+    DATABASE_URL = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    DATABASE_URL = raw_db_url
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 
-AsyncSessionLocal = sessionmaker(
+# Usando async_sessionmaker (melhor prática para métodos assíncronos)
+AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False
