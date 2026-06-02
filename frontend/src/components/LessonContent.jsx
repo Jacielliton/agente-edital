@@ -88,39 +88,37 @@ const fetchStreamAsJson = async (url, options) => {
     let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
     cleanText = cleanText.replace(/^```json/i, "").replace(/```$/i, "").trim();
     
-    // 2. Extração Robusta
+    // 2. Extração Robusta do bloco JSON
     const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) {
       cleanText = jsonMatch[0];
     }
     
-    // 3. VACINA 1: Escapa quebras de linha literais (preserva a formatação markdown no chat e discursiva)
-    // Isso evita o erro no JSON.parse quando a IA devolve parágrafos reais
-    cleanText = cleanText.replace(/\n/g, "\\n").replace(/\r/g, "");
-    
-    // 4. VACINA 2: Remove vírgulas presas no fim de arrays
+    // 3. Remove vírgulas presas no fim de arrays
     cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
 
-    // 5. VACINA 3: RECUPERAÇÃO DE STRING CORTADA (Cut-off)
+    // 4. RECUPERAÇÃO DE STRING CORTADA (Cut-off)
     // Se a string não fechar, forçamos o fechamento do JSON para tentar salvar
     if (!cleanText.endsWith("}") && !cleanText.endsWith("]")) {
         cleanText += '"}'; 
     }
     
+    // ATENÇÃO: A "Vacina 1" de replace global de \n foi removida daqui, 
+    // pois ela estava destruindo a formatação estrutural de JSONs grandes!
+
     return JSON.parse(cleanText);
   } catch (e) {
     console.error("Erro ao parsear JSON. Texto bruto recebido:", rawText);
     
     // ULTIMA LINHA DE DEFESA (Fallback Extremo para o Chat do Tutor)
-    // Se o JSON quebrar de vez por interrupção de rede, tentamos extrair o campo "resposta" via Regex
     const fallbackMatch = rawText.match(/"resposta"\s*:\s*"([\s\S]*)/);
     if (fallbackMatch && fallbackMatch[1]) {
         let extracted = fallbackMatch[1].replace(/"\s*\}\s*$/, ''); // Remove sujeiras do final
-        extracted = extracted.replace(/\\n/g, '\n'); // Restaura as quebras de linha para o ReactMarkdown
-        return { resposta: extracted + "..." }; // Retorna a string com reticências indicando o corte
+        extracted = extracted.replace(/\\n/g, '\n'); // Restaura as quebras de linha
+        return { resposta: extracted + "..." }; 
     }
     
-    throw new Error("A IA gerou um formato invisível inválido ou a conexão foi interrompida.");
+    throw new Error("A IA gerou um formato inválido ou a conexão foi interrompida.");
   }
 };
 // ==========================================

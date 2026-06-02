@@ -1157,9 +1157,11 @@ RESPOSTA DO CANDIDATO:
 {req.resposta_aluno}
 
 DIRETRIZES:
-1. Avalie o conteúdo técnico. Desconte se for raso.
+1. Avalie o conteúdo técnico de acordo com o comando. Desconte se for raso.
 2. Dê uma nota exata para cada aspecto (nunca maior que o valor_maximo).
-3. Avalie gramática e coesão separadamente.
+3. ATENÇÃO: Avalie a macro e microestrutura devolvendo a análise em DOIS formatos simultâneos para manter a compatibilidade do sistema:
+   - Em "erros_gramaticais": Um resumo corrido apontando falhas gerais (ou elogiando a escrita).
+   - Em "analise_sintatica": Uma extração estruturada dos trechos exatos (substrings) onde o aluno cometeu erros. Forneça o trecho errado, a sugestão de correção e o motivo. Se não houver erros, retorne uma lista vazia.
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
@@ -1169,12 +1171,19 @@ RETORNE APENAS ESTE JSON EXATO:
       "aspecto": "Nome exato do Aspecto",
       "nota_atribuida": 3.5,
       "comentario": "Justificativa direta apontando onde o aluno errou ou acertou.",
-      "padrao_esperado": "Espelho de Correção: Escreva um parágrafo altamente didático mostrando exatamente o que o aluno DEVERIA ter escrito para tirar a nota máxima neste tópico."
+      "padrao_esperado": "Espelho de Correção: O que o aluno DEVERIA ter escrito."
     }}
   ],
-  "erros_gramaticais": "Apontamento de erros gramaticais e SUGESTÃO DE REESCRITA para melhorar a coesão.",
+  "erros_gramaticais": "Resumo em texto corrido apontando falhas gerais de gramática e coesão.",
+  "analise_sintatica": [
+    {{
+      "trecho_original": "Trecho exato do texto do aluno com erro",
+      "correcao": "Como o trecho deveria ser escrito",
+      "motivo": "Explicação do erro (ex: Concordância, Coesão)"
+    }}
+  ],
   "feedback_geral": "Parecer final da banca examinadora.",
-  "dica_estudo": "Dica prática e encorajadora de qual assunto ou lei o candidato precisa revisar com base nos erros que cometeu nesta redação."
+  "dica_estudo": "Dica prática e encorajadora de qual assunto ou lei o candidato precisa revisar."
 }}
 """
     return await get_json_response(prompt, req.model, temp=0.2, api_key=req.api_key)
@@ -2025,9 +2034,11 @@ async def correct_essay(req: EssayCorrectionRequest):
     {req.resposta_aluno}
 
     DIRETRIZES:
-    1. Avalie o conteúdo técnico. Desconte se for raso, MAS SEJA REALISTA: o candidato possui um limite físico estrito de 30 linhas (cerca de 240 a 300 palavras para TODA a prova). Não exija detalhamentos doutrinários exaustivos que jamais caberiam nesse espaço.
-    2. Dê uma nota exata para cada aspecto (nunca maior que o valor_maximo).
-    3. Avalie gramática e coesão separadamente. No campo 'padrao_esperado', o seu espelho de correção também DEVE ser conciso, cabendo perfeitamente na proporção da resposta exigida (máximo 80-100 palavras por aspecto).
+    1. Avalie o conteúdo técnico de acordo com o comando. SEJA REALISTA com o formato exigido pela questão. Não exija detalhamentos exaustivos de 30 linhas se a prova exigia apenas 10 ou 15.
+    2. Dê uma nota exata para cada aspecto (nunca maior que o valor_maximo). 
+    3. ATENÇÃO: Avalie a macro e microestrutura devolvendo a análise em DOIS formatos simultâneos para manter a compatibilidade do sistema:
+       - Em "erros_gramaticais": Um resumo em texto corrido das falhas gerais.
+       - Em "analise_sintatica": Extraia os trechos exatos (substrings) onde o aluno cometeu erros de gramática, ortografia ou coesão. Se o texto estiver impecável, retorne uma lista vazia.
 
     RETORNE APENAS ESTE JSON EXATO:
     {{
@@ -2037,12 +2048,19 @@ async def correct_essay(req: EssayCorrectionRequest):
           "aspecto": "Nome exato do Aspecto",
           "nota_atribuida": 3.5,
           "comentario": "Justificativa direta apontando onde o aluno errou ou acertou.",
-          "padrao_esperado": "Espelho de Correção: Escreva um parágrafo altamente didático mostrando exatamente o que o aluno DEVERIA ter escrito para tirar a nota máxima neste tópico."
+          "padrao_esperado": "Espelho de Correção: O que o aluno DEVERIA ter escrito."
         }}
       ],
-      "erros_gramaticais": "Apontamento de erros gramaticais e SUGESTÃO DE REESCRITA para melhorar a coesão.",
+      "erros_gramaticais": "Resumo em texto corrido apontando falhas gerais de gramática e coesão.",
+      "analise_sintatica": [
+        {{
+          "trecho_original": "Trecho exato do texto do aluno com erro",
+          "correcao": "Como o trecho deveria ser escrito",
+          "motivo": "Explicação técnica do erro (ex: Regência, Crase, Coesão)"
+        }}
+      ],
       "feedback_geral": "Parecer final da banca examinadora.",
-      "dica_estudo": "Dica prática e encorajadora de qual assunto ou lei o candidato precisa revisar com base nos erros que cometeu nesta redação."
+      "dica_estudo": "Dica prática e encorajadora de qual assunto revisar com base nos erros."
     }}
     """
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.2, api_key=req.api_key), media_type="text/plain")
@@ -2104,15 +2122,38 @@ async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest):
     elif nivel == "Expert":
         regras_dificuldade = "Cenário caótico, longo e extremamente desafiador (nível Delegado/Juiz/Auditor). Exija teses defensivas, visão crítica, jurisprudência minoritária/recentes e cruzamento de múltiplas áreas do direito."
 
-    if tipo == "Redação (Atualidades/Temas Gerais)":
-        diretrizes = "Crie um tema de redação dissertativo-argumentativa."
+    # REGRAS DINÂMICAS DE FORMATO E TAMANHO (CORRIGIDO F-STRING)
+    if "Paráfrase" in tipo:
+        limite_linhas = "10 linhas"
+        diretrizes = "O texto motivador DEVE ser APENAS um parágrafo técnico, conceitual ou doutrinário (3 a 5 linhas). NÃO faça perguntas no cenário."
+        comando_base = f"Reescreva o texto motivador acima com as suas próprias palavras, mantendo a coesão, a correção gramatical e preservando rigorosamente o sentido original. Redija seu texto em até {limite_linhas}."
+    elif "Curta" in tipo:
+        limite_linhas = "10 linhas"
+        diretrizes = "Crie uma pergunta direta e objetiva, sem historinhas longas. Vá direto ao ponto exigindo a definição, diferenciação ou citação de um conceito técnico."
+        comando_base = f"Responda à questão de forma direta e objetiva em até {limite_linhas}."
+    elif "Expansão" in tipo:
+        limite_linhas = "15 linhas"
+        diretrizes = "Forneça um conceito base sucinto no texto motivador e peça para o candidato expandir a ideia com exemplos práticos ou fundamentos legais/técnicos."
+        comando_base = f"Desenvolva e expanda o conceito apresentado, abordando os aspectos solicitados. Redija seu texto em até {limite_linhas}."
+    elif "Reescrita" in tipo:
+        limite_linhas = "15 linhas"
+        diretrizes = "Forneça um parágrafo com linguagem informal, estrutura confusa ou erros intencionais de coesão, e peça para o candidato reescrever adequando à norma culta."
+        comando_base = f"Reescreva o trecho fornecido corrigindo problemas de estrutura e adequando-o à norma padrão da língua portuguesa em até {limite_linhas}."
+    elif tipo == "Redação (Atualidades/Temas Gerais)":
+        limite_linhas = "30 linhas"
+        diretrizes = "Crie um tema de redação dissertativo-argumentativa sobre impactos sociais ou tecnológicos da área."
+        comando_base = f"Considerando a situação hipotética, redija um texto dissertativo abordando os seguintes aspectos. Redija seu texto em até {limite_linhas}."
     elif tipo == "Peça Prático-Profissional":
-        diretrizes = "Crie um cenário fático exigindo a elaboração de uma Peça Prático-Profissional."
+        limite_linhas = "120 linhas"
+        diretrizes = "Crie um cenário fático exigindo a elaboração de uma Peça Prático-Profissional (relatório, parecer, auto de prisão, etc)."
+        comando_base = f"Considerando a situação hipotética, redija um texto dissertativo abordando os seguintes aspectos. Redija seu texto em até {limite_linhas}."
     else:
+        limite_linhas = "30 linhas"
+        comando_base = f"Considerando a situação hipotética, redija um texto dissertativo abordando os seguintes aspectos. Redija seu texto em até {limite_linhas}."
         if nivel == "Iniciante":
             diretrizes = "Crie um estudo de caso BÁSICO E SIMPLES, avaliando conhecimentos introdutórios."
         else:
-            diretrizes = "Crie um estudo de caso técnico ou situação hipotética exigindo identificação de problemas e aplicação da teoria."
+            diretrizes = "Crie um estudo de caso técnico ou situação hipotética exigindo identificação de problemas e fundamentação."
 
     prompt = f"""
     Atue como EXAMINADOR da banca {banca}.
@@ -2122,24 +2163,24 @@ async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest):
     A área geral de conhecimento do candidato é: {req.area}.
     Tópicos específicos exigidos pelo edital: {json.dumps(req.topicos, ensure_ascii=False)}
 
-    Sua missão ÚNICA é criar UMA {tipo} simulando o padrão da banca {banca} para o cargo de {cargo}, RIGOROSAMENTE ADAPTADA AO NÍVEL DE DIFICULDADE ({nivel}).
+    Sua missão ÚNICA é criar UMA prova do tipo '{tipo}' simulando o padrão da banca {banca} para o cargo de {cargo}, RIGOROSAMENTE ADAPTADA AO NÍVEL DE DIFICULDADE ({nivel}).
 
-    DIRETRIZES OBRIGATÓRIAS (ATENÇÃO AO NÍVEL):
+    DIRETRIZES OBRIGATÓRIAS:
     1. COMPLEXIDADE GERAL: {regras_dificuldade}
     2. ESTILO: {diretrizes} Use os tópicos base como contexto.
-    3. TEXTO MOTIVADOR: Crie o cenário. Se o nível for 'Iniciante', o texto DEVE ser curtíssimo e sem pegadinhas.
-    4. COMANDO: Use o vocabulário da banca. É OBRIGATÓRIO INCLUIR A INSTRUÇÃO: "Redija seu texto em até 30 linhas".
-    5. ASPECTOS: Crie de 2 a 3 itens numerados. ATENÇÃO CRÍTICA: Os aspectos devem ser passíveis de resposta completa dentro do limite físico de 30 linhas manuscritas (cerca de 240 a 300 palavras totais). Não exija o impossível. Se for 'Iniciante', faça perguntas muito diretas.
+    3. TEXTO MOTIVADOR: Crie o cenário ou texto base necessário. 
+    4. COMANDO: É OBRIGATÓRIO utilizar EXATAMENTE o comando estipulado no JSON final.
+    5. ASPECTOS: Crie de 1 a 3 itens numerados (Para paráfrases, exija '1. Preservação do sentido original' e '2. Correção gramatical'). ATENÇÃO CRÍTICA: Os aspectos devem ser perfeitamente passíveis de resposta completa DENTRO do limite de {limite_linhas}.
     6. PONTUAÇÃO: A soma do campo "valor_maximo" dos aspectos DEVE ser exatos 19.0 pontos.
 
     RETORNE APENAS ESTE JSON EXATO:
     {{
       "discursiva": {{
-        "texto_motivador": "Descrição do cenário...",
-        "comando": "Considerando a situação, redija um texto...",
+        "texto_motivador": "Descrição do cenário, texto base ou trecho para reescrita...",
+        "comando": "{comando_base}",
         "aspectos": [
-          {{ "aspecto": "1. Pergunta ou tópico...", "valor_maximo": 9.0 }},
-          {{ "aspecto": "2. Pergunta ou tópico...", "valor_maximo": 10.0 }}
+          {{ "aspecto": "1. Primeiro critério de avaliação...", "valor_maximo": 9.0 }},
+          {{ "aspecto": "2. Segundo critério de avaliação...", "valor_maximo": 10.0 }}
         ]
       }}
     }}
