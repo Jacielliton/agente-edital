@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { PenTool, Wrench, Lock, Brain, Calculator, FileText } from "lucide-react";
+import { PenTool, Wrench, Lock, Brain, Calculator, FileText, Scale } from "lucide-react";
 
 export default function Ferramentas() {
   return (
@@ -80,6 +80,23 @@ export default function Ferramentas() {
             <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Sintaxe para Concursos CESPE</h3>
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
               Aprenda a teoria gramatical e gere simulados de múltipla escolha para validar seu conhecimento com pegadinhas de bancas.
+            </p>
+          </div>
+        </Link>
+
+        {/* FERRAMENTA 5: GABARITE DIREITO (NOVA) */}
+        <Link to="/gabarite-direito" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div 
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
+            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
+              <Scale size={28} color="var(--primary)" />
+            </div>
+            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Noções de Direito CESPE</h3>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
+              Casos hipotéticos envolvendo Constitucional, Penal, Processual Penal e Administrativo embasados na lei seca e jurisprudência dominante do STF/STJ.
             </p>
           </div>
         </Link>

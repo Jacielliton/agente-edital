@@ -845,7 +845,7 @@ export default function GabariteSintaxe() {
 
       {/* FOOTER DE CRÉDITO DO DESENVOLVEDOR (Atualizado com sua diretiva) */}
       <div style={{ textAlign: 'center', marginTop: '3rem', paddingBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-        Foco na aprovação! Desenvolvido por Jacielliton Palmeira Gonçalves (SD Palmeira)
+        Foco na aprovação! Desenvolvido por TecnoPriv.Top
       </div>
     </div>
   );

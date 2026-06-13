@@ -966,31 +966,37 @@ async def agent_cespe_exam_generator(subject: str, focus: str, difficulty: str, 
     # Tratamento para Raciocínio Lógico
     if subject == "Raciocínio Lógico":
         if focus == 'negacao': focus_instructions = "Foque EXCLUSIVAMENTE em leis de De Morgan e negação de proposições lógicas (e, ou, se...então)."
-        elif focus == 'condicional': focus_instructions = "Foque em proposições condicionais (se... então), tabela-verdade, condição suficiente e condição necessária."
+        elif focus == 'condicional': focus_instructions = "Foque em proposições condicionais (se... então), tabela-verdade, condition suficiente e condição necessária."
         elif focus == 'equivalencia': focus_instructions = "Foque em equivalências lógicas (contrapositiva, equivalência da disjunção/condicional)."
-        elif focus == 'diagramas': focus_instructions = "Foque em diagramas lógicos (Todo, Algum, Nenhum) e silogismos categóricos."
+        elif focus == 'diagramas': focus_instructions = "Foque in diagramas lógicos (Todo, Algum, Nenhum) e silogismos categóricos."
         elif focus == 'argumentacao': focus_instructions = "Foque na validade de argumentos lógicos, premissas e conclusões."
         elif focus == 'probabilidade': focus_instructions = "Foque em probabilidade de eventos, união, intersecção e probabilidade condicional."
         elif focus == 'combinatoria': focus_instructions = "Foque em análise combinatória (arranjos, permutações e combinações simples)."
         elif focus == 'sequencias': focus_instructions = "Foque em sequências lógicas numéricas, de palavras ou figuras."
         else: focus_instructions = "Mescle tabela-verdade, negações lógicas e equivalências em situações hipotéticas."
     
-    # Tratamento original para Português
+    # NOVAS DIRETRIZES: Isolamento para Disciplinas de Direito
+    elif "Direito" in subject or subject == "Constitucional" or subject == "Penal" or subject == "Administrativo" or subject == "Processual" or subject == "Humanos":
+        focus_instructions = f"""
+        Foque estritamente na matéria jurídica de {subject}, abordando o tema: {focus}. 
+        É OBRIGATÓRIO fundamentar a cobrança com base na literalidade da lei (Lei Seca) e, principalmente, na jurisprudência consolidada ou sumulada do STF e STJ. 
+        Crie cenários fáticos cotidianos ou casos práticos de atuação policial/jurídica. 
+        PROIBIDO terminantemente usar conceitos gramaticais, interpretação de textos puramente literários ou conectivos lógicos matemáticos.
+        """
+
+    # Tratamento original para Português (Mantido Intacto)
     else: 
         if focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
         elif focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
         elif focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
         elif focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
         elif focus == 'hardcore': focus_instructions = "NÍVEL MÁXIMO DE DIFICULDADE CESPE. Pegadinhas sutis e extrapolação."
-        # 👇 NOVA ROTA ESPECÍFICA PARA A FERRAMENTA DE SINTAXE 👇
         elif focus.startswith('Sintaxe:'): 
             tema_exato = focus.replace('Sintaxe:', '').strip()
             focus_instructions = f"Foque ESPECIFICAMENTE E EXCLUSIVAMENTE nas regras sintáticas e pegadinhas gramaticais sobre: {tema_exato}."
-            
-        # 👇 FALLBACK ORIGINAL MANTIDO INTACTO (Protege o GabariteCespe) 👇
         else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
 
-    text_instruction = 'Crie uma situação hipotética base inédita (Ex: Considere as proposições P e Q...)' if generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'
+    text_instruction = 'Crie uma situação hipotética base inédita (Ex: Um servidor público praticou determinado ato...)' if generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'
 
     prompt = f"""
 Você é o mais rigoroso Examinador Sênior da banca CESPE/CEBRASPE. Crie um simulado inédito de {subject}.
@@ -998,20 +1004,20 @@ DIRETRIZES: {amount} questões. Dificuldade: {difficulty}. Foco: {focus_instruct
 Texto-Base: {text_instruction}
 
 REGRAS CRÍTICAS DE FORMATAÇÃO JSON (EVITAR QUEBRA DE CÓDIGO):
-1. JAMAIS use aspas duplas (") DENTRO dos valores de texto. Se precisar citar algo, use ASPAS SIMPLES (').
+1. JAMAIS use aspas duplas (") DENTRO dos valores de texto. Se precisar citar algo ou transcrever um artigo/lei, use ASPAS SIMPLES (').
 2. JAMAIS use quebras de linha reais dentro das strings. O texto deve ser contínuo.
 3. Responda ESTRITAMENTE com o JSON, sem formatação markdown (```json).
 
 INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
 {{
-    "textoBase": "Situação hipotética ou premissas lógicas iniciais ou deixe vazio.",
+    "textoBase": "Situação fática descrita ou premissas iniciais da questão, ou deixe vazio.",
     "questoes": [ 
         {{ 
             "id": 1, 
-            "enunciado": "A assertiva lógica para julgamento...", 
-            "assunto": "Tema da questão (ex: Equivalência, Negação)", 
+            "enunciado": "A assertiva jurídica para julgamento...", 
+            "assunto": "Subtópico específico avaliado", 
             "gabarito": "C", 
-            "explicacao": "Explique passo a passo a resolução lógica do gabarito (C ou E)." 
+            "explicacao": "Explique passo a passo a fundamentação com base no artigo da lei ou julgado do STF/STJ que justifica o gabarito (C ou E)." 
         }} 
     ]
 }}
@@ -2272,7 +2278,6 @@ async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: Use
     
 @app.post("/generate-simulado-cespe")
 async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
-    # Se o usuário não configurou a chave manual nem fez o login OAuth, bloqueia a requisição.
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(
             status_code=403, 
@@ -2290,40 +2295,47 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         elif req.focus == 'combinatoria': focus_instructions = "Foque em análise combinatória (arranjos, permutações e combinações simples)."
         elif req.focus == 'sequencias': focus_instructions = "Foque em sequências lógicas numéricas, de palavras ou figuras."
         else: focus_instructions = "Mescle tabela-verdade, negações lógicas e equivalências em situações hipotéticas."
+        
+    # NOVAS DIRETRIZES: Isolamento para Disciplinas de Direito no Endpoint
+    elif "Direito" in req.subject or req.subject in ["Constitucional", "Penal", "Administrativo", "Processual", "Humanos"]:
+        focus_instructions = f"""
+        Foque estritamente na disciplina de {req.subject}. O objetivo é avaliar conhecimentos jurídicos sobre o instituto: {req.focus}.
+        As questões devem versar sobre doutrina majoritária, texto literal da lei aplicável e a jurisprudência sumulada ou pacificada dos Tribunais Superiores (STF e STJ). 
+        PROIBIDO incluir abordagens gramaticais, sintáticas ou de lógica computacional/matemática.
+        """
+        
     else: 
         if req.focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
         elif req.focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
         elif req.focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
         elif req.focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
         elif req.focus == 'hardcore': focus_instructions = "NÍVEL MÁXIMO DE DIFICULDADE CESPE. Pegadinhas sutis e extrapolação."
-        # 👇 NOVA ROTA ESPECÍFICA PARA A FERRAMENTA DE SINTAXE 👇
         elif req.focus.startswith('Sintaxe:'): 
             tema_exato = req.focus.replace('Sintaxe:', '').strip()
-            focus_instructions = f"Foque ESPECIFICAMENTE E EXCLUSIVAMENTE nas regras sintáticas e pegadinhas gramaticais sobre: {tema_exato}."            
-        # 👇 FALLBACK ORIGINAL MANTIDO INTACTO (Protege o GabariteCespe) 👇
+            focus_instructions = f"Foque ESPECIFICAMENTE E EXCLUSIVAMENTE nas regras sintáticas e pegadinhas gramaticais sobre: {tema_exato}."         
         else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
 
-    text_instruction = 'Crie uma situação hipotética base inédita (Ex: Considere as proposições P e Q...)' if req.generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas.'
+    text_instruction = 'Crie um caso prático ou situação hipotética jurídica curta para servir de base.' if req.generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas de julgamento.'
 
     # --- LÓGICA DO FORMATO (MÚLTIPLA ESCOLHA OU CERTO/ERRADO) ---
     if req.formato == "Múltipla Escolha":
         regra_formato = "Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão. O gabarito deve ser a letra correta."
         json_questao = """{ 
             "id": 1, 
-            "enunciado": "A pergunta da questão...", 
+            "enunciado": "A pergunta da questão ou caso jurídico...", 
             "alternativas": ["A) ...", "B) ...", "C) ...", "D) ...", "E) ..."],
-            "assunto": "Tema da questão", 
+            "assunto": "Tema específico da questão", 
             "gabarito": "A", 
-            "explicacao": "Explique por que a correta é a certa e o erro das demais." 
+            "explicacao": "Explique fundamentadamente o erro dos distratores e o acerto da alternativa correta." 
         }"""
     else:
-        regra_formato = "O formato deve ser CERTO ou ERRADO. O gabarito deve ser 'C' ou 'E'."
+        regra_formato = "O formato deve ser CERTO ou ERRADO. O gabarito deve ser 'C' ou 'E' seguindo rigorosamente o padrão CESPE."
         json_questao = """{ 
             "id": 1, 
-            "enunciado": "A assertiva para julgamento...", 
-            "assunto": "Tema da questão", 
+            "enunciado": "A assertiva jurídica para julgamento...", 
+            "assunto": "Tema específico da questão", 
             "gabarito": "C", 
-            "explicacao": "Explique passo a passo a resolução." 
+            "explicacao": "Explique passo a passo a resolução com base em artigos legais ou informativos dos tribunais." 
         }"""
 
     prompt = f"""
@@ -2339,7 +2351,7 @@ REGRAS CRÍTICAS DE FORMATAÇÃO JSON:
 
 INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
 {{
-    "textoBase": "Situação hipotética ou premissas lógicas iniciais ou deixe vazio.",
+    "textoBase": "Contexto fático-jurídico inicial aplicável às questões ou deixe vazio.",
     "questoes": [ 
         {json_questao}
     ]
