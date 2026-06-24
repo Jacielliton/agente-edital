@@ -5,6 +5,7 @@ import {
   X, CheckCircle, AlertCircle, Binary
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { conteudosTeoricosRLM } from "../data/raciocinioData";
 
 // Helper para ler token unificado
 const getAuthToken = () => {
@@ -102,6 +103,12 @@ export default function GabariteLogica() {
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [lessonContent, setLessonContent] = useState("");
+
+  const handleShowTheory = () => {
+    // Puxa o conteúdo do arquivo importado com base no foco atual
+    setLessonContent(conteudosTeoricosRLM[configFocus] || conteudosTeoricosRLM.completo);
+    setShowLessonModal(true);
+  };
 
   useEffect(() => {
     fetchUserSettings();
@@ -404,17 +411,27 @@ export default function GabariteLogica() {
               
               <div style={{ marginBottom: '15px' }}>
                 <label className="label">Foco de Estudo (Frequência CESPE)</label>
-                <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem' }}>
-                  <option value="completo">Simulado Completo (Todos)</option>
-                  <option value="negacao">⭐⭐⭐⭐⭐ Negação lógica</option>
-                  <option value="condicional">⭐⭐⭐⭐⭐ Condicional (Se..então)</option>
-                  <option value="equivalencia">⭐⭐⭐⭐⭐ Equivalência lógica</option>
-                  <option value="diagramas">⭐⭐⭐⭐ Diagramas lógicos</option>
-                  <option value="argumentacao">⭐⭐⭐⭐ Argumentação lógica</option>
-                  <option value="probabilidade">⭐⭐⭐ Probabilidade</option>
-                  <option value="combinatoria">⭐⭐⭐ Análise combinatória</option>
-                  <option value="sequencias">⭐⭐ Sequências lógicas</option>
-                </select>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', flex: 1 }}>
+                    <option value="completo">Simulado Completo (Todos)</option>
+                    <option value="negacao">⭐⭐⭐⭐⭐ Negação lógica</option>
+                    <option value="condicional">⭐⭐⭐⭐⭐ Condicional (Se..então)</option>
+                    <option value="equivalencia">⭐⭐⭐⭐⭐ Equivalência lógica</option>
+                    <option value="diagramas">⭐⭐⭐⭐ Diagramas lógicos</option>
+                    <option value="argumentacao">⭐⭐⭐⭐ Argumentação lógica</option>
+                    <option value="probabilidade">⭐⭐⭐ Probabilidade</option>
+                    <option value="combinatoria">⭐⭐⭐ Análise combinatória</option>
+                    <option value="sequencias">⭐⭐ Sequências lógicas</option>
+                  </select>
+                  <button 
+                    onClick={handleShowTheory} 
+                    className="btn" 
+                    style={{ padding: '10px', background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: '8px', flexShrink: 0 }} 
+                    title="Ver Resumo Teórico do Assunto Selecionado"
+                  >
+                    <BookOpenCheck size={20} />
+                  </button>
+                </div>
               </div>
 
               <div style={{ marginBottom: '15px' }}>
