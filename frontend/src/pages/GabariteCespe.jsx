@@ -58,13 +58,12 @@ const fetchStreamAsJson = async (url, options, onProgress = null) => {
   }
 };
 
-// 2. MELHORIA: COMPONENTE DE TEXTO COM NUMERAÇÃO DE LINHAS (ESTILO CESPE)
+// 2. MELHORIA: COMPONENTE DE TEXTO RESPONSIVO E FLUIDO
 const LineNumberedText = ({ text, fontSize }) => {
   if (!text) return null;
   
-  // Divide o texto por quebras de linha reais
+  // Divide o texto pelas quebras de linha reais (parágrafos do texto base)
   const paragraphs = text.split('\n').filter(p => p.trim() !== "");
-  let globalLineCounter = 0;
 
   return (
     <div style={{ 
@@ -72,55 +71,20 @@ const LineNumberedText = ({ text, fontSize }) => {
       lineHeight: '1.9', 
       fontFamily: 'serif', 
       color: 'var(--text-main)', 
-      textAlign: 'justify' 
+      textAlign: 'justify',
+      paddingLeft: '10px',
+      paddingRight: '10px'
     }}>
-      {paragraphs.map((para, pIdx) => {
-        // Divide o parágrafo em frases ou linhas aproximadas de prova (65-70 caracteres)
-        const words = para.split(' ');
-        const lines = [];
-        let currentLine = [];
-
-        words.forEach(word => {
-          if ((currentLine.join(' ') + ' ' + word).length > 65) {
-            lines.push(currentLine.join(' '));
-            currentLine = [word];
-          } else {
-            currentLine.push(word);
-          }
-        });
-        if (currentLine.length > 0) lines.push(currentLine.join(' '));
-
-        return (
-          <p key={pIdx} style={{ textIndent: '2rem', marginBottom: '15px' }}>
-            {lines.map((lineText, lIdx) => {
-              globalLineCounter++;
-              // O CESPE geralmente numera de 5 em 5 linhas ou a linha inicial
-              const shouldShowNumber = globalLineCounter === 1 || globalLineCounter % 5 === 0;
-
-              return (
-                <span key={lIdx} style={{ display: 'block', position: 'relative', paddingLeft: '35px' }}>
-                  <span style={{ 
-                    position: 'absolute', 
-                    left: 0, 
-                    width: '25px', 
-                    textAlign: 'right', 
-                    fontSize: '0.8rem', 
-                    fontFamily: 'monospace', 
-                    color: 'var(--text-muted)',
-                    borderRight: '1px solid var(--border)',
-                    paddingRight: '5px',
-                    marginRight: '10px',
-                    userSelect: 'none'
-                  }}>
-                    {shouldShowNumber ? globalLineCounter : ""}
-                  </span>
-                  {lineText}
-                </span>
-              );
-            })}
-          </p>
-        );
-      })}
+      {paragraphs.map((para, pIdx) => (
+        <p key={pIdx} style={{ 
+          textIndent: '2.5rem', 
+          marginBottom: '18px',
+          wordWrap: 'break-word',
+          hyphens: 'auto'
+        }}>
+          {para}
+        </p>
+      ))}
     </div>
   );
 };
