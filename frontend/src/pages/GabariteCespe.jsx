@@ -117,6 +117,7 @@ export default function GabariteCespe() {
   // 3. MELHORIA: ESTADO DE CONFIGURAÇÃO VISUAL (FONTE E MARCA-TEXTO)
   const [textFontSize, setTextFontSize] = useState(1.05); // Multiplicador de escala rem
   const [isHighlighterActive, setIsHighlighterActive] = useState(false);
+  const [isTextVisible, setIsTextVisible] = useState(true);
 
   // --- ESTADOS DE CONTROLE DE FLUXO ---
   const [viewState, setViewState] = useState("initial"); 
@@ -519,75 +520,98 @@ export default function GabariteCespe() {
             </div>
           )}
 
-          {/* PAINEL DINÂMICO SPLIT-SCREEN */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: compiledTexts.length > 0 ? 'repeat(auto-fit, minmax(450px, 1fr))' : '1fr', 
-            gap: '25px', 
-            alignItems: 'start' 
-          }}>
-            
-            {/* COLUNA ESQUERDA: TEXTO-BASE FIXADO COM BARRA DE FERRAMENTAS */}
-            {compiledTexts.length > 0 && (
-              <div className="sticky-text-panel" style={{ 
-                position: 'sticky', 
-                top: '20px', 
-                maxHeight: 'calc(100vh - 60px)', 
-                overflowY: 'auto', 
-                background: 'var(--card-bg)', 
-                border: '1px solid var(--border)', 
-                borderRadius: '12px', 
-                padding: '20px',
-                boxShadow: 'var(--shadow-md)'
-              }}>
-                {/* 3. MELHORIA: BARRA DE UTILITÁRIOS INTERATIVOS DO TEXTO */}
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  borderBottom: '1px solid var(--border)', 
-                  paddingBottom: '10px', 
-                  marginBottom: '15px' 
-                }}>
-                  <span style={{ fontWeight: 'bold', color: 'var(--primary)', fontSize: '0.85rem', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <AlignLeft size={16} /> Texto de Apoio
-                  </span>
-                  
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    {/* Botão Liga/Desliga Marca-Texto */}
-                    <button 
-                      onClick={() => setIsHighlighterActive(!isHighlighterActive)}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '0.8rem',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontWeight: 'bold',
-                        border: '1px solid',
-                        background: isHighlighterActive ? '#fef08a' : 'transparent',
-                        borderColor: isHighlighterActive ? '#f59e0b' : 'var(--border)',
-                        color: isHighlighterActive ? '#000' : 'var(--text-secondary)'
-                      }}
-                      title="Ative e use o mouse para selecionar e realçar trechos do texto."
-                    >
-                      🖋️ Marca-Texto
-                    </button>
+          {/* PAINEL DINÂMICO SPLIT-SCREEN RECONFIGURADO */}
+<div style={{ 
+  display: 'grid', 
+  gridTemplateColumns: (compiledTexts.length > 0 && isTextVisible) ? 'repeat(auto-fit, minmax(450px, 1fr))' : '1fr', 
+  gap: '25px', 
+  alignItems: 'start' 
+}}>
+  
+  {/* COLUNA ESQUERDA: TEXTO-BASE COM ALTURA LIMITADA, SCROLL E MINIMIZAÇÃO */}
+  {compiledTexts.length > 0 && (
+    <div className="sticky-text-panel" style={{ 
+      position: 'sticky', 
+      top: '20px', 
+      // Garante que o painel caiba na tela do usuário e acione o scroll interno
+      maxHeight: 'min(750px, calc(100vh - 60px))', 
+      overflowY: isTextVisible ? 'auto' : 'visible', 
+      background: 'var(--card-bg)', 
+      border: '1px solid var(--border)', 
+      borderRadius: '12px', 
+      padding: '20px',
+      boxShadow: 'var(--shadow-md)',
+      transition: 'all 0.3s ease'
+    }}>
+      
+      {/* BARRA DE UTILITÁRIOS INTERATIVOS */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        borderBottom: isTextVisible ? '1px solid var(--border)' : 'none', 
+        paddingBottom: '10px', 
+        marginBottom: isTextVisible ? '15px' : '0' 
+      }}>
+        <span style={{ fontWeight: 'bold', color: 'var(--primary)', fontSize: '0.85rem', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <AlignLeft size={16} /> Texto de Apoio
+        </span>
+        
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          {isTextVisible && (
+            <>
+              {/* Botão Liga/Desliga Marca-Texto */}
+              <button 
+                onClick={() => setIsHighlighterActive(!isHighlighterActive)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '0.8rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  border: '1px solid',
+                  background: isHighlighterActive ? '#fef08a' : 'transparent',
+                  borderColor: isHighlighterActive ? '#f59e0b' : 'var(--border)',
+                  color: isHighlighterActive ? '#000' : 'var(--text-secondary)'
+                }}
+                title="Ative e use o mouse para selecionar e realçar trechos do texto."
+              >
+                Definir Marca-Texto
+              </button>
 
-                    {/* Controles de Zoom de Fonte */}
-                    <button onClick={() => setTextFontSize(p => Math.min(p + 0.1, 1.5))} className="btn small" style={{ padding: '4px' }} title="Aumentar Fonte"><ZoomIn size={16}/></button>
-                    <button onClick={() => setTextFontSize(p => Math.max(p - 0.1, 0.85))} className="btn small" style={{ padding: '4px' }} title="Diminuir Fonte"><ZoomOut size={16}/></button>
-                  </div>
-                </div>
+              {/* Controles de Zoom de Fonte */}
+              <button onClick={() => setTextFontSize(p => Math.min(p + 0.1, 1.5))} className="btn small" style={{ padding: '4px' }} title="Aumentar Fonte"><ZoomIn size={16}/></button>
+              <button onClick={() => setTextFontSize(p => Math.max(p - 0.1, 0.85))} className="btn small" style={{ padding: '4px' }} title="Diminuir Fonte"><ZoomOut size={16}/></button>
+            </>
+          )}
 
-                {/* Renderização do texto com a numeração customizada estilo CESPE */}
-                {compiledTexts.map((txt, idx) => (
-                  <LineNumberedText key={idx} text={txt} fontSize={textFontSize} />
-                ))}
-              </div>
-            )}
+          {/* NOVO: Botão Mostrar / Ocultar Texto */}
+          <button 
+            onClick={() => setIsTextVisible(!isTextVisible)} 
+            className="btn small" 
+            style={{ 
+              padding: '4px 12px', 
+              fontSize: '0.8rem', 
+              fontWeight: 'bold',
+              background: 'var(--hover-bg)',
+              color: 'var(--text-main)',
+              border: '1px solid var(--border)'
+            }}
+          >
+            {isTextVisible ? "👁️ Ocultar Texto" : "👁️ Mostrar Texto"}
+          </button>
+        </div>
+      </div>
 
-            {/* COLUNA DIREITA: LISTA DE QUESTÕES CAUTELARES */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Renderização condicional do conteúdo baseado no estado do botão */}
+      {isTextVisible && compiledTexts.map((txt, idx) => (
+        <LineNumberedText key={idx} text={txt} fontSize={textFontSize} />
+      ))}
+    </div>
+  )}
+
+  {/* COLUNA DIREITA: LISTA DE QUESTÕES CAUTELARES */}
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {configExamMode && !isExamFinished && (
                 <div style={{ background: 'var(--primary-light)', padding: '15px 20px', borderRadius: '12px', border: '1px solid var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold' }}>
