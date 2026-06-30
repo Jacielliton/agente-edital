@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Brain, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, 
-  Sparkles, Bot, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
-  X, CheckCircle, AlertCircle
+  Sparkles, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
+  X, CheckCircle, AlertCircle, ArrowLeft, ZoomIn, ZoomOut
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
-// Helper para ler token unificado
+// ==========================================
+// 5. REFATORAÇÃO: ISOLAMENTO DE UTILITÁRIOS E SUBS-COMPONENTES
+// ==========================================
+
+// Helper para ler token unificado de autenticação
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
   for (const storage of storages) {
@@ -24,9 +28,7 @@ const getAuthToken = () => {
   return null;
 };
 
-// ==========================================
-// NOVA FUNÇÃO ANTI-ERRO
-// ==========================================
+// Função Anti-Erro e Limpeza de Resposta da IA com suporte a Streams
 const fetchStreamAsJson = async (url, options, onProgress = null) => {
   const res = await fetch(url, options);
   if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
@@ -44,32 +46,90 @@ const fetchStreamAsJson = async (url, options, onProgress = null) => {
   }
   
   try {
-    // 1. Remove blocos de raciocínio da IA
     let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
-    
-    // 2. Extrai apenas o bloco principal do JSON
     const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) cleanText = jsonMatch[0];
-    
-    // 3. VACINA 1: Remove quebras de linha literais (Enters) dentro das strings
-    cleanText = cleanText.replace(/[\n\r\t]+/g, ' ');
-
-    // 4. VACINA 2: Remove vírgulas no final de arrays/objetos
-    cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+    cleanText = cleanText.replace(/[\n\r\t]+/g, ' ').replace(/,\s*([\]}])/g, '$1');
     
     return JSON.parse(cleanText);
   } catch (e) {
     console.error("TEXTO COM ERRO DA IA:", rawText);
-    throw new Error("A IA gerou um formato inválido.");
+    throw new Error("A IA gerou um formato inválido de JSON.");
   }
 };
 
-// ==========================================
+// 2. MELHORIA: COMPONENTE DE TEXTO COM NUMERAÇÃO DE LINHAS (ESTILO CESPE)
+const LineNumberedText = ({ text, fontSize }) => {
+  if (!text) return null;
+  
+  // Divide o texto por quebras de linha reais
+  const paragraphs = text.split('\n').filter(p => p.trim() !== "");
+  let globalLineCounter = 0;
 
-export default function GabariteCespe() { // Ou GabariteLogica
+  return (
+    <div style={{ 
+      fontSize: `${fontSize}rem`, 
+      lineHeight: '1.9', 
+      fontFamily: 'serif', 
+      color: 'var(--text-main)', 
+      textAlign: 'justify' 
+    }}>
+      {paragraphs.map((para, pIdx) => {
+        // Divide o parágrafo em frases ou linhas aproximadas de prova (65-70 caracteres)
+        const words = para.split(' ');
+        const lines = [];
+        let currentLine = [];
+
+        words.forEach(word => {
+          if ((currentLine.join(' ') + ' ' + word).length > 65) {
+            lines.push(currentLine.join(' '));
+            currentLine = [word];
+          } else {
+            currentLine.push(word);
+          }
+        });
+        if (currentLine.length > 0) lines.push(currentLine.join(' '));
+
+        return (
+          <p key={pIdx} style={{ textIndent: '2rem', marginBottom: '15px' }}>
+            {lines.map((lineText, lIdx) => {
+              globalLineCounter++;
+              // O CESPE geralmente numera de 5 em 5 linhas ou a linha inicial
+              const shouldShowNumber = globalLineCounter === 1 || globalLineCounter % 5 === 0;
+
+              return (
+                <span key={lIdx} style={{ display: 'block', position: 'relative', paddingLeft: '35px' }}>
+                  <span style={{ 
+                    position: 'absolute', 
+                    left: 0, 
+                    width: '25px', 
+                    textAlign: 'right', 
+                    fontSize: '0.8rem', 
+                    fontFamily: 'monospace', 
+                    color: 'var(--text-muted)',
+                    borderRight: '1px solid var(--border)',
+                    paddingRight: '5px',
+                    marginRight: '10px',
+                    userSelect: 'none'
+                  }}>
+                    {shouldShowNumber ? globalLineCounter : ""}
+                  </span>
+                  {lineText}
+                </span>
+              );
+            })}
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
+// COMPONENTE PRINCIPAL
+export default function GabariteCespe() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-  // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
+  // --- ESTADOS DE CONFIGURAÇÃO DE IA ---
   const [showConfig, setShowConfig] = useState(false);
   const [providerTab, setProviderTab] = useState("openrouter");
   const [tempModel, setTempModel] = useState("");
@@ -85,27 +145,32 @@ export default function GabariteCespe() { // Ou GabariteLogica
   const [configAmount, setConfigAmount] = useState(10);
   const [configTextBase, setConfigTextBase] = useState(true);
   const [configExamMode, setConfigExamMode] = useState(false);
+  
+  // 4. MELHORIA: CONTROLE DE TAMANHO E TIPOLOGIA TEXTUAL
+  const [configTextSize, setConfigTextSize] = useState("Longo"); 
+  const [configTypology, setConfigTypology] = useState("Dissertativo-Argumentativo");
 
-  // --- ESTADOS DO FLUXO (UI) ---
-  const [viewState, setViewState] = useState("initial"); // 'initial', 'loading', 'exam'
+  // 3. MELHORIA: ESTADO DE CONFIGURAÇÃO VISUAL (FONTE E MARCA-TEXTO)
+  const [textFontSize, setTextFontSize] = useState(1.05); // Multiplicador de escala rem
+  const [isHighlighterActive, setIsHighlighterActive] = useState(false);
+
+  // --- ESTADOS DE CONTROLE DE FLUXO ---
+  const [viewState, setViewState] = useState("initial"); 
   const [loadingMsg, setLoadingMsg] = useState("");
   const [error, setError] = useState("");
-  
-  // --- ESTADOS DOS DADOS DA PROVA ---
   const [currentData, setCurrentData] = useState(null);
   const [userAnswers, setUserAnswers] = useState({});
   const [isExamFinished, setIsExamFinished] = useState(false);
 
-  // --- ESTADOS DE ESTATÍSTICAS E MODAIS ---
+  // --- ESTADOS DE MÉTRICAS E MODAIS DE REVISÃO ---
   const [stats, setStats] = useState({ total: 0, correct: 0, wrong: 0, topics: {} });
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [lessonContent, setLessonContent] = useState("");
 
-  // Carregar Configurações do Utilizador e Estatísticas ao montar
   useEffect(() => {
     fetchUserSettings();
-    const savedStats = localStorage.getItem('cespe_stats');
+    const savedStats = localStorage.getItem('cespe_portugues_stats');
     if (savedStats) {
       try { setStats(JSON.parse(savedStats)); } catch (e) { console.error(e); }
     }
@@ -113,10 +178,9 @@ export default function GabariteCespe() { // Ou GabariteLogica
 
   const saveStats = (newStats) => {
     setStats(newStats);
-    localStorage.setItem('cespe_stats', JSON.stringify(newStats));
+    localStorage.setItem('cespe_portugues_stats', JSON.stringify(newStats));
   };
 
-  // --- LÓGICA DE CONFIGURAÇÃO DE IA ---
   const fetchUserSettings = async () => {
     try {
       const token = getAuthToken();
@@ -128,11 +192,6 @@ export default function GabariteCespe() { // Ou GabariteLogica
         if (data.preferred_model) setUserModel(data.preferred_model);
       }
     } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
-  };
-
-  const handleConnectAI = () => {
-    const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
-    window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
   };
 
   const openConfigModal = () => {
@@ -148,7 +207,6 @@ export default function GabariteCespe() { // Ou GabariteLogica
     try {
       const token = getAuthToken();
       if (!token) { alert("Sessão expirada. Faça login."); return; }
-
       const keyToSave = providerTab === "aistudio" ? tempApiKey.trim() : userApiKey;
 
       const res = await fetch(`${API_URL}/users/me/settings`, {
@@ -165,26 +223,6 @@ export default function GabariteCespe() { // Ou GabariteLogica
     } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
-  const handleDisconnectAI = async () => {
-    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta?")) return;
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
-      });
-      if (res.ok) {
-        setUserApiKey("");
-        setTempApiKey("");
-      }
-      else alert("Erro ao desvincular no servidor."); 
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
-  };
-
-  // --- LÓGICA DE GERAÇÃO DA PROVA (API CALL) ---
   const generateExam = async () => {
     setError("");
     setViewState("loading");
@@ -192,31 +230,58 @@ export default function GabariteCespe() { // Ou GabariteLogica
     try {
       const token = getAuthToken();
       let todasQuestoes = [];
-      
       const batchSize = 5; 
       const batches = Math.ceil(configAmount / batchSize);
 
       for (let i = 0; i < batches; i++) {
-        setLoadingMsg(`A formular questões inéditas... (Lote ${i + 1} de ${batches})`);
+        setLoadingMsg(`A analisar e estruturar textos gramaticais... (Lote ${i + 1} de ${batches})`);
         const currentBatchSize = Math.min(batchSize, configAmount - (i * batchSize));
+
+        // Mapeia o foco selecionado para uma instrução exclusiva e rigorosa
+        let instrucaoDetalhada = "";
+        switch (configFocus) {
+          case "interpretacao":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Compreensão e Interpretação Textual.";
+            break;
+            
+          case "gramatica":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Morfosintaxe, Regência e Crase.";
+            break;
+            
+          case "reescrita":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Reescrita de Frases e Substituição de Conectivos.";
+            break;
+            
+          case "semantica":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Relações Semânticas e Coesão Textual.";
+            break;
+            
+          case "hardcore":
+            instrucaoDetalhada = "Nível Máximo CESPE/CEBRASPE (Padrão Auditor/Delegado). Crie uma prova mista com altíssimo nível de dificuldade. Mescle reescritas complexas, dupla negação, inversões sintáticas profundas e pegadinhas sutis de extrapolação interpretativa. Exija do candidato atenção máxima a detalhes microscópicos do texto.";
+            break;
+            
+          default:
+            instrucaoDetalhada = "Gere uma prova mista, distribuindo os itens de forma equilibrada entre interpretação de texto, sintaxe, morfologia, coesão referencial e propostas de reescrita de frases.";
+        }
+
+        // Comando linear e ultra-imperativo para blindar o escopo da IA
+        const instrucoesFocoCompletas = `DIRETRIZ OBRIGATÓRIA: ${instrucaoDetalhada} PROIBIDO abordar qualquer outro assunto de língua portuguesa que fuja dessa vertente. Estilo do Texto Base: ${configTypology}. Extensão: ${configTextSize}.`.trim();
 
         const payload = {
           subject: "Língua Portuguesa", 
-          focus: configFocus,
+          focus: instrucoesFocoCompletas,
           difficulty: configDifficulty,
           amount: currentBatchSize,
-          generate_text: configTextBase, // Agora solicita texto em todos os lotes
+          generate_text: configTextBase, 
           formato: configFormato,
-          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || "nvidia/nemotron-3-super-120b-a12b:free",
           api_key: userApiKey || null
         };
 
-        // --- SISTEMA DE AUTO-RETRY (Auto-recuperação de erros da IA) ---
         let data = null;
         let tentativas = 0;
-        const maxTentativas = 2;
 
-        while (tentativas < maxTentativas) {
+        while (tentativas < 2) {
           try {
             data = await fetchStreamAsJson(`${API_URL}/generate-simulado-cespe`, {
               method: "POST",
@@ -226,26 +291,18 @@ export default function GabariteCespe() { // Ou GabariteLogica
               },
               body: JSON.stringify(payload)
             });
-            
-            if (data && data.questoes && data.questoes.length > 0) {
-              break; // Sai do loop se teve sucesso
-            } else {
-              throw new Error("O lote veio vazio.");
-            }
+            if (data && data.questoes && data.questoes.length > 0) break;
+            throw new Error("Lote retornado vazio.");
           } catch (e) {
             tentativas++;
-            if (tentativas >= maxTentativas) {
-              throw new Error("A IA falhou seguidamente ao formatar as opções. Tente novamente.");
-            }
-            setLoadingMsg(`Corrigindo formato da IA... (A repetir o Lote ${i + 1})`);
+            if (tentativas >= 2) throw new Error("A IA falhou em estruturar os itens de Língua Portuguesa.");
+            setLoadingMsg(`Corrigindo alinhamento léxico... (A repetir Lote ${i + 1})`);
           }
         }
-        // ----------------------------------------------------------------
 
         const questoesCorrigidas = data.questoes.map((q, idx) => ({
           ...q,
-          id: `q_prova_${i}_${idx}`,
-          // Injeta o texto-base gerado neste lote apenas na PRIMEIRA questão dele
+          id: `q_pt_${i}_${idx}`,
           textoVinculado: (idx === 0 && configTextBase && data.textoBase) ? data.textoBase : null
         }));
 
@@ -265,637 +322,553 @@ export default function GabariteCespe() { // Ou GabariteLogica
     }
   };
 
-  const generateLesson = async (wrongQuestions) => {
-    setViewState("loading");
-    setLoadingMsg("O Professor IA está a preparar a sua aula particular baseada nos seus erros...");
-
-    try {
-      const token = getAuthToken();
-      const response = await fetch(`${API_URL}/generate-lesson-cespe`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : ""
-        },
-        body: JSON.stringify({
-          wrong_questions: wrongQuestions,
-          model: userModel || "arcee-ai/trinity-large-thinking:free",
-          api_key: userApiKey || null
-        })
-      });
-
-      if (!response.ok) throw new Error("Falha ao gerar a aula.");
-      const data = await response.json();
-
-      setLessonContent(data.lesson_markdown || data.text || "Conteúdo não disponível.");
-      setViewState("exam"); 
-      setShowLessonModal(true);
-
-    } catch (err) {
-      console.error(err);
-      alert("Falha ao gerar a aula.");
-      setViewState("exam");
-    }
-  };
-
-  // --- LÓGICA DE INTERAÇÃO COM A PROVA ---
   const handleAnswer = (qId, answer) => {
     if (isExamFinished) return;
-
     if (!configExamMode) {
-      // Modo Normal: Avalia imediatamente
-      if (userAnswers[qId]) return; // Já respondeu
+      if (userAnswers[qId]) return; 
       const newAnswers = { ...userAnswers, [qId]: answer };
       setUserAnswers(newAnswers);
-      processSingleAnswer(qId, answer);
+      
+      const q = currentData.questoes.find(x => x.id === qId);
+      const isCorrect = answer === q.gabarito;
+      let newStats = { ...stats };
+      newStats.total++;
+      if (isCorrect) newStats.correct++; else newStats.wrong++;
+      if (!newStats.topics[q.assunto]) newStats.topics[q.assunto] = { correct: 0, wrong: 0 };
+      if (isCorrect) newStats.topics[q.assunto].correct++; else newStats.topics[q.assunto].wrong++;
+      saveStats(newStats);
     } else {
-      // Modo Prova: Apenas regista a resposta (pode alterar)
       const newAnswers = { ...userAnswers };
-      if (newAnswers[qId] === answer) {
-        delete newAnswers[qId]; // Desmarca
-      } else {
-        newAnswers[qId] = answer; // Marca
-      }
+      if (newAnswers[qId] === answer) delete newAnswers[qId];
+      else newAnswers[qId] = answer; 
       setUserAnswers(newAnswers);
     }
-  };
-
-  const processSingleAnswer = (qId, answer) => {
-    const q = currentData.questoes.find(x => x.id === qId);
-    const isCorrect = answer === q.gabarito;
-    
-    let newStats = { ...stats };
-    newStats.total++;
-    if (isCorrect) newStats.correct++; else newStats.wrong++;
-
-    if (!newStats.topics[q.assunto]) newStats.topics[q.assunto] = { correct: 0, wrong: 0 };
-    if (isCorrect) newStats.topics[q.assunto].correct++; else newStats.topics[q.assunto].wrong++;
-
-    saveStats(newStats);
   };
 
   const finishExam = () => {
     if (isExamFinished) return;
     setIsExamFinished(true);
 
-    let newStats = { ...stats };
-    let right = 0, wrong = 0;
-
-    currentData.questoes.forEach(q => {
-      const ans = userAnswers[q.id];
-      if (ans) {
-        newStats.total++;
-        if (ans === q.gabarito) { 
-          right++; newStats.correct++; 
-        } else { 
-          wrong++; newStats.wrong++; 
+    if (configExamMode) {
+      let newStats = { ...stats };
+      currentData.questoes.forEach(q => {
+        const ans = userAnswers[q.id];
+        if (ans) {
+          newStats.total++;
+          if (ans === q.gabarito) newStats.correct++; else newStats.wrong++;
+          if (!newStats.topics[q.assunto]) newStats.topics[q.assunto] = { correct: 0, wrong: 0 };
+          if (ans === q.gabarito) newStats.topics[q.assunto].correct++; else newStats.topics[q.assunto].wrong++;
         }
-        
-        if (!newStats.topics[q.assunto]) newStats.topics[q.assunto] = { correct: 0, wrong: 0 };
-        if (ans === q.gabarito) newStats.topics[q.assunto].correct++;
-        else newStats.topics[q.assunto].wrong++;
-      }
-    });
-
-    saveStats(newStats);
-    alert(`Prova finalizada! Pontuação (Padrão CESPE: 1 Erro anula 1 Certo): ${right - wrong}`);
+      });
+      saveStats(newStats);
+    }
+    setViewState("results");
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const getWrongQuestions = () => {
-    if (!currentData) return [];
-    return currentData.questoes.filter(q => {
-      const ans = userAnswers[q.id];
-      return ans && ans !== q.gabarito;
-    });
-  };
-
-  const resetStats = () => {
-    if(window.confirm("Apagar todo o histórico?")) {
-      saveStats({ total: 0, correct: 0, wrong: 0, topics: {} });
-      setShowStatsModal(false);
+  const generateLesson = async (wrongQuestions) => {
+    setViewState("loading");
+    setLoadingMsg("O Professor IA está reunindo regras gramaticais e análises sintáticas das questões que errou...");
+    try {
+      const token = getAuthToken();
+      const response = await fetch(`${API_URL}/generate-lesson-cespe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": token ? `Bearer ${token}` : "" },
+        body: JSON.stringify({
+          wrong_questions: wrongQuestions,
+          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          api_key: userApiKey || null
+        })
+      });
+      if (!response.ok) throw new Error("Falha ao gerar aula.");
+      const data = await response.json();
+      setLessonContent(data.lesson_markdown || data.text || "Conteúdo indisponível.");
+      setViewState("results"); 
+      setShowLessonModal(true);
+    } catch (err) {
+      alert("Falha ao gerar o parecer explicativo.");
+      setViewState("results");
     }
   };
 
-  const wrongCount = getWrongQuestions().length;
-  const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && wrongCount > 0;
+  // Coleta o texto focado agrupado de todos os lotes (para exibição contínua no Split-Screen)
+  const compiledTexts = currentData?.questoes?.filter(q => q.textoVinculado).map(q => q.textoVinculado) || [];
 
   return (
-    <div className="container">
-      {/* HEADER SEMELHANTE AO GENERATOR */}
-      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
+    <div className="container" style={{ 
+      // 3. MELHORIA: Injeta via CSS Inline a cor customizada do Marca-Texto se ativo
+      backgroundSelection: isHighlighterActive ? '#fef08a !important' : 'auto'
+    }}>
+      {/* CSS injetado localmente para forçar a cor do marca-texto quando ativo */}
+      {isHighlighterActive && (
+        <style>{`
+          .sticky-text-panel ::selection { background-color: #fde047 !important; color: #000000 !important; }
+        `}</style>
+      )}
+
+      {/* HEADER */}
+      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '15px' }}>
         <div>
           <h1 style={{ color: 'var(--heading-color)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Brain size={32} color="var(--primary)" /> Gabarite<span style={{ color: 'var(--primary)' }}>CESPE</span>
+            <Brain size={32} color="var(--primary)" /> Gabarite Português <span style={{ color: 'var(--primary)' }}>CESPE</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Simulador de questões inéditas geradas por IA no padrão da banca.</p>
+          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Simulador exclusivo de Língua Portuguesa focado em interpretação e gramática aplicada.</p>
         </div>
         <button onClick={() => setShowStatsModal(true)} className="btn" style={{ fontWeight: 'bold' }}>
-          <BarChart2 size={20} /> O meu Desempenho
+          <BarChart2 size={20} /> Histórico de Erros
         </button>
       </header>
 
-      {/* BARRA DE CONFIGURAÇÃO DE IA UNIFICADA */}
+      {/* PAINEL CONFIG CHAVE IA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
         <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-          <strong>IA Geradora:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Ativa ({userModel || "Padrão"})</span> : <span>Configure a sua IA gratuitamente para geração contínua.</span>}
+          <strong>Mecanismo de IA:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Ativa ({userModel || "Padrão"})</span> : <span>Vincule sua chave gratuita do OpenRouter ou Google AI Studio.</span>}
         </div>
-        <button onClick={openConfigModal} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s' }}>
-          ⚙️ Configurar a Minha IA
+        <button onClick={openConfigModal} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold' }}>
+          ⚙️ Configurar API
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
-        {/* LAYOUT SIDEBAR + MAIN (No desktop Sidebar fica ao lado) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
-          
-          {/* SIDEBAR DE CONFIGURAÇÃO */}
-          <aside style={{ display: 'flex', flexDirection: 'column', gap: '20px', gridColumn: '1 / span 1', maxWidth: '350px' }}>
-            <div className="panel" style={{ padding: '20px' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)' }}>
-                <SlidersHorizontal size={20} color="var(--primary)" /> Configurar Simulado
-              </h2>
-              
-              <div style={{ marginBottom: '15px' }}>
-                <label className="label">Foco de Estudo</label>
+      {/* TELA INICIAL: WIZARD DE CONFIGURAÇÃO */}
+      {viewState === "initial" && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
+          <div className="panel" style={{ padding: '25px', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)' }}>
+              <SlidersHorizontal size={20} color="var(--primary)" /> Montar Caderno de Questões Inéditas
+            </h2>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+              <div>
+                <label className="label">Eixo Temático Principal</label>
                 <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)}>
-                  <option value="completo">Simulado Completo (Padrão)</option>
-                  <option value="interpretacao">Foco em Interpretação</option>
-                  <option value="gramatica">Gramática Contextualizada</option>
-                  <option value="reescrita">Reescrita de Frases</option>
-                  <option value="semantica">Semântica e Coesão</option>
-                  <option value="hardcore">Modo Hardcore CESPE</option>
+                  <option value="completo">Misto (Interpretação e Gramática)</option>
+                  <option value="interpretacao">Compreensão e Inferência Textual</option>
+                  <option value="gramatica">Morfosintaxe, Regência e Crase</option>
+                  <option value="reescrita">Reescrita de Frases e Substituição de Conectivos</option>
+                  <option value="semantica">Relações Semânticas e Coesão Textual</option>
+                  <option value="hardcore">Nível Hardcore (Extrapolação e Pegadinhas de Linha)</option>
                 </select>
               </div>
 
-              <div style={{ marginBottom: '15px' }}>
-                <label className="label">Dificuldade</label>
+              <div>
+                <label className="label">Nível de Rigor</label>
                 <select className="select" value={configDifficulty} onChange={e => setConfigDifficulty(e.target.value)}>
-                  <option value="medio">Média (Padrão)</option>
-                  <option value="facil">Fácil</option>
-                  <option value="dificil">Difícil</option>
-                  <option value="avancado">Avançado (Analista/Auditor)</option>
+                  <option value="medio">Médio (Padrão Agente/Escrivão)</option>
+                  <option value="facil">Introdutório</option>
+                  <option value="dificil">Complexo (Pegadinhas sutis de pontuação)</option>
+                  <option value="avancado">Extremo (Padrão Auditor / Consultor Legislativo)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 4. MELHORIA: NOVOS SELETORES DE TIPOLOGIA E EXTENSÃO TEXTUAL */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+              <div>
+                <label className="label">Tipologia Textual Base</label>
+                <select className="select" value={configTypology} onChange={e => setConfigTypology(e.target.value)}>
+                  <option value="Dissertativo-Argumentativo">Dissertativo-Argumentativo (Político/Social)</option>
+                  <option value="Texto Literário / Crônica">Narrativo / Literário (Poemas e Crônicas)</option>
+                  <option value="Jornalístico / Informativo">Jornalístico (Notícias de Geopolítica/Segurança)</option>
+                  <option value="Oficial (Manual da Presidência)">Redação Oficial (Padrão Manual da Presidência)</option>
                 </select>
               </div>
 
-              <div style={{ marginBottom: '15px' }}>
-                <label className="label">Formato da Questão</label>
-                <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', width: '100%' }}>
-                  <option value="Certo/Errado">Certo / Errado (Padrão CESPE)</option>
+              <div>
+                <label className="label">Tamanho do Texto</label>
+                <select className="select" value={configTextSize} onChange={e => setConfigTextSize(e.target.value)}>
+                  <option value="Longo">Longo (Padrão 30 linhas CESPE)</option>
+                  <option value="Médio">Médio (15 a 20 linhas)</option>
+                  <option value="Curto">Curto (Fragmentos de 1 parágrafo)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+              <div>
+                <label className="label">Formato de Julgamento</label>
+                <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)}>
+                  <option value="Certo/Errado">Certo / Errado (Clássico UnB/CESPE)</option>
                   <option value="Múltipla Escolha">Múltipla Escolha (A, B, C, D, E)</option>
                 </select>
               </div>
 
-              <div style={{ marginBottom: '20px' }}>
-                <label className="label">Quantidade de Questões</label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  {[5, 10, 20, 30].map(val => (
-                    <button 
-                      key={val}
-                      onClick={() => setConfigAmount(val)}
-                      style={{ 
-                        flex: 1, padding: '8px 0', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.9rem', cursor: 'pointer', transition: 'all 0.2s',
-                        background: configAmount === val ? 'var(--primary-light)' : 'var(--bg)',
-                        color: configAmount === val ? 'var(--primary)' : 'var(--text-secondary)',
-                        border: configAmount === val ? '2px solid var(--primary)' : '1px solid var(--border)'
-                      }}
-                    >
-                      {val}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', cursor: 'pointer' }} onClick={() => setConfigTextBase(!configTextBase)}>
-                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
-                  <FileText size={18} /> Gerar Texto-Base
-                </span>
-                <div style={{ width: '40px', height: '22px', background: configTextBase ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
-                  <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configTextBase ? '20px' : '2px', transition: '0.3s' }}></div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setConfigExamMode(!configExamMode)}>
-                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
-                  <BookOpenCheck size={18} /> Modo Prova (Oculta)
-                </span>
-                <div style={{ width: '40px', height: '22px', background: configExamMode ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
-                  <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configExamMode ? '20px' : '2px', transition: '0.3s' }}></div>
-                </div>
-              </div>
-
-              <button 
-                onClick={generateExam} 
-                disabled={viewState === "loading"}
-                className="btn primary" 
-                style={{ width: '100%', marginTop: '25px', padding: '15px', fontSize: '1.05rem', gap: '10px' }}
-              >
-                <Sparkles size={20} /> Gerar Questões IA
-              </button>
-              {error && <div style={{ color: 'var(--error-text)', fontSize: '0.85rem', marginTop: '10px', textAlign: 'center', fontWeight: 'bold' }}>{error}</div>}
-            </div>
-
-            {/* MINI STATS */}
-            <div className="panel" style={{ padding: '20px', background: 'var(--card-bg)' }}>
-              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Hoje / Aproveitamento</h3>
-              <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '15px' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)', margin: 0 }}>{stats.correct}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Acertos</p>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)', margin: 0 }}>{stats.wrong}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Erros</p>
-                </div>
-              </div>
               <div>
-                <div style={{ width: '100%', height: '8px', background: 'var(--hover-bg)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', background: 'var(--primary)', width: `${stats.total > 0 ? (stats.correct / stats.total) * 100 : 0}%`, transition: 'width 0.5s' }}></div>
+                <label className="label">Volume de Assertivas</label>
+                <select className="select" value={configAmount} onChange={e => setConfigAmount(Number(e.target.value))}>
+                  <option value={5}>5 Itens</option>
+                  <option value={10}>10 Itens</option>
+                  <option value={15}>15 Itens</option>
+                  <option value={20}>20 Itens</option>
+                </select>
+              </div>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '25px' }}>
+              <div style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setConfigTextBase(!configTextBase)}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
+                  <FileText size={18} /> Injetar Texto-Base de Amparo
+                </span>
+                <div style={{ width: '40px', height: '22px', background: configTextBase ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', marginLeft: 'auto', transition: '0.2s' }}>
+                  <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configTextBase ? '20px' : '2px', transition: '0.2s' }}></div>
+                </div>
+              </div>
+
+              <div style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setConfigExamMode(!configExamMode)}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
+                  <BookOpenCheck size={18} /> Ocultar Gabaritos (Modo Simulado)
+                </span>
+                <div style={{ width: '40px', height: '22px', background: configExamMode ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', marginLeft: 'auto', transition: '0.2s' }}>
+                  <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configExamMode ? '20px' : '2px', transition: '0.2s' }}></div>
                 </div>
               </div>
             </div>
-          </aside>
 
-          {/* MAIN CONTENT AREA */}
-          <div style={{ gridColumn: 'auto / -1', minWidth: '0' }}>
-            
-            {/* ESTADO INICIAL */}
-            {viewState === "initial" && (
-              <div className="panel" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent', boxShadow: 'none' }}>
-                <div style={{ width: '90px', height: '90px', background: 'var(--primary-light)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' }}>
-                  <Bot size={48} color="var(--primary)" />
-                </div>
-                <h2 style={{ fontSize: '1.5rem', color: 'var(--heading-color)', marginBottom: '10px' }}>Simulador IA CESPE/CEBRASPE</h2>
-                <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginBottom: '25px' }}>
-                  Configure os parâmetros ao lado e deixe a IA gerar cenários complexos, textos-base e assertivas no formato clássico de julgamento.
-                </p>
-                <button onClick={generateExam} className="btn primary" style={{ padding: '10px 25px' }}>Começar agora</button>
-              </div>
-            )}
-
-            {/* ESTADO LOADING */}
-            {viewState === "loading" && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div className="panel">
-                  <div className="skeleton-box" style={{ width: '200px', height: '24px', marginBottom: '15px' }}></div>
-                  <div className="skeleton-box" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
-                  <div className="skeleton-box" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
-                  <div className="skeleton-box" style={{ width: '70%', height: '16px' }}></div>
-                </div>
-                <div className="panel" style={{ display: 'flex', gap: '15px' }}>
-                  <div className="skeleton-box" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }}></div>
-                  <div style={{ flex: 1 }}>
-                    <div className="skeleton-box" style={{ width: '100%', height: '20px', marginBottom: '10px' }}></div>
-                    <div className="skeleton-box" style={{ width: '80%', height: '20px', marginBottom: '20px' }}></div>
-                    <div style={{ display: 'flex', gap: '15px' }}>
-                      <div className="skeleton-box" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
-                      <div className="skeleton-box" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
-                    </div>
-                  </div>
-                </div>
-                <p style={{ textAlign: 'center', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '20px', fontWeight: 'bold' }}>
-                  <Cpu className="spin" size={20} /> {loadingMsg}
-                </p>
-              </div>
-            )}
-
-            {/* ESTADO DA PROVA */}
-            {viewState === "exam" && currentData && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                
-                {/* Header do Modo Prova */}
-                {configExamMode && !isExamFinished && (
-                  <div style={{ background: 'var(--primary-light)', padding: '15px 20px', borderRadius: '12px', border: '1px solid var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold' }}>
-                      <BookOpenCheck size={20} /> Modo Prova Ativado
-                    </div>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Respostas ocultas. Finalize para corrigir.</span>
-                  </div>
-                )}
-
-                
-                {/* Lista de Questões */}
-                {currentData.questoes.map((q, index) => {
-                  const uAns = userAnswers[q.id];
-                  const showExp = isExamFinished || (!configExamMode && uAns);
-                  const isCorrect = uAns === q.gabarito;
-                  
-                  return (
-                    <React.Fragment key={q.id}>
-                      {/* RENDERIZA O TEXTO-BASE INTERCALADO (Se for a 1ª questão de um lote) */}
-                      {q.textoVinculado && (
-                        <div className="panel" style={{ borderLeft: '4px solid var(--primary)', position: 'relative', marginTop: index > 0 ? '30px' : '0', marginBottom: '20px' }}>
-                          <div style={{ position: 'absolute', top: '-15px', left: '-15px', background: 'var(--primary)', color: 'white', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-md)' }}>
-                            <AlignLeft size={16} />
-                          </div>
-                          <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Texto para as questões a seguir</h3>
-                          <div style={{ fontSize: '1rem', lineHeight: '1.8', color: 'var(--text-main)' }}>
-                            {q.textoVinculado.split('\n').filter(p => p.trim()).map((p, i) => (
-                              <p key={`p_${i}`} style={{ textIndent: '2rem', marginBottom: '10px', textAlign: 'justify' }}>{p}</p>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* CARD DA QUESTÃO (Mantém-se igual, só perdendo a prop "key" que foi para o Fragment acima) */}
-                      <div className="quiz-card-container" style={{ 
-                        borderColor: showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--border)',
-                        boxShadow: showExp ? (isCorrect ? '0 0 0 1px var(--success-text)' : '0 0 0 1px var(--error-text)') : 'var(--shadow-sm)'
-                      }}>
-                      <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                        <div style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {index + 1}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <span style={{ display: 'inline-block', padding: '4px 8px', background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontSize: '0.75rem', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px' }}>
-                            {q.assunto}
-                          </span>
-                          <p style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
-                            {q.enunciado}
-                          </p>
-                          
-                          {/* Botões Certo / Errado */}
-                          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
-                            {q.alternativas && q.alternativas.length > 0 ? (
-                              q.alternativas.map((alt, altIdx) => {
-                                const letra = alt.charAt(0).toUpperCase(); // Pega 'A', 'B', 'C', etc.
-                                const isCorrectAlt = q.gabarito.toUpperCase() === letra;
-                                return (
-                                  <button 
-                                    key={altIdx}
-                                    onClick={() => handleAnswer(q.id, letra)}
-                                    disabled={showExp && !configExamMode}
-                                    style={{
-                                      padding: '12px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.95rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
-                                      border: '2px solid',
-                                      borderColor: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                      background: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary-light)') : 'transparent',
-                                      color: uAns === letra && !showExp ? 'var(--primary)' : (showExp && uAns === letra ? 'inherit' : 'var(--text-secondary)'),
-                                      opacity: (showExp && uAns !== letra && !isCorrectAlt) ? 0.5 : 1
-                                    }}
-                                  >
-                                    <span style={{ flex: 1 }}>{alt}</span>
-                                    {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)" style={{ flexShrink: 0, marginLeft: '10px' }}/>}
-                                  </button>
-                                )
-                              })
-                            ) : (
-                              <>
-                                <button 
-                                  onClick={() => handleAnswer(q.id, 'C')}
-                                  disabled={showExp && !configExamMode} 
-                                  style={{
-                                    flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                                    border: '2px solid',
-                                    borderColor: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                    background: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                                    color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
-                                    opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
-                                  }}
-                                >
-                                  CERTO {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
-                                </button>
-                                <button 
-                                  onClick={() => handleAnswer(q.id, 'E')}
-                                  disabled={showExp && !configExamMode}
-                                  style={{
-                                    flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                                    border: '2px solid',
-                                    borderColor: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                    background: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                                    color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
-                                    opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
-                                  }}
-                                >
-                                  ERRADO {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
-                                </button>
-                              </>
-                            )}
-                          </div>
-
-                          {/* Explicação */}
-                            {showExp && (
-                            <div className="quiz-explanation" style={{ marginTop: '20px', animation: 'fadeIn 0.3s ease-out' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '8px', color: isCorrect ? 'var(--success-text)' : 'var(--error-text)' }}>
-                                {isCorrect ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                                {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
-                                </div>
-                                {/* ADICIONADO className AQUI E REMOVIDO DO ReactMarkdown */}
-                                <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                                <ReactMarkdown>{q.explicacao}</ReactMarkdown>
-                                </div>
-                            </div>
-                            )}
-                        </div>
-                      </div>
-                    </div>
-                    </React.Fragment>
-                  );
-                })}
-
-                {/* Ações Pós-Prova */}
-                {configExamMode && !isExamFinished && (
-                  <button onClick={finishExam} className="btn primary" style={{ padding: '15px', fontSize: '1.1rem', margin: '20px auto', display: 'block', maxWidth: '400px', width: '100%' }}>
-                    Entregar Prova e Corrigir
-                  </button>
-                )}
-
-                {/* BOTÃO MÁGICO: GERAR AULA (Apenas se finalizado/corrigido e tiver erros) */}
-                {showLessonAction && (
-                  <div style={{ background: 'var(--warning-bg, #fffbeb)', border: '1px solid #fcd34d', padding: '25px', borderRadius: '12px', textAlign: 'center', margin: '20px auto', maxWidth: '500px', boxShadow: 'var(--shadow-md)' }}>
-                    <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1.2rem' }}>
-                      <GraduationCap size={24} /> Professor Particular IA
-                    </h4>
-                    <p style={{ color: '#92400e', fontSize: '0.95rem', marginBottom: '20px' }}>Você teve {wrongCount} erro(s) nesta sessão. Quer uma explicação didática detalhada focada apenas nos temas que você errou?</p>
-                    <button onClick={() => generateLesson(getWrongQuestions())} className="btn" style={{ background: '#f59e0b', color: 'white', border: 'none', width: '100%', padding: '12px', fontSize: '1.05rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                      <Wand2 size={20} /> Gerar Aula de Revisão
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <button onClick={generateExam} className="btn primary" style={{ width: '100%', padding: '15px', fontSize: '1.1rem', gap: '8px' }}>
+              <Sparkles size={20} /> Construir Caderno Inédito
+            </button>
+            {error && <div style={{ color: 'var(--error-text)', fontSize: '0.85rem', marginTop: '10px', textAlign: 'center', fontWeight: 'bold' }}>{error}</div>}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* --- MODAIS --- */}
+      {/* LOADING */}
+      {viewState === "loading" && (
+        <div className="panel" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+          <div className="spinner" style={{ margin: '0 auto 20px auto', width: '40px', height: '40px', border: '4px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', fontWeight: 'bold' }}>{loadingMsg}</p>
+        </div>
+      )}
 
-      {/* MODAL DE CONFIGURAÇÃO DE IA COM ABAS (OPENROUTER / AISTUDIO) */}
+      {/* 1. MELHORIA: AMBIENTE DE PROVA COM LAYOUT EM DUAS COLUNAS (SPLIT-SCREEN) */}
+      {(viewState === "exam" || viewState === "results") && currentData && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {viewState === "results" && (
+            <div style={{ background: 'var(--primary)', color: 'white', padding: '2rem', borderRadius: '12px', textAlign: 'center', boxShadow: 'var(--shadow-md)' }}>
+              <h3 style={{ fontSize: '2rem', margin: '0 0 10px 0' }}>Caderno Finalizado!</h3>
+              <p style={{ fontSize: '1.1rem', margin: 0, opacity: 0.9 }}>Analise a justificativa sintática dos seus erros.</p>
+              <button onClick={() => setViewState("initial")} style={{ marginTop: '1.5rem', background: 'white', color: 'var(--primary)', border: 'none', padding: '10px 20px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                Gerar Novo Caderno
+              </button>
+            </div>
+          )}
+
+          {/* PAINEL DINÂMICO SPLIT-SCREEN */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: compiledTexts.length > 0 ? 'repeat(auto-fit, minmax(450px, 1fr))' : '1fr', 
+            gap: '25px', 
+            alignItems: 'start' 
+          }}>
+            
+            {/* COLUNA ESQUERDA: TEXTO-BASE FIXADO COM BARRA DE FERRAMENTAS */}
+            {compiledTexts.length > 0 && (
+              <div className="sticky-text-panel" style={{ 
+                position: 'sticky', 
+                top: '20px', 
+                maxHeight: 'calc(100vh - 60px)', 
+                overflowY: 'auto', 
+                background: 'var(--card-bg)', 
+                border: '1px solid var(--border)', 
+                borderRadius: '12px', 
+                padding: '20px',
+                boxShadow: 'var(--shadow-md)'
+              }}>
+                {/* 3. MELHORIA: BARRA DE UTILITÁRIOS INTERATIVOS DO TEXTO */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  borderBottom: '1px solid var(--border)', 
+                  paddingBottom: '10px', 
+                  marginBottom: '15px' 
+                }}>
+                  <span style={{ fontWeight: 'bold', color: 'var(--primary)', fontSize: '0.85rem', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlignLeft size={16} /> Texto de Apoio
+                  </span>
+                  
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    {/* Botão Liga/Desliga Marca-Texto */}
+                    <button 
+                      onClick={() => setIsHighlighterActive(!isHighlighterActive)}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.8rem',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: 'bold',
+                        border: '1px solid',
+                        background: isHighlighterActive ? '#fef08a' : 'transparent',
+                        borderColor: isHighlighterActive ? '#f59e0b' : 'var(--border)',
+                        color: isHighlighterActive ? '#000' : 'var(--text-secondary)'
+                      }}
+                      title="Ative e use o mouse para selecionar e realçar trechos do texto."
+                    >
+                      🖋️ Marca-Texto
+                    </button>
+
+                    {/* Controles de Zoom de Fonte */}
+                    <button onClick={() => setTextFontSize(p => Math.min(p + 0.1, 1.5))} className="btn small" style={{ padding: '4px' }} title="Aumentar Fonte"><ZoomIn size={16}/></button>
+                    <button onClick={() => setTextFontSize(p => Math.max(p - 0.1, 0.85))} className="btn small" style={{ padding: '4px' }} title="Diminuir Fonte"><ZoomOut size={16}/></button>
+                  </div>
+                </div>
+
+                {/* Renderização do texto com a numeração customizada estilo CESPE */}
+                {compiledTexts.map((txt, idx) => (
+                  <LineNumberedText key={idx} text={txt} fontSize={textFontSize} />
+                ))}
+              </div>
+            )}
+
+            {/* COLUNA DIREITA: LISTA DE QUESTÕES CAUTELARES */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {configExamMode && !isExamFinished && (
+                <div style={{ background: 'var(--primary-light)', padding: '15px 20px', borderRadius: '12px', border: '1px solid var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold' }}>
+                    <BookOpenCheck size={20} /> Resoluções Ocultadas
+                  </div>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Julgue as assertivas e verifique a correção no final.</span>
+                </div>
+              )}
+
+              {currentData.questoes.map((q, index) => {
+                const uAns = userAnswers[q.id];
+                const showExp = isExamFinished || (!configExamMode && uAns);
+                const isCorrect = uAns === q.gabarito;
+
+                return (
+                  <div key={q.id} className="panel" style={{ 
+                    borderColor: showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--border)',
+                    boxShadow: showExp ? (isCorrect ? '0 0 0 1px var(--success-text)' : '0 0 0 1px var(--error-text)') : 'var(--shadow-sm)'
+                  }}>
+                    <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                      <div style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {index + 1}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ display: 'inline-block', padding: '4px 8px', background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontSize: '0.75rem', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px' }}>
+                          {q.assunto}
+                        </span>
+                        <p style={{ fontSize: '1.05rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
+                          {q.enunciado}
+                        </p>
+                        
+                        <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
+                          {q.alternativas && q.alternativas.length > 0 ? (
+                            q.alternativas.map((alt, altIdx) => {
+                              const letra = alt.charAt(0).toUpperCase(); 
+                              const isCorrectAlt = q.gabarito.toUpperCase() === letra;
+                              return (
+                                <button 
+                                  key={altIdx}
+                                  onClick={() => handleAnswer(q.id, letra)}
+                                  disabled={showExp && !configExamMode}
+                                  style={{
+                                    padding: '12px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.95rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
+                                    border: '2px solid',
+                                    borderColor: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                    background: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary-light)') : 'transparent',
+                                    color: uAns === letra && !showExp ? 'var(--primary)' : (showExp && uAns === letra ? 'inherit' : 'var(--text-secondary)'),
+                                    opacity: (showExp && uAns !== letra && !isCorrectAlt) ? 0.5 : 1
+                                  }}
+                                >
+                                  <span style={{ flex: 1 }}>{alt}</span>
+                                  {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)" style={{ flexShrink: 0, marginLeft: '10px' }}/>}
+                                </button>
+                              )
+                            })
+                          ) : (
+                            <>
+                              <button 
+                                onClick={() => handleAnswer(q.id, 'C')}
+                                disabled={showExp && !configExamMode} 
+                                style={{
+                                  flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+                                  border: '2px solid',
+                                  borderColor: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                  background: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
+                                  color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
+                                  opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
+                                }}
+                              >
+                                CERTO {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
+                              </button>
+                              <button 
+                                onClick={() => handleAnswer(q.id, 'E')}
+                                disabled={showExp && !configExamMode}
+                                style={{
+                                  flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
+                                  border: '2px solid',
+                                  borderColor: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
+                                  background: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
+                                  color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
+                                  opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
+                                }}
+                              >
+                                ERRADO {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
+                              </button>
+                            </>
+                          )}
+                        </div>
+
+                        {showExp && (
+                          <div className="quiz-explanation" style={{ marginTop: '20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '8px', color: isCorrect ? 'var(--success-text)' : 'var(--error-text)' }}>
+                              {isCorrect ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                              {isCorrect ? "Gabarito Aceito!" : "Julgamento Incorreto."} (Gabarito Oficial: {q.gabarito})
+                            </div>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                              <ReactMarkdown>{q.explicacao}</ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {!isExamFinished && (
+                <button onClick={finishExam} className="btn primary" style={{ padding: '15px', fontSize: '1.1rem', margin: '20px auto', display: 'block', maxWidth: '400px', width: '100%' }}>
+                  Finalizar e Corrigir Caderno
+                </button>
+              )}
+
+              {/* CHAMADA DO PARECER DE REVISÃO DO PROFESSOR */}
+              {((isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && currentData.questoes.filter(q => userAnswers[q.id] && userAnswers[q.id] !== q.gabarito).length > 0) && (
+                <div style={{ background: 'var(--warning-bg, #fffbeb)', border: '1px solid #fcd34d', padding: '25px', borderRadius: '12px', textAlign: 'center', boxShadow: 'var(--shadow-md)' }}>
+                  <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1.2rem' }}>
+                    <GraduationCap size={24} /> Professor de Sintaxe e Semântica (IA)
+                  </h4>
+                  <p style={{ color: '#92400e', fontSize: '0.95rem', marginBottom: '20px' }}>
+                    Houve desvios de interpretação ou regras gramaticais. Deseja uma microaula focada exclusivamente nos seus erros deste caderno?
+                  </p>
+                  <button onClick={() => generateLesson(currentData.questoes.filter(q => userAnswers[q.id] && userAnswers[q.id] !== q.gabarito))} className="btn" style={{ background: '#f59e0b', color: 'white', border: 'none', width: '100%', padding: '12px', fontSize: '1.05rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                    <Wand2 size={20} /> Estruturar Aula de Revisão
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==========================================
+          5. COMPONENTES MODAIS REFATORADOS À PARTE
+         ========================================== */}
+
+      {/* MODAL DA AULA DE REVISÃO */}
+      {showLessonModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div className="panel" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', border: '2px solid #f59e0b' }}>
+            <div style={{ background: '#f59e0b', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <GraduationCap size={24} /> Parecer de Análise Gramatical
+              </h2>
+              <button onClick={() => setShowLessonModal(false)} style={{ background: 'none', border: 'none', color: '#fef3c7', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
+            <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
+              <div style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
+                <ReactMarkdown>{lessonContent}</ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIGURAÇÃO DE IA (PROVEDORES) */}
       {showConfig && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', border: '1px solid var(--border)' }}>
+            <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Provedores de Inteligência Artificial</h3>
             
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <button
-                onClick={() => {
-                  setProviderTab("openrouter");
-                  setTempModel("google/gemini-2.5-flash");
-                }}
-                className={`btn ${providerTab === "openrouter" ? "primary" : ""}`}
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              >
-                OpenRouter
-              </button>
-              <button
-                onClick={() => {
-                  setProviderTab("aistudio");
-                  setTempModel("gemini-2.5-flash");
-                }}
-                className={`btn ${providerTab === "aistudio" ? "primary" : ""}`}
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              >
-                Google AI Studio
-              </button>
+              <button onClick={() => { setProviderTab("openrouter"); setTempModel("google/gemini-2.5-flash"); }} className={`btn ${providerTab === "openrouter" ? "primary" : ""}`} style={{ flex: 1, padding: '10px' }}>OpenRouter</button>
+              <button onClick={() => { setProviderTab("aistudio"); setTempModel("gemini-2.5-flash"); }} className={`btn ${providerTab === "aistudio" ? "primary" : ""}`} style={{ flex: 1, padding: '10px' }}>Google AI Studio</button>
             </div>
 
             {providerTab === "openrouter" && (
               <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                  Conecte sua conta OpenRouter para acesso a dezenas de modelos de IA. O login é automático.
-                </p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>Conecte sua conta via OAuth unificado do OpenRouter de forma automatizada.</p>
                 {userApiKey && userApiKey.startsWith("sk-or-") ? (
-                  <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                    <span>✅ OpenRouter Conectado!</span>
-                    <button onClick={handleDisconnectAI} disabled={savingConfig} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Desvincular</button>
-                  </div>
+                  <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold' }}>✅ OpenRouter Ativo!</div>
                 ) : (
-                  <button onClick={handleConnectAI} className="btn primary" style={{ width: '100%', padding: '12px' }}>🔗 Conectar OpenRouter</button>
+                  <button onClick={() => window.location.href = `https://openrouter.ai/auth?callback_url=${encodeURIComponent(window.location.origin + "/callback")}`} className="btn primary" style={{ width: '100%' }}>🔗 Autenticar via OpenRouter</button>
                 )}
               </div>
             )}
 
             {providerTab === "aistudio" && (
               <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px', lineHeight: '1.4' }}>
-                  O Google AI Studio exige a geração manual da chave de acesso utilizando o seu Gmail. Siga os passos:
-                </p>
-                
-                <a 
-                  href="https://aistudio.google.com/app/apikey" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="btn" 
-                  style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', textDecoration: 'none', fontWeight: 'bold', padding: '12px' }}
-                >
-                  1️⃣ Obter Chave no AI Studio (Grátis)
-                </a>
-                
-                <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>
-                  2️⃣ Cole a Chave Gerada:
-                </label>
-                
-                <input
-                  type="password"
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
-                  placeholder="AIzaSy... ou AQ.Ab8..."
-                  style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
-                />
-                
-                {userApiKey && !userApiKey.startsWith("sk-or-") && tempApiKey === userApiKey && (
-                  <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'var(--success-text)', fontWeight: 'bold' }}>
-                    ✅ Chave AI Studio salva no sistema!
-                  </div>
-                )}
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>Gere e cole a sua chave livre de acessos da API do Google AI Studio.</p>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="btn" style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', fontWeight: 'bold', textDecoration: 'none' }}>1️⃣ Criar API Key Oficial</a>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>2️⃣ Token do AI Studio:</label>
+                <input type="password" value={tempApiKey} onChange={(e) => setTempApiKey(e.target.value)} placeholder="AIzaSy..." style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
               </div>
             )}
 
             <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA:</label>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>Modelo Alvo:</label>
               <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
               <button onClick={() => setShowConfig(false)} className="btn">Fechar</button>
-              <button onClick={saveConfigToDB} className="btn primary">{savingConfig ? "⏳ Salvando..." : "Salvar Configurações"}</button>
+              <button onClick={saveConfigToDB} className="btn primary">{savingConfig ? "⏳ Salvando..." : "Gravar Configurações"}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL ESTATÍSTICAS */}
+      {/* MODAL HISTÓRICO DE DESEMPENHO */}
       {showStatsModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
+          <div className="panel" style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)' }}>
               <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <PieChart size={22} color="var(--primary)" /> Histórico de Desempenho
+                <PieChart size={22} color="var(--primary)" /> Rendimento em Língua Portuguesa
               </h2>
               <button onClick={() => setShowStatsModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={24} /></button>
             </div>
-            
             <div style={{ padding: '20px' }}>
               <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
-                <div style={{ flex: 1, background: 'var(--bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{stats.total}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Resolvidas</span>
-                </div>
-                <div style={{ flex: 1, background: 'var(--success-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)' }}>{stats.correct}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Certas</span>
-                </div>
-                <div style={{ flex: 1, background: 'var(--error-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)' }}>{stats.wrong}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Erradas</span>
-                </div>
+                <div style={{ flex: 1, background: 'var(--bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}><span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold' }}>{stats.total}</span><span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Julgados</span></div>
+                <div style={{ flex: 1, background: 'var(--success-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}><span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)' }}>{stats.correct}</span><span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Acertos</span></div>
+                <div style={{ flex: 1, background: 'var(--error-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}><span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)' }}>{stats.wrong}</span><span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Erros</span></div>
               </div>
 
-              <h3 style={{ fontSize: '1rem', color: 'var(--heading-color)', marginBottom: '15px' }}>Desempenho por Assunto</h3>
-              <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '10px' }}>
+              <h3 style={{ fontSize: '1rem', color: 'var(--heading-color)', marginBottom: '15px' }}>Desempenho por Tópico Lexical</h3>
+              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                 {Object.keys(stats.topics).length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum dado registrado.</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum item computado.</p>
                 ) : (
                   Object.entries(stats.topics).map(([name, data]) => {
                     const pct = (data.correct + data.wrong) > 0 ? Math.round((data.correct / (data.correct + data.wrong)) * 100) : 0;
                     return (
                       <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                        <span style={{ color: 'var(--text-main)', fontSize: '0.9rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+                        <span style={{ fontSize: '0.9rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
                         <div style={{ display: 'flex', gap: '15px', fontSize: '0.9rem' }}>
                           <span style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>{data.correct}C</span>
                           <span style={{ color: 'var(--error-text)', fontWeight: 'bold' }}>{data.wrong}E</span>
-                          <span style={{ color: pct >= 70 ? 'var(--success-text)' : pct < 50 ? 'var(--error-text)' : '#f59e0b', fontWeight: '900', width: '40px', textAlign: 'right' }}>{pct}%</span>
+                          <span style={{ color: pct >= 70 ? 'var(--success-text)' : pct < 50 ? 'var(--error-text)' : '#f59e0b', fontWeight: '900' }}>{pct}%</span>
                         </div>
                       </div>
                     );
                   })
                 )}
               </div>
-              
-              <button onClick={resetStats} style={{ width: '100%', marginTop: '20px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                Zerar Histórico
-              </button>
+              <button onClick={() => { if(window.confirm("Zerar estatísticas de Português?")) saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); }} style={{ width: '100%', marginTop: '20px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '10px', borderRadius: '8px', fontWeight: 'bold' }}>Limpar Todo o Histórico</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL AULA (Professor IA) */}
-      {showLessonModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out', border: '2px solid #f59e0b' }}>
-            <div style={{ background: '#f59e0b', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <GraduationCap size={24} /> Aula de Revisão Personalizada
-              </h2>
-              <button onClick={() => setShowLessonModal(false)} style={{ background: 'none', border: 'none', color: '#fef3c7', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            
-            <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
-              <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <ReactMarkdown>{lessonContent}</ReactMarkdown>
-              </div>
-            </div>
-            
-            <div style={{ background: 'var(--bg)', padding: '15px', borderTop: '1px solid var(--border)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flexShrink: 0 }}>
-              Gerado por Inteligência Artificial baseado nos seus erros recentes.
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* FOOTER */}
+      <div style={{ textAlign: 'center', marginTop: '3rem', paddingBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+        Foco na aprovação! Desenvolvido por TecnoPriv.Top
+      </div>
     </div>
   );
 }

@@ -984,9 +984,11 @@ async def agent_cespe_exam_generator(subject: str, focus: str, difficulty: str, 
         PROIBIDO terminantemente usar conceitos gramaticais, interpretação de textos puramente literários ou conectivos lógicos matemáticos.
         """
 
-    # Tratamento original para Português (Mantido Intacto)
+    # Tratamento original para Português (Mantido Intacto e com Suporte a Instruções Complexas)
     else: 
-        if focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
+        if focus.startswith('Foco na vertente:') or focus.startswith('DIRETRIZ OBRIGATÓRIA:'):
+            focus_instructions = focus # Recebe as instruções complexas formatadas diretamente do Frontend
+        elif focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
         elif focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
         elif focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
         elif focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
@@ -2305,7 +2307,9 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         """
         
     else: 
-        if req.focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
+        if req.focus.startswith('Foco na vertente:') or req.focus.startswith('DIRETRIZ OBRIGATÓRIA:'):
+            focus_instructions = req.focus # Permite que o frontend injete tipologia e tamanho textuais
+        elif req.focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
         elif req.focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
         elif req.focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
         elif req.focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
@@ -2315,8 +2319,18 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
             focus_instructions = f"Foque ESPECIFICAMENTE E EXCLUSIVAMENTE nas regras sintáticas e pegadinhas gramaticais sobre: {tema_exato}."         
         else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
 
-    text_instruction = 'Crie um caso prático ou situação hipotética jurídica curta para servir de base.' if req.generate_text else 'Sem situação hipotética geral, foque nas assertivas diretas de julgamento.'
-
+    # Define o contexto do texto-base dinamicamente de acordo com a disciplina
+    if req.generate_text:
+        if req.subject == "Raciocínio Lógico":
+            text_instruction = "Crie uma situação hipotética, conjunto de premissas ou problema lógico para servir de base."
+        elif "Direito" in req.subject or req.subject in ["Constitucional", "Penal", "Administrativo", "Processual", "Humanos"]:
+            text_instruction = "Crie um caso prático ou situação hipotética jurídica curta para servir de base."
+        else: # Língua Portuguesa e Sintaxe
+            text_instruction = "Gere um texto base primoroso, com tamanho e tipologia adequados às instruções, rico em vocabulário e coesão, para servir de alvo das questões."
+    else:
+        text_instruction = "Sem texto base ou situação hipotética geral, foque apenas nas assertivas diretas de julgamento."
+        
+        
     # --- LÓGICA DO FORMATO (MÚLTIPLA ESCOLHA OU CERTO/ERRADO) ---
     if req.formato == "Múltipla Escolha":
         regra_formato = "Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão. O gabarito deve ser a letra correta."
@@ -2330,13 +2344,22 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         }"""
     else:
         regra_formato = "O formato deve ser CERTO ou ERRADO. O gabarito deve ser 'C' ou 'E' seguindo rigorosamente o padrão CESPE."
-        json_questao = """{ 
+        
+        # Ajusta o exemplo do JSON para não confundir o modelo com termos jurídicos fora do Direito
+        if "Direito" in req.subject or req.subject in ["Constitucional", "Penal", "Administrativo", "Processual", "Humanos"]:
+            ex_enunciado = "A assertiva jurídica para julgamento..."
+            ex_explicacao = "Explique passo a passo a resolução com base em artigos legais ou informativos dos tribunais."
+        else:
+            ex_enunciado = "A assertiva ou proposta de reescrita/análise textual para julgamento..."
+            ex_explicacao = "Explique detalhadamente a justificativa gramatical, semântica ou sintática que valida ou invalida o item."
+
+        json_questao = f"""{{ 
             "id": 1, 
-            "enunciado": "A assertiva jurídica para julgamento...", 
+            "enunciado": "{ex_enunciado}", 
             "assunto": "Tema específico da questão", 
             "gabarito": "C", 
-            "explicacao": "Explique passo a passo a resolução com base em artigos legais ou informativos dos tribunais." 
-        }"""
+            "explicacao": "{ex_explicacao}" 
+        }}"""
 
     prompt = f"""
 Você é o mais rigoroso Examinador Sênior da banca CESPE/CEBRASPE. Crie um simulado inédito de {req.subject}.
