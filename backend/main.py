@@ -2305,6 +2305,13 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         As questões devem versar sobre doutrina majoritária, texto literal da lei aplicável e a jurisprudência sumulada ou pacificada dos Tribunais Superiores (STF e STJ). 
         PROIBIDO incluir abordagens gramaticais, sintáticas ou de lógica computacional/matemática.
         """
+
+    # NOVAS DIRETRIZES: Isolamento para Língua Inglesa
+    elif req.subject == "Língua Inglesa":
+        if req.focus == 'compreensao': focus_instructions = "Foque EXCLUSIVAMENTE na compreensão textual, skimming, scanning e inferência de informações."
+        elif req.focus == 'vocabulario': focus_instructions = "Foque em itens gramaticais como sinônimos, antônimos, falsos cognatos e tempos verbais aplicados ao contexto."
+        elif req.focus == 'coesao': focus_instructions = "Foque em coesão, coerência, referência pronominal e uso de conectivos (linking words)."
+        else: focus_instructions = "Distribua as questões entre compreensão textual, vocabulário aplicado e coesão pronominal na língua inglesa."
         
     else: 
         if req.focus.startswith('Foco na vertente:') or req.focus.startswith('DIRETRIZ OBRIGATÓRIA:'):
@@ -2325,6 +2332,8 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
             text_instruction = "Crie uma situação hipotética, conjunto de premissas ou problema lógico para servir de base."
         elif "Direito" in req.subject or req.subject in ["Constitucional", "Penal", "Administrativo", "Processual", "Humanos"]:
             text_instruction = "Crie um caso prático ou situação hipotética jurídica curta para servir de base."
+        elif req.subject == "Língua Inglesa":
+            text_instruction = "Gere um autêntico texto base EM INGLÊS (ex: trecho de reportagem, artigo ou texto acadêmico curto), rico em vocabulário, para servir de alvo das questões."
         else: # Língua Portuguesa e Sintaxe
             text_instruction = "Gere um texto base primoroso, com tamanho e tipologia adequados às instruções, rico em vocabulário e coesão, para servir de alvo das questões."
     else:

@@ -15,11 +15,12 @@ const Performance = lazy(() => import('./components/Performance'));
 const OpenRouterCallback = lazy(() => import("./pages/OpenRouterCallback"));
 const Profile = lazy(() => import("./pages/Profile"));
 const TreinoDiscursiva = lazy(() => import("./pages/TreinoDiscursiva"));
-const Ferramentas = lazy(() => import("./pages/Ferramentas")); // <-- NOVO IMPORT
+const Ferramentas = lazy(() => import("./pages/Ferramentas"));
 const GabariteCespe = lazy(() => import("./pages/GabariteCespe"));
 const GabariteLogica = lazy(() => import("./pages/GabariteLogica"));
-const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe")); // <-- NOVO IMPORT
+const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe")); 
 const GabariteDireito = lazy(() => import("./pages/GabariteDireito"));
+const GabariteIngles = lazy(() => import("./pages/GabariteIngles"));
 
 // Componente de Carregamento para o Suspense
 const LoadingFallback = () => (
@@ -158,7 +159,7 @@ export default function App() {
               <Route path="/gabarite-logica" element={<PrivateRoute><GabariteLogica /></PrivateRoute>} />
               <Route path="/gabarite-sintaxe" element={<PrivateRoute><GabariteSintaxe /></PrivateRoute>} />
               <Route path="/gabarite-direito" element={<PrivateRoute><GabariteDireito /></PrivateRoute>} />
-              
+              <Route path="/gabarite-ingles" element={<PrivateRoute><GabariteIngles /></PrivateRoute>} />
               <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
               <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
               
