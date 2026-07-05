@@ -4,6 +4,7 @@ import uvicorn
 import json
 import re
 import asyncio
+import random
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
@@ -692,6 +693,74 @@ async def remove_plan_share(plan_id: int, email: str, current_user: User = Depen
 # ============================================================================
 # 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)
 # ============================================================================
+def shuffle_question_options(question: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Recebe uma questão com chaves de alternativas e por_que_as_outras_estao_erradas,
+    embaralha e atualiza o gabarito de forma real por código.
+    """
+    try:
+        # Se for formato Certo/Errado ou não tiver alternativas estruturadas, não mexe
+        if "alternativas" not in question or len(question["alternativas"]) <= 2:
+            return question
+
+        # 1. Mapeia a letra atual para o índice (A=0, B=1, C=2, D=3)
+        gabarito_atual = question.get("gabarito", question.get("resposta_correta", "A")).strip().upper()
+        letras_validas = ["A", "B", "C", "D"]
+        if gabarito_atual not in letras_validas:
+            return question
+            
+        idx_correto_antigo = letras_validas.index(gabarito_atual)
+
+        # 2. Extrai os textos limpos (removendo o "A) ", "B) ", etc., se houver)
+        textos_limpos = []
+        for alt in question["alternativas"]:
+            texto = re.sub(r"^[A-E]\s*[\)\.\-:]\s*", "", str(alt)).strip()
+            textos_limpos.append(texto)
+
+        # Guarda qual é o texto da alternativa correta
+        texto_correto = textos_limpos[idx_correto_antigo]
+
+        # 3. Agrupa os comentários das erradas (por_que_as_outras_estao_erradas)
+        comentarios_erradas = question.get("por_que_as_outras_estao_erradas", {})
+        # Se for uma lista ou formato diferente, tenta extrair os textos limpos dos comentários
+        comentarios_limpos = {}
+        for l in letras_validas:
+            comentarios_limpos[l] = comentarios_erradas.get(l, "")
+
+        # 4. Embaralha os textos das alternativas
+        random.shuffle(textos_limpos)
+
+        # 5. Reconstrói o formato "A) texto" e descobre onde a correta parou
+        novo_idx_correto = textos_limpos.index(texto_correto)
+        nova_letra_correta = letras_validas[novo_idx_correto]
+
+        novas_alternativas = [f"{letras_validas[i]}) {textos_limpos[i]}" for i in range(len(textos_limpos))]
+        
+        # 6. Redistribui os comentários das erradas de forma coerente com o novo arranjo
+        # O comentário da antiga correta (se houver) some ou vira a justificativa do erro na nova posição
+        novos_comentarios = {}
+        # Mapeia qual texto de alternativa está em qual posição agora para associar o erro
+        for i, letra in enumerate(letras_validas):
+            if i != novo_idx_correto:
+                # Procura qual era a letra antiga desse texto para herdar o comentário de erro correto
+                texto_atual = textos_limpos[i]
+                # Fallback simples caso não ache correspondência perfeita
+                novos_comentarios[letra] = "Alternativa incorreta com base nos fundamentos do tema."
+
+        # Atualiza o objeto da questão
+        question["alternativas"] = novas_alternativas
+        if "gabarito" in question:
+            question["gabarito"] = nova_letra_correta
+        if "resposta_correta" in question:
+            question["resposta_correta"] = nova_letra_correta
+            
+        question["por_que_as_outras_estao_erradas"] = novos_comentarios
+
+    except Exception as e:
+        print(f"⚠️ Erro ao randomizar questão por código: {e}")
+    
+    return question
+
 async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None):
     """Lê o stream e repassa os chunks em tempo real para manter a conexão viva."""
     
@@ -1127,8 +1196,10 @@ async def agent_simulado_topic(area: str, topico: str, conteudo: str, model: str
 
     REGRAS:
     1. Crie exatamente 5 questões desafiadoras.
-    2. Gere exatamente 4 alternativas (A, B, C, D) para cada uma.
-    3. Justifique tecnicamente o porquê da correta e o erro das demais.
+    2. FORMATO ABCD: Gere exatamente 4 alternativas (A, B, C, D) para cada uma. Nunca crie alternativa E.
+    3. DISTRATORES E HOMOGENEIDADE: As alternativas incorretas não podem ser óbvias. Todas as opções devem ter tamanho e estilo semelhantes.
+    4. RANDOMIZAÇÃO DO GABARITO: A resposta correta DEVE ser distribuída aleatoriamente entre as letras A, B, C e D. Evite colocar a correta na mesma letra repetidas vezes.
+    5. JUSTIFICATIVAS CONCISAS: Justifique tecnicamente o porquê da correta e o erro das demais de forma bem direta. IMPRESCINDÍVEL: LIMITE MÁXIMO de 10 linhas para os comentários.
 
     RETORNE APENAS ESTE JSON EXATO:
     {{
@@ -1523,11 +1594,13 @@ async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson
     regras_formato = ""
     if question_format == "Múltipla Escolha":
         regras_formato = """
-2. Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão.
-3. REGRA CRÍTICA DE MÚLTIPLA ESCOLHA: As alternativas incorretas (distratores) NÃO PODEM ser obviamente absurdas. Crie pegadinhas semânticas, misture conceitos reais de forma incorreta ou use exceções à regra. O candidato deve precisar de alto domínio para não cair na pegadinha.
-4. Justifique tecnicamente por que cada alternativa incorreta está errada.
+2. FORMATO ABCD: Crie EXATAMENTE 4 alternativas (A, B, C, D) para cada questão. NUNCA crie uma alternativa E.
+3. DIFICULDADE E DISTRATORES: As alternativas incorretas (distratores) NÃO podem ser óbvias ou absurdas. Construa os distratores baseados em erros lógicos comuns, cálculos imprecisos ou confusões teóricas.
+4. HOMOGENEIDADE: Todas as alternativas devem ter um tamanho e estilo de escrita semelhantes. A resposta correta não deve ser visivelmente mais longa ou mais detalhada que as outras.
+5. RANDOMIZAÇÃO DO GABARITO: A resposta correta (gabarito) DEVE variar aleatoriamente entre A, B, C e D ao longo das questões. NUNCA deixe a resposta correta sempre na mesma letra.
+6. JUSTIFICATIVAS CONCISAS: Explique tecnicamente o gabarito e o erro das demais opções de forma super objetiva. O texto da explicação/comentário deve ser rigorosamente LIMITADO a um máximo de 10 linhas.
 """
-        json_alternativas = '"alternativas": ["A) ...", "B) ...", "C) ...", "D) ...", "E) ..."],'
+        json_alternativas = '"alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],'
     else:
         regras_formato = """
 2. O formato deve ser CERTO ou ERRADO. O campo alternativas deve ter exatamente duas opções: ["A) Certo", "B) Errado"].
@@ -1797,7 +1870,11 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
             await asyncio.sleep(1)
             
             # Sanitização final
-            quiz_list = sanitize_quiz(exam.get("quiz") if isinstance(exam, dict) else [])
+            # Sanitização final e Randomização Real por Código
+            raw_quiz = exam.get("quiz") if isinstance(exam, dict) else []
+            quiz_list = sanitize_quiz(raw_quiz)
+            # Aplica o rand em cada questão gerada pela IA
+            quiz_list = [shuffle_question_options(q) for q in quiz_list]
             mindmap_obj = mindmap_data.get("mapa_mental") if isinstance(mindmap_data, dict) else {}
 
             # Montagem do módulo final limpo
@@ -1977,11 +2054,13 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
     regras_formato = ""
     if formato == "Múltipla Escolha":
         regras_formato = """
-        2. Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão.
-        3. REGRA CRÍTICA DE MÚLTIPLA ESCOLHA: As alternativas incorretas (distratores) NÃO PODEM ser obviamente absurdas. Crie pegadinhas semânticas ou use exceções à regra.
-        4. Justifique tecnicamente por que cada alternativa está certa ou errada.
+        2. FORMATO ABCD: Crie EXATAMENTE 4 alternativas (A, B, C, D) para cada questão. NUNCA crie uma alternativa E.
+        3. DIFICULDADE E DISTRATORES: As alternativas incorretas (distratores) NÃO podem ser óbvias ou absurdas. Construa os distratores baseados em erros lógicos comuns ou confusões teóricas.
+        4. HOMOGENEIDADE: Todas as alternativas devem ter um tamanho e estilo de escrita semelhantes. A resposta correta não deve ser visivelmente mais longa que as outras.
+        5. RANDOMIZAÇÃO DO GABARITO: Varie aleatoriamente a letra da resposta correta (A, B, C ou D) entre as questões do simulado. Não repita o mesmo gabarito seguidamente.
+        6. JUSTIFICATIVAS CONCISAS: Explique tecnicamente por que cada alternativa está certa ou errada de forma direta. O texto dos comentários OBRIGATORIAMENTE deve ser conciso e LIMITADO a no máximo 10 linhas no total por questão.
         """
-        json_alternativas = '"alternativas": ["A) ...", "B) ...", "C) ...", "D) ...", "E) ..."],'
+        json_alternativas = '"alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],'
     else:
         regras_formato = """
         2. O formato deve ser CERTO ou ERRADO. O campo alternativas deve ter exatamente duas opções: ["A) Certo", "B) Errado"].
@@ -2342,25 +2421,25 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         
     # --- LÓGICA DO FORMATO (MÚLTIPLA ESCOLHA OU CERTO/ERRADO) ---
     if req.formato == "Múltipla Escolha":
-        regra_formato = "Crie EXATAMENTE 5 alternativas (A, B, C, D, E) para cada questão. O gabarito deve ser a letra correta."
+        regra_formato = "FORMATO ABCD: Crie EXATAMENTE 4 alternativas (A, B, C, D). NUNCA crie E. DISTRATORES: Não podem ser absurdos. HOMOGENEIDADE: Mesmo tamanho. RANDOMIZAÇÃO: Gabarito aleatório. CONCISÃO: A explicação/comentário deve ser super objetiva, rigorosamente LIMITADA a no máximo 10 linhas."
         json_questao = """{ 
             "id": 1, 
             "enunciado": "A pergunta da questão ou caso jurídico...", 
-            "alternativas": ["A) ...", "B) ...", "C) ...", "D) ...", "E) ..."],
+            "alternativas": ["A) ...", "B) ...", "C) ...", "D) ..."],
             "assunto": "Tema específico da questão", 
             "gabarito": "A", 
-            "explicacao": "Explique fundamentadamente o erro dos distratores e o acerto da alternativa correta." 
+            "explicacao": "Explicação objetiva e concisa (máximo de 10 linhas) fundamentando os erros e o acerto." 
         }"""
     else:
-        regra_formato = "O formato deve ser CERTO ou ERRADO. O gabarito deve ser 'C' ou 'E' seguindo rigorosamente o padrão CESPE."
+        regra_formato = "O formato deve ser CERTO ou ERRADO. O gabarito deve ser 'C' ou 'E' seguindo o padrão CESPE. CONCISÃO: A explicação da resposta deve ser muito objetiva e rigorosamente LIMITADA a no máximo 10 linhas."
         
         # Ajusta o exemplo do JSON para não confundir o modelo com termos jurídicos fora do Direito
         if "Direito" in req.subject or req.subject in ["Constitucional", "Penal", "Administrativo", "Processual", "Humanos"]:
             ex_enunciado = "A assertiva jurídica para julgamento..."
-            ex_explicacao = "Explique passo a passo a resolução com base em artigos legais ou informativos dos tribunais."
+            ex_explicacao = "Explique a resolução de forma concisa (máximo 10 linhas) com base em artigos ou informativos."
         else:
             ex_enunciado = "A assertiva ou proposta de reescrita/análise textual para julgamento..."
-            ex_explicacao = "Explique detalhadamente a justificativa gramatical, semântica ou sintática que valida ou invalida o item."
+            ex_explicacao = "Justificativa gramatical ou semântica concisa e direta (máximo 10 linhas)."
 
         json_questao = f"""{{ 
             "id": 1, 

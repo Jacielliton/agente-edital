@@ -5,6 +5,7 @@ import {
   X, CheckCircle, AlertCircle, Binary
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { conteudosTeoricosRLM } from "../data/raciocinioData";
 
 // Helper para ler token unificado
@@ -196,6 +197,45 @@ export default function GabariteLogica() {
     setError("");
     setViewState("loading");
 
+    // ==========================================
+    // MÁGICA: EMBARALHAMENTO FORÇADO VIA CÓDIGO
+    // ==========================================
+    const embaralharAlternativas = (questao) => {
+      // Ignora se for Certo/Errado ou se não tiver opções
+      if (!questao.alternativas || questao.alternativas.length < 3) return questao;
+
+      // Se no seu sistema gera até 4 ou 5 opções, adicione a letra 'E' no array se necessário
+      const letras = ["A", "B", "C", "D", "E"]; 
+      const gabaritoAtual = (questao.gabarito || "A").trim().toUpperCase();
+      const idxCorreto = letras.indexOf(gabaritoAtual);
+
+      if (idxCorreto === -1) return questao;
+
+      // 1. Limpa as letras falsas (Tira "A) ", "B) " da string)
+      const textos = questao.alternativas.map(alt => alt.replace(/^[A-E]\s*[\)\.\-:]\s*/i, "").trim());
+      const textoCorreto = textos[idxCorreto];
+
+      // 2. Algoritmo Profissional de Embaralhamento (Fisher-Yates)
+      for (let i = textos.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [textos[i], textos[j]] = [textos[j], textos[i]];
+      }
+
+      // 3. Descobre onde a resposta certa foi parar
+      const novoIdxCorreto = textos.indexOf(textoCorreto);
+      const novoGabarito = letras[novoIdxCorreto];
+
+      // 4. Recria as alternativas prontas
+      const novasAlternativas = textos.map((txt, i) => `${letras[i]}) ${txt}`);
+
+      return {
+        ...questao,
+        alternativas: novasAlternativas,
+        gabarito: novoGabarito
+      };
+    };
+    // ==========================================
+
     try {
       const token = getAuthToken();
       let todasQuestoes = [];
@@ -214,7 +254,7 @@ export default function GabariteLogica() {
           amount: currentBatchSize,
           generate_text: configTextBase, // Agora solicita texto em todos os lotes
           formato: configFormato,
-          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || "nvidia/nemotron-3-ultra-550b-a55b:free",
           api_key: userApiKey || null
         };
 
@@ -249,12 +289,18 @@ export default function GabariteLogica() {
         }
         // ----------------------------------------------------------------
 
-        const questoesCorrigidas = data.questoes.map((q, idx) => ({
-          ...q,
-          id: `q_prova_${i}_${idx}`,
-          // Injeta o texto-base gerado neste lote apenas na PRIMEIRA questão dele
-          textoVinculado: (idx === 0 && configTextBase && data.textoBase) ? data.textoBase : null
-        }));
+        // ----------------------------------------------------------------
+        const questoesCorrigidas = data.questoes.map((q, idx) => {
+          
+          // APLICA O EMBARALHAMENTO AQUI SE FOR MÚLTIPLA ESCOLHA!
+          const qEmbaralhada = configFormato === "Múltipla Escolha" ? embaralharAlternativas(q) : q;
+          
+          return {
+            ...qEmbaralhada,
+            id: `q_prova_${i}_${idx}`,
+            textoVinculado: (idx === 0 && configTextBase && data.textoBase) ? data.textoBase : null
+          };
+        });
 
         todasQuestoes = [...todasQuestoes, ...questoesCorrigidas];
       }
@@ -278,7 +324,9 @@ export default function GabariteLogica() {
 
     try {
       const token = getAuthToken();
-      const response = await fetch(`${API_URL}/generate-lesson-cespe`, {
+      
+      // Utilizamos o fetchStreamAsJson que trata o formato quebrado da IA e o stream
+      const data = await fetchStreamAsJson(`${API_URL}/generate-lesson-cespe`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -286,13 +334,10 @@ export default function GabariteLogica() {
         },
         body: JSON.stringify({
           wrong_questions: wrongQuestions,
-          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || "nvidia/nemotron-3-ultra-550b-a55b:free",
           api_key: userApiKey || null
         })
       });
-
-      if (!response.ok) throw new Error("Falha ao gerar a aula.");
-      const data = await response.json();
 
       setLessonContent(data.lesson_markdown || data.text || "Conteúdo não disponível.");
       setViewState("exam"); 
@@ -300,7 +345,7 @@ export default function GabariteLogica() {
 
     } catch (err) {
       console.error(err);
-      alert("Falha ao gerar a aula.");
+      alert("Falha ao gerar a aula: " + err.message);
       setViewState("exam");
     }
   };
@@ -426,7 +471,19 @@ export default function GabariteLogica() {
                   <button 
                     onClick={handleShowTheory} 
                     className="btn" 
-                    style={{ padding: '10px', background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: '8px', flexShrink: 0 }} 
+                    style={{ 
+                      width: '42px',           // Força a largura fixa
+                      height: '42px',          // Força a altura fixa
+                      display: 'flex',         // Centraliza o ícone
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      padding: '0',            // Remove o padding interno que causava a distorção
+                      background: 'var(--primary-light)', 
+                      color: 'var(--primary)', 
+                      border: '1px solid var(--primary)', 
+                      borderRadius: '8px', 
+                      flexShrink: 0 
+                    }} 
                     title="Ver Resumo Teórico do Assunto Selecionado"
                   >
                     <BookOpenCheck size={20} />
@@ -448,7 +505,7 @@ export default function GabariteLogica() {
                 <label className="label">Formato da Questão</label>
                 <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', width: '100%' }}>
                   <option value="Certo/Errado">Certo / Errado (Padrão CESPE)</option>
-                  <option value="Múltipla Escolha">Múltipla Escolha (A, B, C, D, E)</option>
+                  <option value="Múltipla Escolha">Múltipla Escolha (A, B, C, D)</option>
                 </select>
               </div>
 
@@ -676,7 +733,7 @@ export default function GabariteLogica() {
                                   {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
                                 </div>
                                 <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                                  <ReactMarkdown>{q.explicacao}</ReactMarkdown>
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.explicacao}</ReactMarkdown>
                                 </div>
                               </div>
                             )}
@@ -871,7 +928,7 @@ export default function GabariteLogica() {
             </div>
             <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
               <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <ReactMarkdown>{lessonContent}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{lessonContent}</ReactMarkdown>
               </div>
             </div>
           </div>
