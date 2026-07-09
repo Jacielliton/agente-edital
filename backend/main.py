@@ -162,7 +162,7 @@ class GlobalEssayRequest(BaseModel):
     area: str
     aulas_titulos: List[str]
     nivel: Optional[str] = "Normal"
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
     
 class TreinoDiscursivaRequest(BaseModel):
@@ -171,13 +171,14 @@ class TreinoDiscursivaRequest(BaseModel):
     tipo_prova: str
     cargo: str
     banca: str
-    nivel: Optional[str] = "Normal" # <--- ADICIONADO
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    nivel: Optional[str] = "Normal"
+    edital_regras_prova: Optional[str] = None
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
     
 class ExtractTopicsRequest(BaseModel):
     texto: str
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
         
 class EssayCorrectionRequest(BaseModel):
@@ -185,7 +186,7 @@ class EssayCorrectionRequest(BaseModel):
     comando: str
     aspectos: List[Dict[str, Any]]
     resposta_aluno: str
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
 
 class GenerateEssayRequest(BaseModel):
@@ -193,7 +194,7 @@ class GenerateEssayRequest(BaseModel):
     aula_titulo: str
     lesson_content: dict
     nivel: Optional[str] = "Normal"
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
 
 class ChatMessageRequest(BaseModel):
@@ -201,7 +202,7 @@ class ChatMessageRequest(BaseModel):
     aula_titulo: str
     mensagem: str
     historico: List[Dict[str, str]] = []
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
     
 class UserLogin(BaseModel):
@@ -330,12 +331,17 @@ class SimuladoCespeRequest(BaseModel):
     amount: int
     generate_text: bool
     formato: Optional[str] = "Certo/Errado"
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
 
 class LessonCespeRequest(BaseModel):
     wrong_questions: List[Dict[str, Any]]
-    model: Optional[str] = "arcee-ai/trinity-large-thinking:free"
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
+    api_key: Optional[str] = None
+    
+class TranslateWordRequest(BaseModel):
+    word: str
+    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
 
 # ============================================================================
@@ -354,8 +360,8 @@ def get_openrouter_client():
         _CLIENT = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
     return _CLIENT
 
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "arcee-ai/trinity-large-thinking:free")
-AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "arcee-ai/trinity-large-thinking:free,google/gemini-2.5-flash").split(",") if m.strip()]
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
+AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "nvidia/nemotron-3-nano-30b-a3b:free,google/gemini-2.5-flash").split(",") if m.strip()]
 
 # ============================================================================
 # 6. LIFESPAN (CICLO DE VIDA & INICIALIZAÇÃO)
@@ -495,7 +501,7 @@ async def set_config(cfg: ConfigRequest):
         update_env_file(ENV_FILE_PATH, updates)
         load_dotenv(override=True)
         global DEFAULT_MODEL, AVAILABLE_MODELS
-        DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "arcee-ai/trinity-large-thinking:free")
+        DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
         AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "").split(",") if m.strip()]
     return {"ok": True, "updated": list(updates.keys())}
 
@@ -2209,8 +2215,15 @@ async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest):
     elif nivel == "Expert":
         regras_dificuldade = "Cenário caótico, longo e extremamente desafiador (nível Delegado/Juiz/Auditor). Exija teses defensivas, visão crítica, jurisprudência minoritária/recentes e cruzamento de múltiplas áreas do direito."
 
-    # REGRAS DINÂMICAS DE FORMATO E TAMANHO (CORRIGIDO F-STRING)
-    if "Paráfrase" in tipo:
+    # REGRAS DINÂMICAS DE FORMATO E TAMANHO (CORRIGIDO)
+    pontuacao_regra = 'A soma do campo "valor_maximo" dos aspectos DEVE ser exatos 19.0 pontos.'
+    
+    if tipo == "Personalizado":
+        limite_linhas = "o limite estabelecido no trecho do edital fornecido"
+        diretrizes = f"Siga RIGOROSAMENTE as regras, pontuações, estrutura, número de linhas e formato descritos neste trecho do edital fornecido pelo usuário:\n\n{req.edital_regras_prova}\n\nAdapte a situação hipotética e a distribuição de pontos exatamente como o edital exige."
+        comando_base = "Redija seu texto em atendimento ao que se pede no edital, respeitando os limites de linhas estabelecidos."
+        pontuacao_regra = 'A soma do campo "valor_maximo" dos aspectos DEVE respeitar rigorosamente a pontuação máxima para o conteúdo descrita no trecho do edital.'
+    elif "Paráfrase" in tipo:
         limite_linhas = "10 linhas"
         diretrizes = "O texto motivador DEVE ser APENAS um parágrafo técnico, conceitual ou doutrinário (3 a 5 linhas). NÃO faça perguntas no cenário."
         comando_base = f"Reescreva o texto motivador acima com as suas próprias palavras, mantendo a coesão, a correção gramatical e preservando rigorosamente o sentido original. Redija seu texto em até {limite_linhas}."
@@ -2248,17 +2261,20 @@ async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest):
     NÍVEL DE DIFICULDADE EXIGIDO: {nivel.upper()}
 
     A área geral de conhecimento do candidato é: {req.area}.
-    Tópicos específicos exigidos pelo edital: {json.dumps(req.topicos, ensure_ascii=False)}
+    
+    CONTEÚDO PROGRAMÁTICO (EDITAL): 
+    {json.dumps(req.topicos, ensure_ascii=False)}
 
     Sua missão ÚNICA é criar UMA prova do tipo '{tipo}' simulando o padrão da banca {banca} para o cargo de {cargo}, RIGOROSAMENTE ADAPTADA AO NÍVEL DE DIFICULDADE ({nivel}).
 
     DIRETRIZES OBRIGATÓRIAS:
-    1. COMPLEXIDADE GERAL: {regras_dificuldade}
-    2. ESTILO: {diretrizes} Use os tópicos base como contexto.
-    3. TEXTO MOTIVADOR: Crie o cenário ou texto base necessário. 
-    4. COMANDO: É OBRIGATÓRIO utilizar EXATAMENTE o comando estipulado no JSON final.
-    5. ASPECTOS: Crie de 1 a 3 itens numerados (Para paráfrases, exija '1. Preservação do sentido original' e '2. Correção gramatical'). ATENÇÃO CRÍTICA: Os aspectos devem ser perfeitamente passíveis de resposta completa DENTRO do limite de {limite_linhas}.
-    6. PONTUAÇÃO: A soma do campo "valor_maximo" dos aspectos DEVE ser exatos 19.0 pontos.
+    1. SELEÇÃO DE TEMA: Como o conteúdo programático acima pode ser extenso, ESCOLHA/SORTEIE apenas 1 ou 2 assuntos conexos desse bloco para serem o foco central da questão. Não tente cobrar tudo de uma vez.
+    2. COMPLEXIDADE GERAL: {regras_dificuldade}
+    3. ESTILO: {diretrizes} 
+    4. TEXTO MOTIVADOR: Crie o cenário fático, situação hipotética ou texto base necessário. 
+    5. COMANDO: É OBRIGATÓRIO utilizar EXATAMENTE o comando estipulado no JSON final.
+    6. ASPECTOS: Crie os itens numerados adequados à avaliação. ATENÇÃO CRÍTICA: Os aspectos devem ser perfeitamente passíveis de resposta completa DENTRO do limite de {limite_linhas}.
+    7. PONTUAÇÃO: {pontuacao_regra}
 
     RETORNE APENAS ESTE JSON EXATO:
     {{
@@ -2347,7 +2363,7 @@ async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: Use
                 # Salva a chave gerada diretamente no perfil do aluno
                 current_user.api_key = nova_api_key
                 # Define um modelo gratuito por padrão para ele começar a usar
-                current_user.preferred_model = "arcee-ai/trinity-large-thinking:free"
+                current_user.preferred_model = "nvidia/nemotron-3-nano-30b-a3b:free"
                 await db.commit()
                 
                 return {"ok": True, "message": "IA ativada com sucesso!"}
@@ -2497,7 +2513,42 @@ async def generate_lesson_cespe_endpoint(req: LessonCespeRequest):
     }}
     """
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.7, api_key=req.api_key), media_type="text/plain")
-                
+
+@app.post("/api/translate")
+async def translate_word_endpoint(req: TranslateWordRequest):
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
+    
+    prompt = f"Traduza a palavra em inglês '{req.word}' para o português. Responda APENAS com a tradução ou traduções mais comuns, de forma bem curta. Não adicione explicações."
+    
+    chave_limpa = (req.api_key or os.getenv("OPENROUTER_API_KEY")).strip()
+    model_name = req.model or "google/gemini-2.5-flash"
+    
+    # === Roteador Dinâmico ===
+    if chave_limpa.startswith("sk-or-"):
+        url_base = "https://openrouter.ai/api/v1"
+    else:
+        url_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        # Vacina anti-erro 404 do Google
+        if model_name.startswith("google/"):
+            model_name = model_name.replace("google/", "")
+            
+    client = AsyncOpenAI(base_url=url_base, api_key=chave_limpa)
+    
+    try:
+        response = await client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=30
+        )
+        translation = response.choices[0].message.content.strip()
+        return {"translation": translation}
+    except Exception as e:
+        print(f"Erro ao traduzir: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao processar a tradução.")
+    
+                    
 if __name__ == "__main__":
     # O Railway injeta dinamicamente a variável de ambiente PORT. Se não achar, usa 8000.
     port = int(os.environ.get("PORT", 8000))

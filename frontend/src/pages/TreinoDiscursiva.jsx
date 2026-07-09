@@ -83,8 +83,10 @@ export default function TreinoDiscursiva() {
 
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
+  const [editalRegrasProva, setEditalRegrasProva] = useState("");
+  const isLoaded = React.useRef(false);
 
-  // RECUPERAR PREFERÊNCIAS SALVAS & CONFIGURAÇÕES DA IA
+  // 1. CARREGAR AS PREFERÊNCIAS AO ABRIR A TELA
   useEffect(() => {
     const fetchDBSettings = async () => {
       const token = getAuthToken();
@@ -102,25 +104,52 @@ export default function TreinoDiscursiva() {
     const loadSavedPrefs = () => {
       const savedPrefs = localStorage.getItem("treino_discursiva_prefs");
       if (savedPrefs) {
-        const prefs = JSON.parse(savedPrefs);
-        if (prefs.banca) setBanca(prefs.banca);
-        if (prefs.tipoProva) setTipoProva(prefs.tipoProva);
-        if (prefs.cargo) setCargo(prefs.cargo);
-        if (prefs.nivel) setNivel(prefs.nivel); 
-        if (prefs.editalTrecho) setEditalTrecho(prefs.editalTrecho);
-        if (prefs.area) setArea(prefs.area);
-        if (prefs.topicos) setTopicos(prefs.topicos);
+        try {
+          const prefs = JSON.parse(savedPrefs);
+          if (prefs.banca !== undefined) setBanca(prefs.banca);
+          if (prefs.tipoProva !== undefined) setTipoProva(prefs.tipoProva);
+          if (prefs.cargo !== undefined) setCargo(prefs.cargo);
+          if (prefs.nivel !== undefined) setNivel(prefs.nivel); 
+          if (prefs.editalTrecho !== undefined) setEditalTrecho(prefs.editalTrecho);
+          if (prefs.area !== undefined) setArea(prefs.area);
+          if (prefs.topicos !== undefined) setTopicos(prefs.topicos);
+          if (prefs.editalRegrasProva !== undefined) setEditalRegrasProva(prefs.editalRegrasProva);
+        } catch (e) {
+          console.error("Erro ao processar preferências salvas", e);
+        }
       }
+      // Sinaliza que a leitura terminou com sucesso e a trava pode ser liberada
+      isLoaded.current = true;
     };
 
     fetchDBSettings();
     loadSavedPrefs();
   }, [API_URL]);
 
+  // 2. SALVAMENTO AUTOMÁTICO COERENTE (Auto-save com trava de segurança)
+  useEffect(() => {
+    // Se o carregamento inicial não terminou, não faz nada para não apagar o histórico
+    if (!isLoaded.current) return;
+
+    const prefsObj = {
+      banca, 
+      tipoProva, 
+      cargo, 
+      nivel, 
+      editalTrecho, 
+      area, 
+      topicos, 
+      editalRegrasProva 
+    };
+    localStorage.setItem("treino_discursiva_prefs", JSON.stringify(prefsObj));
+  }, [banca, tipoProva, cargo, nivel, editalTrecho, area, topicos, editalRegrasProva]);
+
+  // 3. Botão manual "Salvar Padrão" de contingência/confirmação
   const handleSavePrefs = () => {
-    localStorage.setItem("treino_discursiva_prefs", JSON.stringify({
-      banca, tipoProva, cargo, nivel, editalTrecho, area, topicos 
-    }));
+    const prefsObj = {
+      banca, tipoProva, cargo, nivel, editalTrecho, area, topicos, editalRegrasProva 
+    };
+    localStorage.setItem("treino_discursiva_prefs", JSON.stringify(prefsObj));
     setShowSavedFeedback(true);
     setTimeout(() => setShowSavedFeedback(false), 2000); 
   };
@@ -156,6 +185,7 @@ export default function TreinoDiscursiva() {
 
   // Limites Dinâmicos
   const maxLinhas = useMemo(() => {
+    if (tipoProva === "Personalizado") return 60;
     if (tipoProva.includes("Curta") || tipoProva.includes("Paráfrase")) return 10;
     if (tipoProva.includes("Expansão") || tipoProva.includes("Reescrita")) return 15;
     if (tipoProva.includes("Peça")) return 120;
@@ -202,7 +232,9 @@ export default function TreinoDiscursiva() {
   const minPalavrasRecomendado = maxLinhas <= 15 ? 15 : 30;
 
   const handleGerarProva = async () => {
-    if (!area || !topicos) return alert("Por favor, preencha a Disciplina e o Tópico.");
+    // 1. Nova validação condicional
+    if (tipoProva !== "Personalizado" && (!area || !topicos)) return alert("Por favor, preencha a Disciplina e o Tópico.");
+    if (tipoProva === "Personalizado" && !editalTrecho) return alert("Por favor, cole o trecho do conteúdo programático do edital na Etapa 2.");
     
     setLoading(true); setError(null); setCorrecao(null); setProva(null); setResposta("");
     setDraftTese(""); setDraftArgs(""); setDraftConclusao("");
@@ -214,17 +246,24 @@ export default function TreinoDiscursiva() {
     setUseDraftMode(maxLinhas > 15);
 
     try {
-      const topicosArray = topicos.split(",").map(t => t.trim()).filter(t => t.length > 0);
+      // 2. Adaptação dos dados de envio: se for personalizado, passamos o texto bruto como tópico.
+      const topicosArray = tipoProva === "Personalizado" 
+        ? [editalTrecho] // Envia o edital inteiro como contexto
+        : topicos.split(",").map(t => t.trim()).filter(t => t.length > 0);
+
+      const areaFinal = tipoProva === "Personalizado" ? "Conteúdo Programático Específico (Edital)" : area;
+
       const data = await fetchStreamAsJson(`${API_URL}/generate-treino-discursiva`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
         body: JSON.stringify({
-          area: area,
+          area: areaFinal,
           topicos: topicosArray.length > 0 ? topicosArray : ["Tema Geral"],
           tipo_prova: tipoProva,
           cargo: cargo,
           banca: banca,
           nivel: nivel,
+          edital_regras_prova: tipoProva === "Personalizado" ? editalRegrasProva : null,
           api_key: userApiKey || null, 
           model: userModel || "arcee-ai/trinity-large-thinking:free"
         })
@@ -355,8 +394,8 @@ export default function TreinoDiscursiva() {
             </div>
 
             <label className="label" style={{ marginBottom: '10px' }}>Formato do Treino</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '25px' }}>
-               <select value={tipoProva} onChange={e => setTipoProva(e.target.value)} className="select">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
+               <select value={tipoProva} onChange={e => setTipoProva(e.target.value)} className="select" style={{ width: '100%' }}>
                   <optgroup label="Nível 1: Iniciação (Micro-treinos)">
                     <option value="Paráfrase de Texto">Paráfrase (Explicar com próprias palavras)</option>
                     <option value="Expansão de Ideia">Expansão de Ideia (Aprofundar um conceito)</option>
@@ -370,7 +409,29 @@ export default function TreinoDiscursiva() {
                     <option value="Redação (Atualidades/Temas Gerais)">Redação (Atualidades e Impactos Sociais)</option>
                     <option value="Peça Prático-Profissional">Peça Prático-Profissional</option>
                   </optgroup>
+                  <optgroup label="Modo Avançado">
+                    <option value="Personalizado">Personalizado (Colar Trecho do Edital)</option>
+                  </optgroup>
               </select>
+
+              {/* RENDERIZAÇÃO CONDICIONAL PARA O EDITAL */}
+              {tipoProva === "Personalizado" && (
+                <div style={{ animation: 'slideUp 0.3s ease-out' }}>
+                  <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <LayoutTemplate size={16} /> Regras do Edital para a Prova Discursiva
+                  </label>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                    Cole aqui como será a prova (ex: linhas, pontuação, formato e critérios de correção).
+                  </p>
+                  <textarea 
+                    value={editalRegrasProva} 
+                    onChange={e => setEditalRegrasProva(e.target.value)} 
+                    className="textarea" 
+                    style={{ minHeight: '120px' }}
+                    placeholder="Ex: 9 DA PROVA DISCURSIVA. 9.1 valerá 40,00 pontos e consistirá de redação técnica de até 60 linhas..." 
+                  />
+                </div>
+              )}
             </div>
 
             <div style={{ background: isModoPressao ? 'var(--error-bg)' : 'var(--hover-bg)', border: `1px solid ${isModoPressao ? 'var(--error-text)' : 'var(--border)'}`, padding: '15px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setIsModoPressao(!isModoPressao)}>
@@ -394,46 +455,71 @@ export default function TreinoDiscursiva() {
               Definição do Tema
             </h3>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-              <div>
-                <label className="label">Disciplina</label>
-                <input type="text" value={area} onChange={e => setArea(e.target.value)} className="input" placeholder="Ex: Direito Constitucional, TI..." />
-              </div>
-              <div>
-                <label className="label">Tópico Específico</label>
-                <input type="text" value={topicos} onChange={e => setTopicos(e.target.value)} className="input" placeholder="Ex: Direitos Fundamentais..." />
-              </div>
-            </div>
-
-            {(tipoProva.includes("Estudo de Caso") || tipoProva.includes("Peça")) && (
-              <div style={{ background: 'var(--hover-bg)', padding: '20px', borderRadius: '8px', border: '1px dashed var(--border)', marginBottom: '20px', animation: 'slideUp 0.3s ease-out' }}>
+            {tipoProva === "Personalizado" ? (
+              
+              /* ====== MODO PERSONALIZADO ====== */
+              <div style={{ animation: 'slideUp 0.3s ease-out', marginBottom: '20px' }}>
                 <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Database size={16} /> Análise Inteligente do Edital <span style={{ color: 'var(--text-muted)', textTransform: 'none', fontWeight: 'normal' }}>(Opcional)</span>
+                  <Database size={16} /> Conteúdo Programático Específico
                 </label>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Cole o bloco do edital abaixo para a IA extrair detalhes complexos e moldar o caso prático com maior precisão.</p>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  Cole aqui a parte do edital com as disciplinas e assuntos exigidos para o seu cargo. A IA usará essas informações para elaborar o contexto da prova e sortear a cobrança.
+                </p>
                 <textarea 
                   value={editalTrecho} 
                   onChange={e => setEditalTrecho(e.target.value)} 
                   className="textarea" 
-                  style={{ minHeight: '100px', marginBottom: '10px' }}
-                  placeholder="Ex: DIREITO PENAL: 1 Princípios básicos. 2 Aplicação da lei penal..." 
+                  style={{ minHeight: '150px' }}
+                  placeholder="Ex: CARGO 10: ANALISTA... ENGENHARIA DE DADOS: 1 Dado, informação... 2 Modelagem..." 
                 />
-                <button 
-                  onClick={handleAnalisarEdital} 
-                  disabled={isExtracting || !editalTrecho.trim()} 
-                  className="btn" 
-                  style={{ width: '100%', background: 'var(--card-bg)' }}
-                >
-                  {isExtracting ? <RefreshCw className="spin" size={18} /> : <Wand2 size={18} color="var(--primary)" />}
-                  {isExtracting ? "A analisar texto..." : "Preencher Disciplina e Tópicos Automaticamente"}
-                </button>
               </div>
+
+            ) : (
+
+              /* ====== MODO NORMAL ====== */
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                  <div>
+                    <label className="label">Disciplina</label>
+                    <input type="text" value={area} onChange={e => setArea(e.target.value)} className="input" placeholder="Ex: Direito Constitucional, TI..." />
+                  </div>
+                  <div>
+                    <label className="label">Tópico Específico</label>
+                    <input type="text" value={topicos} onChange={e => setTopicos(e.target.value)} className="input" placeholder="Ex: Direitos Fundamentais..." />
+                  </div>
+                </div>
+
+                {(tipoProva.includes("Estudo de Caso") || tipoProva.includes("Peça")) && (
+                  <div style={{ background: 'var(--hover-bg)', padding: '20px', borderRadius: '8px', border: '1px dashed var(--border)', marginBottom: '20px', animation: 'slideUp 0.3s ease-out' }}>
+                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Database size={16} /> Análise Inteligente do Edital <span style={{ color: 'var(--text-muted)', textTransform: 'none', fontWeight: 'normal' }}>(Opcional)</span>
+                    </label>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Cole o bloco do edital abaixo para a IA extrair detalhes complexos e moldar o caso prático com maior precisão.</p>
+                    <textarea 
+                      value={editalTrecho} 
+                      onChange={e => setEditalTrecho(e.target.value)} 
+                      className="textarea" 
+                      style={{ minHeight: '100px', marginBottom: '10px' }}
+                      placeholder="Ex: DIREITO PENAL: 1 Princípios básicos. 2 Aplicação da lei penal..." 
+                    />
+                    <button 
+                      onClick={handleAnalisarEdital} 
+                      disabled={isExtracting || !editalTrecho.trim()} 
+                      className="btn" 
+                      style={{ width: '100%', background: 'var(--card-bg)' }}
+                    >
+                      {isExtracting ? <RefreshCw className="spin" size={18} /> : <Wand2 size={18} color="var(--primary)" />}
+                      {isExtracting ? "A analisar texto..." : "Preencher Disciplina e Tópicos Automaticamente"}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
-            <button onClick={handleGerarProva} disabled={!area || !topicos} className="btn primary" style={{ width: '100%', padding: '15px', fontSize: '1.1rem', marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
+            <button onClick={handleGerarProva} disabled={(tipoProva === "Personalizado" ? !editalTrecho : (!area || !topicos))} className="btn primary" style={{ width: '100%', padding: '15px', fontSize: '1.1rem', marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
               <RefreshCw size={20} /> Gerar Treino Inédito
             </button>
-            {error && <div className="error">{error}</div>}
+            {error && <div className="error" style={{ marginTop: '15px' }}>{error}</div>}
           </div>
         </div>
       )}

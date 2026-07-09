@@ -134,6 +134,12 @@ export default function GabariteIngles() {
   const [showLessonModal, setShowLessonModal] = useState(false);
   const [lessonContent, setLessonContent] = useState("");
 
+  // --- ESTADOS DO TRADUTOR INTERATIVO ---
+  const [clickedWord, setClickedWord] = useState(null);
+  const [translation, setTranslation] = useState("");
+  const [loadingTranslation, setLoadingTranslation] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
   const handleShowTheory = () => {
     setLessonContent(conteudosTeoricosIngles[configFocus] || conteudosTeoricosIngles.completo);
     setShowLessonModal(true);
@@ -418,6 +424,100 @@ export default function GabariteIngles() {
     }
   };
 
+  // Nova versão recursiva: lida com strings, arrays de texto e tags (como negrito e itálico)
+  function InteractiveText({ children, onWordClick }) {
+    if (children === null || children === undefined) return null;
+
+    // Se for texto puro, dividimos em palavras clicáveis
+    if (typeof children === "string") {
+      const tokens = children.split(/(\s+)/);
+      return (
+        <>
+          {tokens.map((token, idx) => {
+            // Se for apenas espaço em branco ou quebra de linha, mantém o espaço normal
+            if (/^\s+$/.test(token)) return token;
+            
+            return (
+              <span
+                key={idx}
+                onClick={(e) => onWordClick(e, token)}
+                style={{
+                  cursor: "pointer",
+                  transition: "background 0.2s",
+                  borderRadius: "3px",
+                }}
+                className="hover-word"
+                title="Clique para traduzir"
+              >
+                {token}
+              </span>
+            );
+          })}
+        </>
+      );
+    }
+
+    // Se o texto tiver mistura de formatação (ex: "Isso é **negrito**"), ele vem como Array
+    if (Array.isArray(children)) {
+      return React.Children.map(children, (child, idx) => (
+        <React.Fragment key={idx}>
+          <InteractiveText onWordClick={onWordClick}>{child}</InteractiveText>
+        </React.Fragment>
+      ));
+    }
+
+    // Se for um elemento React (ex: uma tag <strong> gerada pelo Markdown)
+    if (React.isValidElement(children)) {
+      return React.cloneElement(children, {
+        children: <InteractiveText onWordClick={onWordClick}>{children.props.children}</InteractiveText>
+      });
+    }
+
+    // Fallback padrão
+    return children;
+  }
+
+  const handleWordClick = async (e, word) => {
+    // Limpa pontuações da palavra selecionada
+    const cleanWord = word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, "").trim();
+    if (!cleanWord) return;
+
+    // Define a posição do popover baseado no clique do mouse
+    setTooltipPos({ x: e.clientX, y: e.clientY - 40 });
+    setClickedWord(cleanWord);
+    setLoadingTranslation(true);
+    setTranslation("");
+
+    try {
+      // APONTANDO PARA O SEU BACKEND FASTAPI
+      const res = await fetch(API_URL + "/api/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          word: cleanWord,
+          model: userModel || "arcee-ai/trinity-large-thinking:free", // Corrigido para a variável real
+          api_key: userApiKey || null // Corrigido para a variável real
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setTranslation(data.translation);
+      } else {
+        const errorData = await res.json();
+        setTranslation("Erro: Não foi possível traduzir.");
+        console.error(errorData);
+      }
+    } catch (err) {
+      setTranslation("Erro de conexão com o servidor.");
+      console.error(err);
+    } finally {
+      setLoadingTranslation(false);
+    }
+  };
+
   const wrongCount = getWrongQuestions().length;
   const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && wrongCount > 0;
 
@@ -574,12 +674,28 @@ export default function GabariteIngles() {
             return (
               <React.Fragment key={q.id}>
                 {q.textoVinculado && (
-                  <div className="panel" style={{ background: 'var(--card-bg)', borderLeft: '4px solid var(--primary)', padding: '20px' }}>
+                  <div className="panel" style={{ background: 'var(--card-bg)', borderLeft: '4px solid var(--primary)', padding: '20px', position: 'relative' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold', marginBottom: '10px' }}>
-                      <AlignLeft size={20} /> Texto Base
+                      <AlignLeft size={20} /> Texto Base <span style={{fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal'}}>(Clique em qualquer palavra para traduzir)</span>
                     </div>
                     <div className="markdown-format" style={{ fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.6' }}>
-                      <ReactMarkdown>{q.textoVinculado}</ReactMarkdown>
+                      <ReactMarkdown 
+                        components={{
+                          // Agora interceptamos os Parágrafos e Listas (que são os contêineres reais do texto)
+                          p: ({node, ...props}) => (
+                            <p style={{ marginBottom: "1em" }}>
+                              <InteractiveText onWordClick={handleWordClick}>{props.children}</InteractiveText>
+                            </p>
+                          ),
+                          li: ({node, ...props}) => (
+                            <li style={{ marginBottom: "0.5em" }}>
+                              <InteractiveText onWordClick={handleWordClick}>{props.children}</InteractiveText>
+                            </li>
+                          )
+                        }}
+                      >
+                        {q.textoVinculado}
+                      </ReactMarkdown>
                     </div>
                   </div>
                 )}
@@ -817,6 +933,49 @@ export default function GabariteIngles() {
             <div style={{ padding: '15px 20px', borderTop: '1px solid var(--border)', background: 'var(--hover-bg)', textAlign: 'right' }}>
               <button onClick={() => setShowLessonModal(false)} className="btn primary">Entendi, fechar</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* PASSO E: TOOLTIP FLUTUANTE DE TRADUÇÃO     */}
+      {/* ========================================== */}
+      {clickedWord && (
+        <div 
+          style={{
+            position: 'fixed',
+            left: `${tooltipPos.x}px`,
+            top: `${tooltipPos.y}px`,
+            transform: 'translate(-50%, -100%)',
+            background: 'var(--card-bg)',
+            border: '1px solid var(--primary)',
+            boxShadow: '0px 4px 12px rgba(0,0,0,0.25)',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            zIndex: 9999, /* z-index alto para garantir que fique por cima dos modais */
+            fontSize: '0.85rem',
+            pointerEvents: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            minWidth: '150px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '4px', gap: '15px' }}>
+            <strong style={{ color: 'var(--primary)' }}>{clickedWord}</strong>
+            <button 
+              onClick={() => setClickedWord(null)} 
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div style={{ color: 'var(--text-main)', marginTop: '4px' }}>
+            {loadingTranslation ? (
+              <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Traduzindo...</span>
+            ) : (
+              <span style={{ fontWeight: '500' }}>{translation}</span>
+            )}
           </div>
         </div>
       )}
