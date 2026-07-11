@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { User, Key, Settings, ShieldCheck, Cpu } from "lucide-react";
+import { User, Key, Cpu } from "lucide-react"; // Removi importações não utilizadas
+
+// Função robusta para capturar o token (Mesma do AdminPanel)
+const getAuthToken = () => {
+  const storages = [localStorage, sessionStorage];
+  for (const storage of storages) {
+    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
+    if (t && t.startsWith("eyJ")) return t;
+    try {
+      const uStr = storage.getItem("user");
+      if (uStr && uStr.startsWith("{")) {
+        const uObj = JSON.parse(uStr);
+        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
+        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
+      }
+    } catch(e) {}
+  }
+  return "";
+};
 
 export default function Profile() {
   const { user } = useAuth();
@@ -18,15 +36,17 @@ export default function Profile() {
   const [userModel, setUserModel] = useState("");
   const [isSavingAI, setIsSavingAI] = useState(false);
 
-  const getAuthToken = () => localStorage.getItem("professor_ai_token");
-
   useEffect(() => {
     // Busca as configurações de IA do utilizador ao carregar a página
     const fetchSettings = async () => {
       try {
+        const token = getAuthToken();
+        if (!token) return;
+
         const res = await fetch(`${API_URL}/users/me/settings`, {
-          headers: { "Authorization": `Bearer ${getAuthToken()}` }
+          headers: { "Authorization": `Bearer ${token}` }
         });
+        
         if (res.ok) {
           const data = await res.json();
           const key = data.api_key || "";
@@ -38,10 +58,12 @@ export default function Profile() {
             setProviderTab("aistudio");
           }
         }
-      } catch (err) { console.error(err); }
+      } catch (err) { 
+        console.error("Erro ao buscar configurações:", err); 
+      }
     };
     fetchSettings();
-  }, []);
+  }, [API_URL]);
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -99,7 +121,9 @@ export default function Profile() {
       } else {
         alert("Erro ao guardar definições.");
       }
-    } catch (e) { alert("Falha na ligação."); }
+    } catch (e) { 
+      alert("Falha na ligação."); 
+    }
     setIsSavingAI(false);
   };
 
@@ -125,6 +149,24 @@ export default function Profile() {
 
   if (!user) return null;
 
+  // Lógica de cálculo do Status do Plano (Substitui a variável indefinida 'userPlan')
+  let planStatus = "Grátis (Sem Plano)";
+  let planColor = "var(--text-main)";
+
+  if (user.role === 'admin') {
+    planStatus = "Vitalício (Admin)";
+    planColor = "var(--primary)";
+  } else if (user.plan_expires_at) {
+    const expDate = new Date(user.plan_expires_at);
+    if (expDate > new Date()) {
+      planStatus = `Ativo até ${expDate.toLocaleDateString()}`;
+      planColor = "var(--success-text)";
+    } else {
+      planStatus = `Expirado em ${expDate.toLocaleDateString()}`;
+      planColor = "var(--error-text)";
+    }
+  }
+
   return (
     <div className="container" style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto' }}>
       <header style={{ marginBottom: '2rem' }}>
@@ -149,9 +191,9 @@ export default function Profile() {
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Plano Ativo</label>
-            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
-              {userPlan ? userPlan.toUpperCase() : "Grátis"}
+            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Status da Assinatura</label>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: planColor }}>
+              {planStatus}
             </div>
           </div>
           <div>
