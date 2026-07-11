@@ -163,7 +163,7 @@ export default function GabariteCespe() {
     const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
     setProviderTab(isAIStudio ? "aistudio" : "openrouter");
     setTempApiKey(userApiKey || "");
-    setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash" : "google/gemini-2.5-flash"));
+    setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash-lite" : "google/gemini-2.5-flash-lite"));
     setShowConfig(true);
   };
 
@@ -232,6 +232,11 @@ export default function GabariteCespe() {
         // Comando linear e ultra-imperativo para blindar o escopo da IA
         const instrucoesFocoCompletas = `DIRETRIZ OBRIGATÓRIA: ${instrucaoDetalhada} PROIBIDO abordar qualquer outro assunto de língua portuguesa que fuja dessa vertente. Estilo do Texto Base: ${configTypology}. Extensão: ${configTextSize}.`.trim();
 
+        // Descobre se a chave é do Google
+        const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
+        // Define um modelo padrão seguro dependendo do provedor
+        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "nvidia/nemotron-3-super-120b-a12b:free";
+
         const payload = {
           subject: "Língua Portuguesa", 
           focus: instrucoesFocoCompletas,
@@ -239,7 +244,7 @@ export default function GabariteCespe() {
           amount: currentBatchSize,
           generate_text: configTextBase, 
           formato: configFormato,
-          model: userModel || "nvidia/nemotron-3-super-120b-a12b:free",
+          model: userModel || defaultModel, // Usa o fallback inteligente
           api_key: userApiKey || null
         };
 
@@ -256,11 +261,20 @@ export default function GabariteCespe() {
               },
               body: JSON.stringify(payload)
             });
+            
+            // NOVO: Aborta imediatamente e avisa o usuário se a API recusar (ex: 404, 401)
+            if (data && data.error) {
+              throw new Error(`Erro da API: ${data.error}`);
+            }
+
             if (data && data.questoes && data.questoes.length > 0) break;
-            throw new Error("Lote retornado vazio.");
+            throw new Error("Lote retornado vazio pela IA.");
           } catch (e) {
             tentativas++;
-            if (tentativas >= 2) throw new Error("A IA falhou em estruturar os itens de Língua Portuguesa.");
+            // Se o erro vier direto da API (Google/OpenRouter), não adianta tentar de novo.
+            if (e.message.includes("Erro da API")) throw e; 
+            
+            if (tentativas >= 2) throw new Error(e.message || "A IA falhou em estruturar os itens de Língua Portuguesa.");
             setLoadingMsg(`Corrigindo alinhamento léxico... (A repetir Lote ${i + 1})`);
           }
         }
@@ -333,26 +347,42 @@ export default function GabariteCespe() {
 
   const generateLesson = async (wrongQuestions) => {
     setViewState("loading");
-    setLoadingMsg("O Professor IA está reunindo regras gramaticais e análises sintáticas das questões que errou...");
+    setLoadingMsg("O Professor IA está montando a análise textual e traduções para os seus erros...");
+
     try {
       const token = getAuthToken();
-      const response = await fetch(`${API_URL}/generate-lesson-cespe`, {
+      
+      // 1. Resolve o problema de roteamento do modelo (anti-404)
+      const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
+      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+
+      // 2. SUBSTITUI o fetch normal pela sua função blindada fetchStreamAsJson
+      const data = await fetchStreamAsJson(`${API_URL}/generate-lesson-cespe`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": token ? `Bearer ${token}` : "" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : ""
+        },
         body: JSON.stringify({
           wrong_questions: wrongQuestions,
-          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel,
           api_key: userApiKey || null
         })
       });
-      if (!response.ok) throw new Error("Falha ao gerar aula.");
-      const data = await response.json();
-      setLessonContent(data.lesson_markdown || data.text || "Conteúdo indisponível.");
-      setViewState("results"); 
+
+      // 3. Captura possíveis erros que a API possa retornar
+      if (data && data.error) {
+        throw new Error(`Erro da API: ${data.error}`);
+      }
+
+      setLessonContent(data.lesson_markdown || data.text || "Conteúdo não disponível.");
+      setViewState("exam"); 
       setShowLessonModal(true);
+
     } catch (err) {
-      alert("Falha ao gerar o parecer explicativo.");
-      setViewState("results");
+      console.error(err);
+      alert(err.message || "Falha ao gerar a aula explicativa.");
+      setViewState("exam");
     }
   };
 

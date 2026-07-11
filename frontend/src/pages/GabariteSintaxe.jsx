@@ -127,7 +127,7 @@ export default function GabariteSintaxe() {
     const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
     setProviderTab(isAIStudio ? "aistudio" : "openrouter");
     setTempApiKey(userApiKey || "");
-    setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash" : "google/gemini-2.5-flash"));
+    setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash-lite" : "google/gemini-2.5-flash-lite"));
     setShowConfig(true);
   };
 
@@ -222,6 +222,11 @@ export default function GabariteSintaxe() {
           Pegadinhas: ${currentTopic.trap}
         `.replace(/[\n\r]+/g, " ");
 
+        // 1. Descobre se a chave é do Google (não começa com sk-or-)
+        const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
+        // 2. Define o modelo de segurança compatível
+        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+
         const payload = {
           subject: "Língua Portuguesa",
           focus: `Sintaxe: ${currentTopic.title}. ATENÇÃO EXAMINADOR: É OBRIGATÓRIO basear o cenário das questões, os gabaritos e os distratores ESTRITAMENTE nas seguintes regras, dicas e pegadinhas desta aula: ${regrasDaAula}`, 
@@ -229,7 +234,7 @@ export default function GabariteSintaxe() {
           amount: currentBatchSize,
           generate_text: false,
           formato: configFormato,
-          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel,
           api_key: userApiKey || null
         };
 
@@ -248,17 +253,20 @@ export default function GabariteSintaxe() {
               body: JSON.stringify(payload)
             });
             
-            if (data && data.questoes && data.questoes.length > 0) {
-              break; 
-            } else {
-              throw new Error("O lote veio vazio.");
+            // NOVO: Aborta na hora se o backend repassar um erro da API
+            if (data && data.error) {
+              throw new Error(`Erro da API: ${data.error}`);
             }
+
+            if (data && data.questoes && data.questoes.length > 0) break;
+            throw new Error("O lote veio vazio.");
           } catch (e) {
             tentativas++;
-            if (tentativas >= maxTentativas) {
-              throw new Error("A IA falhou seguidamente ao formatar as opções. Tente novamente.");
-            }
-            setLoadingMsg(`Corrigindo formato da IA... (A repetir o Lote ${i + 1})`);
+            // Se o erro for da API, não repete o laço, apenas repassa o erro para a tela
+            if (e.message.includes("Erro da API")) throw e; 
+            
+            if (tentativas >= 2) throw new Error(e.message || "A IA falhou em formatar as opções.");
+            setLoadingMsg(`Reajustando os vereditos da IA... (A repetir Lote ${i + 1})`);
           }
         }
 
@@ -353,10 +361,16 @@ export default function GabariteSintaxe() {
 
   const generateLesson = async (wrongQuestions) => {
     setViewState("loading");
-    setLoadingMsg("O Professor IA está montando uma revisão focada nos seus erros...");
+    setLoadingMsg("O Professor IA está montando a análise textual e traduções para os seus erros...");
 
     try {
       const token = getAuthToken();
+      
+      // 1. Resolve o problema de roteamento do modelo (anti-404)
+      const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
+      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+
+      // 2. SUBSTITUI o fetch normal pela sua função blindada fetchStreamAsJson
       const data = await fetchStreamAsJson(`${API_URL}/generate-lesson-cespe`, {
         method: "POST",
         headers: { 
@@ -365,19 +379,24 @@ export default function GabariteSintaxe() {
         },
         body: JSON.stringify({
           wrong_questions: wrongQuestions,
-          model: userModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel,
           api_key: userApiKey || null
         })
       });
 
+      // 3. Captura possíveis erros que a API possa retornar
+      if (data && data.error) {
+        throw new Error(`Erro da API: ${data.error}`);
+      }
+
       setLessonContent(data.lesson_markdown || data.text || "Conteúdo não disponível.");
-      setViewState("results"); 
+      setViewState("exam"); 
       setShowLessonModal(true);
 
     } catch (err) {
       console.error(err);
-      alert("Falha ao gerar a aula. Verifique a conexão com a IA.");
-      setViewState("results");
+      alert(err.message || "Falha ao gerar a aula explicativa.");
+      setViewState("exam");
     }
   };
 
