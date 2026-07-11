@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { UserPlus, LogIn, AlertCircle, CheckCircle, Brain, FileText, MessageSquare, Target } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false); 
-  
+  const [selectedPlan, setSelectedPlan] = useState('mensal');
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
@@ -16,6 +18,7 @@ export default function Login() {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  
 
   const toggleMode = () => {
     setIsRegistering(!isRegistering);
@@ -56,24 +59,46 @@ export default function Login() {
           throw new Error(data.detail || "Erro ao criar conta.");
         }
 
-        setSuccessMsg("Conta criada com sucesso! Faça login agora.");
-        setIsRegistering(false); 
-        setPassword('');
-        setConfirmPassword('');
+        // Em vez de apenas mostrar mensagem, gera a cobrança do plano escolhido
+        const payRes = await fetch(`${API_URL}/payments/create-preference`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, plano: selectedPlan })
+        });
+        
+        const payData = await payRes.json();
+        if (!payRes.ok) throw new Error(payData.detail || "Conta criada, mas falhou ao gerar cobrança do Mercado Pago.");
+
+        // Redireciona o usuário direto para o checkout do Mercado Pago
+        window.location.href = payData.init_point;
+        return; // Para a execução da função para não dar conflito
 
       } else {
-        const success = await login(email, password);
-        if (success) {
-          navigate('/');
-        } else {
-          throw new Error("Email ou senha inválidos.");
-        }
+        await login(email, password);
+        navigate('/');
       }
     } catch (err) {
-      setError(err.message);
+      if (err.message === "CONTA_EXPIRADA") {
+        setError("CONTA_EXPIRADA");
+      } else {
+        setError(err.message || "Erro ao fazer login.");
+      }
     } finally {
       setLoading(false);
     }
+
+    const location = useLocation();
+
+    useEffect(() => {
+      const queryParams = new URLSearchParams(location.search);
+      const status = queryParams.get('status');
+      
+      if (status === 'approved') {
+        setSuccessMsg('🎉 Seu pagamento foi aprovado com sucesso! O sistema está processando sua liberação. Tente fazer login em instantes.');
+      } else if (status === 'pending') {
+        setSuccessMsg('⏳ Seu pagamento está pendente (Aguardando compensação do Boleto/Pix). Assim que compensado, seu acesso será liberado.');
+      }
+    }, [location]);
   };
 
   return (
@@ -198,11 +223,22 @@ export default function Login() {
               </div>
             )}
             
-            {error && (
+            {error && error === "CONTA_EXPIRADA" ? (
+              <div className="error" style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', background: 'rgba(255, 193, 7, 0.1)', color: '#d39e00', borderColor: '#ffeeba', padding: '15px', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertCircle size={18} /> 
+                  <strong>Conta Inativa ou Expirada!</strong>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.9rem', textAlign: 'center' }}>O seu período de acesso terminou.</p>
+                <button onClick={() => navigate('/planos')} className="btn primary" style={{ marginTop: '10px', padding: '8px 16px', background: '#28a745', borderColor: '#28a745', color: '#fff' }}>
+                  Ativar Conta (Renovar)
+                </button>
+              </div>
+            ) : error ? (
               <div className="error" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--error-bg)', color: 'var(--error-text)', borderColor: 'var(--error-text)' }}>
                 <AlertCircle size={18} /> {error}
               </div>
-            )}
+            ) : null}
 
             <form onSubmit={handleSubmit}>
               <div className="row">
@@ -240,6 +276,57 @@ export default function Login() {
                     placeholder="Repita a sua senha"
                     required 
                   />
+                  
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <label className="label" style={{ marginBottom: '10px', display: 'block' }}>Escolha o seu Plano (Pagamentos Únicos)</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      
+                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'mensal' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="mensal" checked={selectedPlan === 'mensal'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Mensal</strong>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
+                          </div>
+                        </div>
+                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 49,90</strong>
+                      </label>
+
+                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'trimestral' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="trimestral" checked={selectedPlan === 'trimestral'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Trimestral</strong>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
+                          </div>
+                        </div>
+                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 119,90</strong>
+                      </label>
+
+                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'semestral' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="semestral" checked={selectedPlan === 'semestral'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Semestral</strong>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
+                          </div>
+                        </div>
+                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 199,90</strong>
+                      </label>
+
+                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'anual' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="anual" checked={selectedPlan === 'anual'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Anual</strong>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
+                          </div>
+                        </div>
+                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 349,90</strong>
+                      </label>
+                      
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -250,7 +337,7 @@ export default function Login() {
                   style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '1.05rem', boxShadow: '0 4px 12px var(--primary-light)' }}
                   disabled={loading}
                 >
-                  {loading ? 'A processar...' : (isRegistering ? 'Cadastrar e Começar' : 'Entrar no Painel')}
+                  {loading ? 'A processar...' : (isRegistering ? 'Cadastrar e Ativar Plano' : 'Entrar no Painel')}
                 </button>
                 
                 <div style={{ position: 'relative', width: '100%', textAlign: 'center', margin: '10px 0' }}>
@@ -266,8 +353,20 @@ export default function Login() {
                 >
                   {isRegistering 
                     ? 'Já tem uma conta? Fazer Login' 
-                    : 'Não tem conta? Cadastre-se gratuitamente'}
+                    : 'Não tem conta? Cadastre-se agora'}
                 </button>
+                
+                {/* NOVO: Botão persistente para ativar conta já existente */}
+                {!isRegistering && (
+                  <button 
+                    type="button"
+                    className="btn"
+                    onClick={() => navigate('/planos')}
+                    style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--primary)', background: 'transparent', color: 'var(--primary)', marginTop: '-5px' }}
+                  >
+                    Ativar ou Renovar Conta
+                  </button>
+                )}
               </div>
             </form>
           </div>

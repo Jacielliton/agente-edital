@@ -137,26 +137,27 @@ export default function Profile() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
         
         {/* BLOCO 1: INFORMAÇÕES DA CONTA */}
-        <div style={{ background: 'var(--card-bg)', padding: '25px', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-          <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-            <ShieldCheck size={20} color="var(--primary)" /> Detalhes da Conta
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '15px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>E-mail Registado</label>
-              <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{user.email}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '15px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>E-mail Registado</label>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{user.email}</div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Nível de Acesso</label>
+            <div style={{ display: 'inline-block', padding: '4px 10px', background: user.role === 'admin' ? '#1e293b' : 'var(--primary-light)', color: user.role === 'admin' ? '#fff' : 'var(--primary)', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>
+              {user.role}
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Nível de Acesso</label>
-              <div style={{ display: 'inline-block', padding: '4px 10px', background: user.role === 'admin' ? '#1e293b' : 'var(--primary-light)', color: user.role === 'admin' ? '#fff' : 'var(--primary)', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'uppercase' }}>
-                {user.role}
-              </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Plano Ativo</label>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
+              {userPlan ? userPlan.toUpperCase() : "Grátis"}
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Permissões Extras</label>
-              <div style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>
-                {user.can_manage_lessons || user.role === 'admin' ? "✅ Geração e Gestão de Aulas" : "❌ Apenas Leitura (Aluno)"}
-              </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Permissões Extras</label>
+            <div style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>
+              {user.can_manage_lessons || user.role === 'admin' ? "✅ Geração e Gestão de Aulas" : "❌ Apenas Leitura (Aluno)"}
             </div>
           </div>
         </div>

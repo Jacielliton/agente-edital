@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // Adicione este bloco server para liberar o acesso do LocalTunnel/Ngrok
+  server: {
+    allowedHosts: true, 
+  },
   plugins: [
     react(),
     VitePWA({

@@ -16,6 +16,7 @@ const OpenRouterCallback = lazy(() => import("./pages/OpenRouterCallback"));
 const Profile = lazy(() => import("./pages/Profile"));
 const TreinoDiscursiva = lazy(() => import("./pages/TreinoDiscursiva"));
 const Ferramentas = lazy(() => import("./pages/Ferramentas"));
+const Planos = lazy(() => import("./pages/Planos")); // NOVO
 const GabariteCespe = lazy(() => import("./pages/GabariteCespe"));
 const GabariteLogica = lazy(() => import("./pages/GabariteLogica"));
 const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe")); 
@@ -145,6 +146,7 @@ export default function App() {
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/planos" element={<Planos />} />
               <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
               <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
               <Route path="/aula/:id" element={<PrivateRoute><SingleLesson /></PrivateRoute>} />

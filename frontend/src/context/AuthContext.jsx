@@ -36,6 +36,13 @@ export const AuthProvider = ({ children }) => {
             
             setUser(null);
             window.location.href = "/login"; // Força o redirecionamento
+          } else if (data.detail === "CONTA_EXPIRADA") {
+            alert("⚠️ Seu período de acesso expirou. Você foi desconectado.");
+            localStorage.removeItem("professor_ai_token");
+            localStorage.removeItem("access_token");
+            sessionStorage.clear();
+            setUser(null);
+            window.location.href = "/login"; 
           }
         } catch (e) {
           // Se a resposta 401 não tiver JSON ou falhar, ignoramos silenciosamente
@@ -98,11 +105,16 @@ export const AuthProvider = ({ children }) => {
         const userData = await userRes.json();
         setUser(userData);
         return true;
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        if (res.status === 403 && errorData.detail === "CONTA_EXPIRADA") {
+          throw new Error("CONTA_EXPIRADA");
+        }
+        throw new Error("Email ou senha inválidos.");
       }
-      return false;
     } catch (error) {
       console.error("Erro no login", error);
-      return false;
+      throw error; // Passa o erro adiante para o Login.jsx
     }
   };
 

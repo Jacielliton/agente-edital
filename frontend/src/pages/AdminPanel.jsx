@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Trash2, RefreshCw, UserCog, Shield, Edit, Plus, Search } from "lucide-react";
+import { Trash2, RefreshCw, UserCog, Shield, Edit, Plus, Search, Ban, CheckCircle, ShieldOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 // Função robusta para capturar o token em qualquer ambiente
@@ -31,8 +31,102 @@ export default function AdminPanel() {
 
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [userFormData, setUserFormData] = useState({ email: '', password: '', role: 'user', can_manage_lessons: false });
+  const [userFormData, setUserFormData] = useState({ email: '', password: '', role: 'user', can_manage_lessons: false, is_active: true });
   const [savingUser, setSavingUser] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+
+  const getStatusBadge = (expiresAt) => {
+    if (!expiresAt) return <span style={{color: 'gray'}}>Gratuito (Sem Plano)</span>;
+    
+    const exp = new Date(expiresAt);
+    const now = new Date();
+    
+    if (exp > now) {
+      return <span style={{color: 'green', fontWeight: 'bold'}}>Ativo até {exp.toLocaleDateString()}</span>;
+    } else {
+      return <span style={{color: 'red'}}>Expirado em {exp.toLocaleDateString()}</span>;
+    }
+  };
+
+  const handleSavePlan = async (planType) => {
+    try {
+      const res = await fetch(`${API_URL}/admin/grant-plan/${selectedUser.id}?plan=${planType}`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${getAuthToken()}`,
+          'Content-Type': 'application/json' 
+        }
+      });
+      
+      if (res.ok) {
+        // Otimização: Atualize o estado localmente sem esperar o próximo GET
+        setUsers(prevUsers => prevUsers.map(u => 
+          u.id === selectedUser.id 
+            ? { ...u, plan_expires_at: new Date(Date.now() + 30*24*60*60*1000).toISOString() } // Simulação local temporária
+            : u
+        ));
+        
+        alert("Plano atribuído com sucesso!");
+        setShowModal(false);
+        await fetchUsers(); // Busca a confirmação real do banco
+      }
+    } catch (e) { 
+      console.error(e);
+      alert("Erro de conexão ao salvar plano.");
+    }
+  };
+
+  // Função para remover plano
+  const handleRevokePlan = async (userId) => {
+    if (!window.confirm("Isso removerá imediatamente o acesso pago do usuário. Tem certeza?")) return;
+    
+    try {
+      const res = await fetch(`${API_URL}/admin/revoke-plan/${userId}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+      });
+      
+      if (res.ok) {
+        setUsers(users.map(u => u.id === userId ? { ...u, plan_expires_at: new Date(Date.now() - 60000).toISOString() } : u));
+        setShowModal(false);
+        alert("Plano removido com sucesso!");
+      } else {
+        alert("Erro ao remover plano do usuário.");
+      }
+    } catch (e) { 
+      alert("Erro de conexão ao remover plano"); 
+    }
+  };
+
+  // Função para suspender/reativar usuário
+  const handleToggleStatus = async (userObj) => {
+    if (userObj.id === 1) return alert("Não é possível suspender o Admin Principal.");
+    
+    const newStatus = !userObj.is_active;
+    const confirmMsg = newStatus 
+      ? `Reativar a conta de ${userObj.email}?` 
+      : `Suspender o acesso de ${userObj.email}? O usuário não conseguirá entrar no sistema.`;
+      
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`${API_URL}/users/${userObj.id}`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getAuthToken()}` 
+        },
+        body: JSON.stringify({ is_active: newStatus })
+      });
+
+      if (res.ok) {
+        setUsers(users.map(u => u.id === userObj.id ? { ...u, is_active: newStatus } : u));
+      } else {
+        alert("Erro ao alterar status do usuário.");
+      }
+    } catch (e) { console.error(e); }
+  };
 
   // Modificado para buscar Usuários e Leaderboard simultaneamente
   const fetchUsers = async () => {
@@ -40,22 +134,32 @@ export default function AdminPanel() {
     const token = getAuthToken();
 
     try {
-      const [resUsers, resLead] = await Promise.all([
-        fetch(`${API_URL}/users`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${API_URL}/performance/leaderboard`, { headers: { "Authorization": `Bearer ${token}` } })
-      ]);
+      // 1. Busca os usuários (Essencial)
+      const resUsers = await fetch(`${API_URL}/users`, { 
+        headers: { "Authorization": `Bearer ${token}` } 
+      });
 
       if (!resUsers.ok) throw new Error("Acesso negado ou token inválido");
       
       const usersData = await resUsers.json();
       setUsers(usersData || []);
 
-      if (resLead.ok) {
-        const leadData = await resLead.json();
-        setLeaderboard(leadData || []);
+      // 2. Busca o Leaderboard (Opcional - não deve quebrar a página se falhar)
+      try {
+        const resLead = await fetch(`${API_URL}/performance/leaderboard`, { 
+          headers: { "Authorization": `Bearer ${token}` } 
+        });
+        if (resLead.ok) {
+          const leadData = await resLead.json();
+          setLeaderboard(leadData || []);
+        }
+      } catch (leadErr) {
+        console.warn("Leaderboard indisponível, mas carregando usuários normalmente.");
       }
+
     } catch (err) {
       console.error("Erro ao buscar dados do painel admin:", err);
+      alert("Erro ao carregar dados dos usuários.");
     } finally {
       setLoadingUsers(false);
     }
@@ -68,9 +172,15 @@ export default function AdminPanel() {
   const handleOpenUserModal = (userData = null) => {
     setEditingUser(userData);
     if (userData) {
-      setUserFormData({ email: userData.email, password: '', role: userData.role, can_manage_lessons: userData.can_manage_lessons || false });
+      setUserFormData({ 
+        email: userData.email, 
+        password: '', 
+        role: userData.role, 
+        can_manage_lessons: userData.can_manage_lessons || false,
+        is_active: userData.is_active !== undefined ? userData.is_active : true
+      });
     } else {
-      setUserFormData({ email: '', password: '', role: 'user', can_manage_lessons: false });
+      setUserFormData({ email: '', password: '', role: 'user', can_manage_lessons: false, is_active: true });
     }
     setUserModalOpen(true);
   };
@@ -129,6 +239,12 @@ export default function AdminPanel() {
     }
   };
 
+
+  const handleGrantPlan = (userObj) => {
+    setSelectedUser(userObj);
+    setShowModal(true);
+  };
+
   // Filtragem dinâmica de usuários baseada na barra de pesquisa
   const filteredUsers = users.filter(u => 
     u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -169,9 +285,10 @@ export default function AdminPanel() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>ID / Status</th>
                   <th>Email</th>
-                  <th>XP / Elo</th> {/* <-- Nova Coluna */}
+                  <th>XP / Elo</th> 
+                  <th>Status da Assinatura</th>
                   <th>Nível de Acesso</th>
                   <th>Permissões Extras</th>
                   <th>Ações</th>
@@ -180,27 +297,70 @@ export default function AdminPanel() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
                       Nenhum utilizador encontrado.
                     </td>
                   </tr>
                 ) : (
                   filteredUsers.map((u) => {
-                    // Cruzamento dos dados: busca o usuário no Ranking Global pelo e-mail
+                    // Cruzamento dos dados: busca o usuário no Ranking Global
                     const userStats = leaderboard.find(l => l.email_completo === u.email);
                     const userXP = userStats ? Math.floor(userStats.xp) : 0;
                     const userElo = userStats ? userStats.elo : "Iniciante";
 
+                    // Dentro do seu .map() de usuários:
+                    const expireDate = u.plan_expires_at ? new Date(u.plan_expires_at) : null;
+                    const now = new Date();
+
+                    let planStatus = "Gratuito (Sem Plano)";
+                    let statusColor = "var(--text-muted)";
+                    let hasActivePlan = false;
+
+                    if (u.role === 'admin') {
+                      planStatus = "Vitalício (Admin)";
+                      statusColor = "var(--primary)";
+                      hasActivePlan = true;
+                    } else if (expireDate && !isNaN(expireDate.getTime())) { // Verifica se é uma data válida
+                      if (expireDate > now) {
+                        planStatus = `Ativo até ${expireDate.toLocaleDateString()}`;
+                        statusColor = "var(--success-text)"; // Verde
+                        hasActivePlan = true;
+                      } else {
+                        planStatus = `Expirou em ${expireDate.toLocaleDateString()}`;
+                        statusColor = "var(--error-text)"; // Vermelho
+                      }
+                    }
+
                     return (
-                      <tr key={u.id}>
-                        <td style={{ color: 'var(--text-secondary)' }}>#{u.id}</td>
-                        <td style={{ color: 'var(--text-main)' }}><strong>{u.email}</strong></td>
+                      <tr key={u.id} style={{ opacity: u.is_active === false ? 0.6 : 1 }}>
+                        <td style={{ color: 'var(--text-secondary)' }}>
+                          #{u.id} <br/>
+                          {u.is_active !== false ? 
+                            <span style={{ fontSize: '0.7rem', color: 'var(--success-text)' }}>● Ativo</span> : 
+                            <span style={{ fontSize: '0.7rem', color: 'var(--error-text)' }}>● Suspenso</span>
+                          }
+                        </td>
+                        <td style={{ color: u.is_active === false ? 'var(--error-text)' : 'var(--text-main)', textDecoration: u.is_active === false ? 'line-through' : 'none' }}>
+                          <strong>{u.email}</strong>
+                        </td>
                         
-                        {/* Nova Célula de XP/Elo */}
                         <td>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <strong style={{ color: 'var(--primary)' }}>{userXP} XP</strong>
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{userElo}</span>
+                          </div>
+                        </td>
+
+                        {/* ---> NOVA CÉLULA NA TABELA <--- */}
+                        <td style={{ color: statusColor, fontWeight: 'bold', fontSize: '0.85rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            {planStatus}
+                            {/* Botão de Remover Plano na Própria Tabela (se não for admin e tiver plano ativo) */}
+                            {u.role !== 'admin' && hasActivePlan && (
+                              <button onClick={() => handleRevokePlan(u.id)} title="Revogar Plano" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--error-text)', padding: '0 5px' }}>
+                                <ShieldOff size={14} />
+                              </button>
+                            )}
                           </div>
                         </td>
 
@@ -226,8 +386,26 @@ export default function AdminPanel() {
                         </td>
                         <td>
                           <div className="actions-cell">
+                            <button 
+                              className="btn small" 
+                              onClick={() => handleToggleStatus(u)} 
+                              disabled={u.id === 1} 
+                              title={u.is_active === false ? "Reativar Usuário" : "Suspender Usuário"}
+                              style={{ background: u.is_active === false ? 'var(--success-bg)' : 'var(--error-bg)', color: u.is_active === false ? 'var(--success-text)' : 'var(--error-text)', borderColor: 'transparent' }}
+                            >
+                              {u.is_active === false ? <CheckCircle size={16} /> : <Ban size={16} />}
+                            </button>
+
                             <button className="btn small" onClick={() => handleOpenUserModal(u)} disabled={u.id === 1} title="Editar Usuário"><Edit size={16} /></button>
                             <button className="btn small error-btn" onClick={() => handleDeleteUser(u.id)} disabled={u.id === 1} title="Excluir"><Trash2 size={16} /></button>
+                            
+                            <button 
+                              onClick={() => handleGrantPlan(u)} // Passa o objeto usuário inteiro
+                              title="Gerenciar Plano"
+                              style={{ background: 'var(--success-bg)', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                              <Shield size={16} color="var(--success-text)" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -285,6 +463,23 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
+
+      {showModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', color: 'black', width: '300px' }}>
+            <h3 style={{color: 'black', marginBottom: '15px'}}>Gerenciar plano de {selectedUser?.email.split('@')[0]}</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {['mensal', 'trimestral', 'semestral', 'anual'].map(p => (
+                <button key={p} onClick={() => handleSavePlan(p)} style={{padding: '10px', cursor: 'pointer', background: '#0f172a', color: 'white', border: 'none', borderRadius: '4px'}}>{p.toUpperCase()}</button>
+              ))}
+              <hr style={{margin: '10px 0'}}/>
+              <button onClick={() => handleRevokePlan(selectedUser?.id)} style={{ background: '#ef4444', color: 'white', padding: '10px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>Remover Plano Ativo</button>
+              <button onClick={() => setShowModal(false)} style={{ background: 'gray', color: 'white', padding: '10px', cursor: 'pointer', border: 'none', borderRadius: '4px' }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

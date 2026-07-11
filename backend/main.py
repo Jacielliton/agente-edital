@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from dotenv import load_dotenv
 from typing import Literal
+import mercadopago
+from fastapi import Request
 
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -94,6 +96,8 @@ class User(Base):
     preferred_model = Column(String, nullable=True)  
     can_manage_lessons = Column(Boolean, default=False) 
     session_version = Column(Integer, default=1)
+    plan_expires_at = Column(DateTime, nullable=True) # Controle do Mercado Pago
+    is_active = Column(Boolean, default=True)
 
 
 # ============================================================================
@@ -254,6 +258,20 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     
     if user is None:
         raise credentials_exception
+    
+    # === CONTROLE DE VENCIMENTO DO PLANO ===
+    if not user.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="CONTA_BLOQUEADA"
+        )
+        
+    if user.role != "admin" and user.plan_expires_at:
+        if datetime.utcnow() > user.plan_expires_at:
+            raise HTTPException(
+                status_code=403,
+                detail="CONTA_EXPIRADA"
+            )
         
     # === SISTEMA ANTI-COMPARTILHAMENTO: VALIDA A SESSÃO ===
     # Se o token tem uma versão, mas ela é diferente da versão atual no banco,
@@ -305,7 +323,9 @@ class UserResponse(BaseModel):
     id: int
     email: str
     role: str
-    can_manage_lessons: bool # Garante que o campo apareça no JSON enviado ao React
+    can_manage_lessons: bool 
+    plan_expires_at: Optional[datetime] = None
+    is_active: bool = True # NOVO
     model_config = ConfigDict(from_attributes=True)
 
 class UserCreateAdmin(BaseModel):
@@ -313,12 +333,14 @@ class UserCreateAdmin(BaseModel):
     password: str
     role: str = "user"
     can_manage_lessons: bool = False
+    is_active: bool = True # NOVO
 
 class UserUpdateAdmin(BaseModel):
     email: Optional[str] = None
     role: Optional[str] = None
     can_manage_lessons: Optional[bool] = None
     password: Optional[str] = None
+    is_active: Optional[bool] = None # NOVO
     
 class PaginatedPlansResponse(BaseModel):
     items: List[PlanSummaryResponse]
@@ -343,7 +365,11 @@ class TranslateWordRequest(BaseModel):
     word: str
     model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
     api_key: Optional[str] = None
-
+    
+class ProcessedPayment(Base):
+    __tablename__ = "processed_payments"
+    payment_id = Column(String, primary_key=True, index=True)
+    processed_at = Column(DateTime, default=datetime.utcnow)
 # ============================================================================
 # 5. CLIENTE OPENROUTER
 # ============================================================================
@@ -412,7 +438,8 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.email == user.email))
     if result.scalars().first(): raise HTTPException(status_code=400, detail="Email já cadastrado")
     hashed_pw = get_password_hash(user.password)
-    new_user = User(email=user.email, hashed_password=hashed_pw, role=user.role)
+    # Define a expiração para o momento exato do cadastro (forçando a ativação imediata após login)
+    new_user = User(email=user.email, hashed_password=hashed_pw, role=user.role, plan_expires_at=datetime.utcnow())
     db.add(new_user)
     await db.commit()
     return {"message": "Usuário criado com sucesso"}
@@ -424,6 +451,11 @@ async def login(form_data: UserLogin, db: AsyncSession = Depends(get_db)):
     
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+
+    # === CONTROLE DE VENCIMENTO DO PLANO ===
+    if user.role != "admin" and user.plan_expires_at:
+        if datetime.utcnow() > user.plan_expires_at:
+            raise HTTPException(status_code=403, detail="CONTA_EXPIRADA")
     
     # === SISTEMA ANTI-COMPARTILHAMENTO: INCREMENTA A SESSÃO ===
     # Se for nulo (usuários antigos), define como 1. Depois soma 1.
@@ -1913,12 +1945,6 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    role: str
-    can_manage_lessons: bool
-    model_config = ConfigDict(from_attributes=True)
 
 class UserUpdateRole(BaseModel):
     role: str
@@ -1954,6 +1980,7 @@ async def update_user_admin(user_id: int, payload: UserUpdateAdmin, db: AsyncSes
     if payload.email is not None: user.email = payload.email
     if payload.role is not None: user.role = payload.role
     if payload.can_manage_lessons is not None: user.can_manage_lessons = payload.can_manage_lessons
+    if payload.is_active is not None: user.is_active = payload.is_active # NOVO
     if payload.password is not None and payload.password.strip():
         user.hashed_password = get_password_hash(payload.password)
         
@@ -2548,6 +2575,181 @@ async def translate_word_endpoint(req: TranslateWordRequest):
         print(f"Erro ao traduzir: {e}")
         raise HTTPException(status_code=500, detail="Erro ao processar a tradução.")
     
+
+# ============================================================================
+# ENDPOINTS MERCADO PAGO
+# ============================================================================
+
+mp_access_token = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "INSIRA_SEU_ACCESS_TOKEN_AQUI")
+sdk = mercadopago.SDK(mp_access_token)
+
+class PaymentRequest(BaseModel):
+    email: str
+    plano: str
+
+@app.post("/payments/create-preference")
+async def create_preference(req: PaymentRequest):
+    planos = {
+        "mensal": {"price": 49.90, "title": "Acesso Mensal (Renovação Manual)", "days": 30},
+        "trimestral": {"price": 119.90, "title": "Acesso Trimestral (Renovação Manual)", "days": 90},
+        "semestral": {"price": 199.90, "title": "Acesso Semestral (Renovação Manual)", "days": 180},
+        "anual": {"price": 349.90, "title": "Acesso Anual (Renovação Manual)", "days": 365}
+    }
+    
+    if req.plano not in planos:
+        raise HTTPException(status_code=400, detail="Plano inválido")
+    
+    plano_sel = planos[req.plano]
+
+    # -------------------------------------------------------------
+    # 1. CORREÇÃO DEFINITIVA DA URL DO FRONTEND 
+    # -------------------------------------------------------------
+    front_url = os.getenv("FRONTEND_URL")
+    
+    # Limpa espaços e quebras de linha invisíveis (\n, \r)
+    if isinstance(front_url, str):
+        front_url = front_url.strip().rstrip("/")
+        
+    # Se ainda assim estiver vazio, força o padrão
+    if not front_url:
+        front_url = "https://agente-edital.tecnopriv.top/"
+        
+    # LOG NO TERMINAL PARA VOCÊ VER EXATAMENTE O QUE ESTÁ A SER ENVIADO
+    print(f"🔗 [DEBUG] URL do Frontend enviada ao Mercado Pago: {front_url}/login")
+    # -------------------------------------------------------------
+
+    preference_data = {
+        "items": [
+            {
+                "title": plano_sel["title"],
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": plano_sel["price"]
+            }
+        ],
+        "payer": {"email": req.email},
+        "external_reference": f"{req.email}|{req.plano}",
+        "back_urls": {
+            "success": f"{front_url}/login",
+            "failure": f"{front_url}/planos",
+            "pending": f"{front_url}/login"
+        },
+        "auto_return": "approved"
+    }
+    
+    preference_response = sdk.preference().create(preference_data)
+    
+    if preference_response.get("status") not in (200, 201):
+        error_data = preference_response.get("response", {})
+        print(f"❌ Erro no Mercado Pago: {error_data}")
+        raise HTTPException(
+            status_code=400, 
+            detail="O Mercado Pago recusou a transação. Verifique as configurações e garanta que não está a usar a conta de vendedor para pagar."
+        )
+        
+    preference = preference_response.get("response", {})
+    
+    return {"init_point": preference.get("init_point")}
+
+@app.post("/payments/webhook")
+async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    try:
+        data = await request.json()
+    except:
+        return {"status": "ignored"}
+        
+    if data.get("action") == "payment.created" or data.get("type") == "payment":
+        payment_id = str(data.get("data", {}).get("id")) # Garante que é string
+        
+        if payment_id:
+            # 1. VERIFICA SE JÁ PROCESSOU ESSE PAGAMENTO
+            existing_payment = await db.execute(select(ProcessedPayment).filter(ProcessedPayment.payment_id == payment_id))
+            if existing_payment.scalars().first():
+                print(f"⚠️ Pagamento {payment_id} já processado anteriormente. Ignorando duplicata.")
+                return {"status": "ok"} # Retorna OK para o MP parar de tentar enviar
+
+            payment_info = sdk.payment().get(payment_id)
+            payment = payment_info.get("response", {})
+            
+            if payment.get("status") == "approved":
+                external_ref = payment.get("external_reference")
+                if external_ref and "|" in external_ref:
+                    email, plano = external_ref.split("|")
+                    
+                    planos_dias = {"mensal": 30, "trimestral": 90, "semestral": 180, "anual": 365}
+                    dias = planos_dias.get(plano, 30)
+                    
+                    result = await db.execute(select(User).filter(User.email == email))
+                    user = result.scalars().first()
+                    
+                    if user:
+                        base_date = datetime.utcnow()
+                        if user.plan_expires_at and user.plan_expires_at > base_date:
+                            base_date = user.plan_expires_at
+                            
+                        user.plan_expires_at = base_date + timedelta(days=dias)
+                        
+                        # 2. REGISTRA QUE O PAGAMENTO FOI PROCESSADO
+                        new_processed = ProcessedPayment(payment_id=payment_id)
+                        db.add(new_processed)
+                        
+                        await db.commit()
+                        print(f"✅ Plano de {email} atualizado (+{dias} dias)")
+    
+    return {"status": "ok"}
+
+
+@app.post("/admin/grant-plan/{user_id}")
+async def grant_plan(
+    user_id: int, 
+    plan: str, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Não autorizado")
+
+    # Mapeamento de dias
+    planos_dias = {"mensal": 30, "trimestral": 90, "semestral": 180, "anual": 365}
+    dias = planos_dias.get(plan.lower(), 30)
+
+    result = await db.execute(select(User).filter(User.id == user_id))
+    target_user = result.scalars().first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    # Lógica: Se o plano ainda é válido, soma os dias à data atual de expiração.
+    # Se já expirou ou é nulo, começa a contar a partir de hoje.
+    now = datetime.utcnow()
+    base_date = target_user.plan_expires_at if (target_user.plan_expires_at and target_user.plan_expires_at > now) else now
+    
+    target_user.plan_expires_at = base_date + timedelta(days=dias)
+    
+    await db.commit()
+    await db.refresh(target_user)
+    return {"message": "Plano atualizado", "expires_at": target_user.plan_expires_at}
+# NOVA ROTA: Remover plano
+@app.post("/admin/revoke-plan/{user_id}")
+async def revoke_plan(
+    user_id: int, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Não autorizado")
+
+    result = await db.execute(select(User).filter(User.id == user_id))
+    target_user = result.scalars().first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    # Define a data para um instante no passado (força a expiração imediata)
+    target_user.plan_expires_at = datetime.utcnow() - timedelta(minutes=1)
+    
+    await db.commit()
+    await db.refresh(target_user)
+    return {"message": "Plano removido com sucesso", "expires_at": target_user.plan_expires_at}
+
                     
 if __name__ == "__main__":
     # O Railway injeta dinamicamente a variável de ambiente PORT. Se não achar, usa 8000.
