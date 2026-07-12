@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { UserPlus, LogIn, AlertCircle, CheckCircle, Brain, FileText, MessageSquare, Target } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
 export default function Login() {
+  const location = useLocation();
   const [isRegistering, setIsRegistering] = useState(false); 
   const [selectedPlan, setSelectedPlan] = useState('mensal');
 
@@ -19,6 +20,17 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   
+  // O useEffect foi movido para a raiz do componente (fora do handleSubmit)
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    const status = queryParams.get('status');
+    
+    if (status === 'approved') {
+      setSuccessMsg('🎉 Seu pagamento foi aprovado com sucesso! O sistema está processando sua liberação. Tente fazer login em instantes.');
+    } else if (status === 'pending') {
+      setSuccessMsg('⏳ Seu pagamento está pendente (Aguardando compensação do Boleto/Pix). Assim que compensado, seu acesso será liberado.');
+    }
+  }, [location]);
 
   const toggleMode = () => {
     setIsRegistering(!isRegistering);
@@ -86,19 +98,6 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
-
-    const location = useLocation();
-
-    useEffect(() => {
-      const queryParams = new URLSearchParams(location.search);
-      const status = queryParams.get('status');
-      
-      if (status === 'approved') {
-        setSuccessMsg('🎉 Seu pagamento foi aprovado com sucesso! O sistema está processando sua liberação. Tente fazer login em instantes.');
-      } else if (status === 'pending') {
-        setSuccessMsg('⏳ Seu pagamento está pendente (Aguardando compensação do Boleto/Pix). Assim que compensado, seu acesso será liberado.');
-      }
-    }, [location]);
   };
 
   return (

@@ -1,12 +1,26 @@
 import React, { useState, useEffect, useRef } from "react";
 import { 
-  Calculator, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, 
-  Sparkles, Bot, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
-  X, CheckCircle, AlertCircle, Binary
+  Coffee, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, 
+  Sparkles, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
+  X, CheckCircle, AlertCircle, Code
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { conteudosTeoricosRLM } from "../data/raciocinioData";
+
+// ==========================================
+// CONTEÚDO TEÓRICO (Baseado no Edital Fornecido)
+// ==========================================
+const conteudosTeoricosJava = {
+  completo: `### Mapeamento Completo de Java\nSelecione um módulo específico no menu para visualizar onde focar, o que ler por cima e as métricas de validação de cada assunto para o seu concurso.`,
+  sintaxe: `### 1. Módulo 'Sintaxe e Tipos de Dados'\n\n**Peso:** MÉDIO\n\n**Onde focar:** Variáveis (declaração, escopo, inicialização), Tipos Primitivos (int, double, boolean, char, etc. e suas particularidades), Tipos de Referência (objetos, null, como funcionam).\n\n**O que ler por cima:** Entender a diferença conceitual entre primitivo e referência é o suficiente para a maioria das questões.\n\n**Métrica de Validação:** Resolver 90% das questões de múltipla escolha sobre a diferença entre tipos primitivos e de referência, e o comportamento de variáveis em atribuições e passagens de parâmetros.`,
+  poo: `### 2. Módulo 'Orientação a Objetos'\n\n**Peso:** MÉDIO\n\n**Onde focar:** Conceitos Fundamentais de OO (classes, objetos, atributos, métodos), Encapsulamento (getters/setters, controle de acesso), Herança (extends, super, herança de métodos e atributos, Object class).\n\n**O que ler por cima:** Polimorfismo (sobrescrita de métodos, instanceof) é importante, mas o foco principal deve ser nos outros três pilares.\n\n**Métrica de Validação:** Acertar 90% das questões que envolvam a criação de classes, a relação entre elas via herança e o controle de acesso de membros.`,
+  modificadores: `### 3. Módulo 'Modificadores'\n\n**Peso:** MÉDIO\n\n**Onde focar:** public, private, protected (entender o escopo de acesso em diferentes cenários, incluindo pacotes e herança). Modificador static (variáveis de classe, métodos de classe, acesso sem instância). Modificador final (variáveis constantes, métodos não sobrescritos, classes não herdáveis).\n\n**O que ler por cima:** A aplicação prática de static e final em conjunto com os conceitos de OO.\n\n**Métrica de Validação:** Resolver 90% das questões que testem o entendimento de modificadores de acesso e o comportamento de membros static e final.`,
+  colecoes: `### 4. Módulo 'Coleções e Generics'\n\n**Peso:** MÉDIO\n\n**Onde focar:** Interface Collection (conceitos gerais), List (ArrayList, LinkedList - diferenças de performance e uso), Set (HashSet, TreeSet - unicidade, ordenação). Uso de Generics para garantir segurança de tipo.\n\n**O que ler por cima:** Map (HashMap, TreeMap) é crucial, mas a interface Collection e suas implementações básicas são o ponto de partida.\n\n**Métrica de Validação:** Acertar 90% das questões sobre a escolha da coleção adequada para um determinado problema e a manipulação básica de seus elementos.`,
+  streams: `### 5. Módulo 'API de Streams e Lambdas'\n\n**Peso:** MÉDIO\n\n**Onde focar:** Expressões Lambda (sintaxe básica, uso com interfaces funcionais), Interfaces Funcionais (Supplier, Consumer, Predicate, Function). API de Streams (métodos intermediários como filter, map, sorted; métodos terminais como collect, forEach, findFirst).\n\n**O que ler por cima:** Métodos de Referência (apenas para entender a sintaxe concisa).\n\n**Métrica de Validação:** Resolver 85% das questões que envolvam a manipulação de coleções utilizando Streams e Lambdas para filtragem, mapeamento e coleta de dados.`,
+  excecoes: `### 6. Módulo 'Tratamento de Exceções'\n\n**Peso:** MÉDIO\n\n**Onde focar:** Conceito de Exceção (checked vs unchecked), try-catch (blocos, múltiplos catch), finally, throws (declaração em métodos).\n\n**O que ler por cima:** Hierarquia de exceções (apenas para ter uma noção geral).\n\n**Métrica de Validação:** Acertar 90% das questões sobre como tratar, lançar e propagar exceções em código Java.`,
+  jpa: `### 7. Módulo 'Persistência com JPA/Hibernate'\n\n**Peso:** MÉDIO\n\n**Onde focar:** Conceito de ORM, JPA (interfaces e especificações), Hibernate (implementação). Anotações básicas (@Entity, @Table, @Id, @GeneratedValue, @Column, @OneToMany, @ManyToOne).\n\n**O que ler por cima:** Detalhes de configuração de Hibernate, estratégias de geração de ID mais avançadas.\n\n**Métrica de Validação:** Acertar 80% das questões que envolvam a modelagem de entidades com anotações JPA/Hibernate e o entendimento básico do ciclo de vida de entidades.`,
+  gof: `### 8. Módulo 'Padrões de Projeto GoF'\n\n**Peso:** MÉDIO\n\n**Onde focar:** Padrões Criacionais (Factory Method, Abstract Factory, Singleton - foco em como implementá-los em Java), Padrões Estruturais (Adapter, Decorator - entender o problema que resolvem e a estrutura básica).\n\n**O que ler por cima:** Padrões Comportamentais e os padrões menos comuns dos grupos Criacional e Estrutural.\n\n**Métrica de Validação:** Identificar e explicar o propósito de 70% dos padrões GoF mais comuns (Singleton, Factory Method, Adapter) em cenários de código Java.`
+};
 
 // Helper para ler token unificado
 const getAuthToken = () => {
@@ -27,9 +41,8 @@ const getAuthToken = () => {
 };
 
 // ==========================================
-// NOVA FUNÇÃO ANTI-ERRO (Com limpeza agressiva)
+// FUNÇÃO ANTI-ERRO (Com limpeza agressiva)
 // ==========================================
-/// Função Anti-Erro e Limpeza de Resposta da IA com suporte a Streams e Fallback Supremo
 const fetchStreamAsJson = async (url, options, onProgress = null) => {
   const res = await fetch(url, options);
   if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
@@ -46,68 +59,49 @@ const fetchStreamAsJson = async (url, options, onProgress = null) => {
     rawText += decoder.decode(value, { stream: true });
   }
   
-  // Limpeza inicial de tags de raciocínio (DeepSeek/Thinking models)
   let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
   
-  // Tenta isolar o bloco estruturado do JSON
   const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
   if (jsonMatch) cleanText = jsonMatch[0];
 
   try {
-    // 1. Tenta o parse direto (caso o JSON venha perfeito)
     return JSON.parse(cleanText);
   } catch (e) {
     try {
-      // 2. Segunda tentativa limpando quebras de linha literais e vírgulas órfãs
       let processedText = cleanText.replace(/[\n\r\t]+/g, ' ').replace(/,\s*([\]}])/g, '$1');
       return JSON.parse(processedText);
     } catch (secondError) {
-      
-      // 3. FALLBACK SUPREMO: Ignora JSON corrompido com aspas soltas (Ex: O "Jogo" da CESPE)
       if (cleanText.includes("lesson_markdown")) {
-        // Captura TUDO depois de "lesson_markdown": " até o final do texto
         const match = cleanText.match(/"lesson_markdown"\s*:\s*"([\s\S]*)/);
-        
         if (match && match[1]) {
           let extractedText = match[1];
-          
-          // Limpa o fechamento do JSON no final da string ("} ou só ")
           extractedText = extractedText.replace(/"\s*\}\s*$/, '').replace(/"\s*$/, '');
-          
-          // Restaura quebras de linha e aspas escapadas da IA
-          extractedText = extractedText
-            .replace(/\\n/g, '\n')
-            .replace(/\\"/g, '"');
-          
+          extractedText = extractedText.replace(/\\n/g, '\n').replace(/\\"/g, '"');
           return { lesson_markdown: extractedText };
         }
       }
-      
-      // Se não for aula e falhar mesmo assim, exibe no console e lança o erro padrão
       console.error("TEXTO COM ERRO COMPLETO DA IA:", rawText);
       throw new Error("A IA gerou um formato inválido de dados.");
     }
   }
 };
 
-// ==========================================
-
-export default function GabariteLogica() {
+export default function GabariteJava() {
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
   const [showConfig, setShowConfig] = useState(false);
-  const [providerTab, setProviderTab] = useState("openrouter"); // Novo: Controle da aba do Provedor
+  const [providerTab, setProviderTab] = useState("openrouter"); 
   const [tempModel, setTempModel] = useState("");
-  const [tempApiKey, setTempApiKey] = useState(""); // Novo: Armazena chave digitada manualmente
+  const [tempApiKey, setTempApiKey] = useState(""); 
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // --- ESTADOS DO SIMULADOR (Com os novos focos de RLM) ---
+  // --- ESTADOS DO SIMULADOR ---
   const [configFocus, setConfigFocus] = useState("completo");
   const [configDifficulty, setConfigDifficulty] = useState("medio");
-  const [configFormato, setConfigFormato] = useState("Certo/Errado");
+  const [configFormato, setConfigFormato] = useState("Múltipla Escolha");
   const [configAmount, setConfigAmount] = useState(10);
   const [configTextBase, setConfigTextBase] = useState(true);
   const [configExamMode, setConfigExamMode] = useState(false);
@@ -129,14 +123,13 @@ export default function GabariteLogica() {
   const [lessonContent, setLessonContent] = useState("");
 
   const handleShowTheory = () => {
-    // Puxa o conteúdo do arquivo importado com base no foco atual
-    setLessonContent(conteudosTeoricosRLM[configFocus] || conteudosTeoricosRLM.completo);
+    setLessonContent(conteudosTeoricosJava[configFocus] || conteudosTeoricosJava.completo);
     setShowLessonModal(true);
   };
 
   useEffect(() => {
     fetchUserSettings();
-    const savedStats = localStorage.getItem('cespe_logica_stats');
+    const savedStats = localStorage.getItem('cespe_java_stats');
     if (savedStats) {
       try { setStats(JSON.parse(savedStats)); } catch (e) { console.error(e); }
     }
@@ -144,7 +137,7 @@ export default function GabariteLogica() {
 
   const saveStats = (newStats) => {
     setStats(newStats);
-    localStorage.setItem('cespe_logica_stats', JSON.stringify(newStats));
+    localStorage.setItem('cespe_java_stats', JSON.stringify(newStats));
   };
 
   const fetchUserSettings = async () => {
@@ -166,7 +159,6 @@ export default function GabariteLogica() {
   };
 
   const openConfigModal = () => {
-    // Detecta o provedor com base no prefixo sk-or- do OpenRouter
     const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
     setProviderTab(isAIStudio ? "aistudio" : "openrouter");
     setTempApiKey(userApiKey || "");
@@ -180,7 +172,6 @@ export default function GabariteLogica() {
       const token = getAuthToken();
       if (!token) { alert("Sessão expirada. Faça login."); return; }
 
-      // Se for aba AI Studio, salva a chave manual; se for OpenRouter, preserva o token OAuth
       const keyToSave = providerTab === "aistudio" ? tempApiKey.trim() : userApiKey;
 
       const res = await fetch(`${API_URL}/users/me/settings`, {
@@ -220,35 +211,24 @@ export default function GabariteLogica() {
     setError("");
     setViewState("loading");
 
-    // ==========================================
-    // MÁGICA: EMBARALHAMENTO FORÇADO VIA CÓDIGO
-    // ==========================================
     const embaralharAlternativas = (questao) => {
-      // Ignora se for Certo/Errado ou se não tiver opções
       if (!questao.alternativas || questao.alternativas.length < 3) return questao;
-
-      // Se no seu sistema gera até 4 ou 5 opções, adicione a letra 'E' no array se necessário
       const letras = ["A", "B", "C", "D", "E"]; 
       const gabaritoAtual = (questao.gabarito || "A").trim().toUpperCase();
       const idxCorreto = letras.indexOf(gabaritoAtual);
 
       if (idxCorreto === -1) return questao;
 
-      // 1. Limpa as letras falsas (Tira "A) ", "B) " da string)
       const textos = questao.alternativas.map(alt => alt.replace(/^[A-E]\s*[\)\.\-:]\s*/i, "").trim());
       const textoCorreto = textos[idxCorreto];
 
-      // 2. Algoritmo Profissional de Embaralhamento (Fisher-Yates)
       for (let i = textos.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [textos[i], textos[j]] = [textos[j], textos[i]];
       }
 
-      // 3. Descobre onde a resposta certa foi parar
       const novoIdxCorreto = textos.indexOf(textoCorreto);
       const novoGabarito = letras[novoIdxCorreto];
-
-      // 4. Recria as alternativas prontas
       const novasAlternativas = textos.map((txt, i) => `${letras[i]}) ${txt}`);
 
       return {
@@ -257,12 +237,10 @@ export default function GabariteLogica() {
         gabarito: novoGabarito
       };
     };
-    // ==========================================
 
     try {
       const token = getAuthToken();
       let todasQuestoes = [];
-      
       const batchSize = 5; 
       const batches = Math.ceil(configAmount / batchSize);
 
@@ -270,23 +248,20 @@ export default function GabariteLogica() {
         setLoadingMsg(`A formular questões inéditas... (Lote ${i + 1} de ${batches})`);
         const currentBatchSize = Math.min(batchSize, configAmount - (i * batchSize));
 
-        // 1. Descobre se a chave é do Google (não começa com sk-or-)
         const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
-        // 2. Define o modelo de segurança compatível
         const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
 
         const payload = {
-          subject: "Raciocínio Lógico", 
+          subject: "Java", // Adaptado para requisição de Java
           focus: configFocus,
           difficulty: configDifficulty,
           amount: currentBatchSize,
-          generate_text: configTextBase, // Agora solicita texto em todos os lotes
+          generate_text: configTextBase,
           formato: configFormato,
           model: userModel || defaultModel,
           api_key: userApiKey || null
         };
 
-        // --- SISTEMA DE AUTO-RETRY (Auto-recuperação de erros da IA) ---
         let data = null;
         let tentativas = 0;
         const maxTentativas = 2;
@@ -302,30 +277,19 @@ export default function GabariteLogica() {
               body: JSON.stringify(payload)
             });
             
-            // NOVO: Aborta na hora se o backend repassar um erro da API
-            if (data && data.error) {
-              throw new Error(`Erro da API: ${data.error}`);
-            }
-
+            if (data && data.error) throw new Error(`Erro da API: ${data.error}`);
             if (data && data.questoes && data.questoes.length > 0) break;
             throw new Error("O lote veio vazio.");
           } catch (e) {
             tentativas++;
-            // Se o erro for da API, não repete o laço, apenas repassa o erro para a tela
             if (e.message.includes("Erro da API")) throw e; 
-            
             if (tentativas >= 2) throw new Error(e.message || "A IA falhou em formatar as opções.");
             setLoadingMsg(`Reajustando os vereditos da IA... (A repetir Lote ${i + 1})`);
           }
         }
-        // ----------------------------------------------------------------
 
-        // ----------------------------------------------------------------
         const questoesCorrigidas = data.questoes.map((q, idx) => {
-          
-          // APLICA O EMBARALHAMENTO AQUI SE FOR MÚLTIPLA ESCOLHA!
           const qEmbaralhada = configFormato === "Múltipla Escolha" ? embaralharAlternativas(q) : q;
-          
           return {
             ...qEmbaralhada,
             id: `q_prova_${i}_${idx}`,
@@ -351,16 +315,13 @@ export default function GabariteLogica() {
 
   const generateLesson = async (wrongQuestions) => {
     setViewState("loading");
-    setLoadingMsg("O Professor IA está montando a análise textual e traduções para os seus erros...");
+    setLoadingMsg("O Professor IA está montando a análise de código e teoria para os seus erros...");
 
     try {
       const token = getAuthToken();
-      
-      // 1. Resolve o problema de roteamento do modelo (anti-404)
       const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
       const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
 
-      // 2. SUBSTITUI o fetch normal pela sua função blindada fetchStreamAsJson
       const data = await fetchStreamAsJson(`${API_URL}/generate-lesson-cespe`, {
         method: "POST",
         headers: { 
@@ -374,10 +335,7 @@ export default function GabariteLogica() {
         })
       });
 
-      // 3. Captura possíveis erros que a API possa retornar
-      if (data && data.error) {
-        throw new Error(`Erro da API: ${data.error}`);
-      }
+      if (data && data.error) throw new Error(`Erro da API: ${data.error}`);
 
       setLessonContent(data.lesson_markdown || data.text || "Conteúdo não disponível.");
       setViewState("exam"); 
@@ -440,7 +398,7 @@ export default function GabariteLogica() {
     });
 
     saveStats(newStats);
-    alert(`Simulado RLM finalizado! Pontuação líquida CESPE: ${right - wrong}`);
+    alert(`Simulado Java finalizado! Pontuação líquida CESPE: ${right - wrong}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -453,7 +411,7 @@ export default function GabariteLogica() {
   };
 
   const resetStats = () => {
-    if(window.confirm("Apagar todo o histórico de Raciocínio Lógico?")) {
+    if(window.confirm("Apagar todo o histórico de Java?")) {
       saveStats({ total: 0, correct: 0, wrong: 0, topics: {} });
       setShowStatsModal(false);
     }
@@ -467,9 +425,9 @@ export default function GabariteLogica() {
       <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
         <div>
           <h1 style={{ color: 'var(--heading-color)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Calculator size={32} color="var(--primary)" /> Gabarite Lógica <span style={{ color: 'var(--primary)' }}>CESPE</span>
+            <Coffee size={32} color="var(--primary)" /> Gabarite Java <span style={{ color: 'var(--primary)' }}>CESPE</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Treino de Raciocínio Lógico com Situações Hipotéticas focadas no edital.</p>
+          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Treino avançado de programação Java com questões inéditas focadas em concursos de TI.</p>
         </div>
         <button onClick={() => setShowStatsModal(true)} className="btn" style={{ fontWeight: 'bold' }}>
           <BarChart2 size={20} /> O meu Desempenho
@@ -495,34 +453,24 @@ export default function GabariteLogica() {
               </h2>
               
               <div style={{ marginBottom: '15px' }}>
-                <label className="label">Foco de Estudo (Frequência CESPE)</label>
+                <label className="label">Foco de Estudo (Edital de TI)</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', flex: 1 }}>
                     <option value="completo">Simulado Completo (Todos)</option>
-                    <option value="negacao">⭐⭐⭐⭐⭐ Negação lógica</option>
-                    <option value="condicional">⭐⭐⭐⭐⭐ Condicional (Se..então)</option>
-                    <option value="equivalencia">⭐⭐⭐⭐⭐ Equivalência lógica</option>
-                    <option value="diagramas">⭐⭐⭐⭐ Diagramas lógicos</option>
-                    <option value="argumentacao">⭐⭐⭐⭐ Argumentação lógica</option>
-                    <option value="probabilidade">⭐⭐⭐ Probabilidade</option>
-                    <option value="combinatoria">⭐⭐⭐ Análise combinatória</option>
-                    <option value="sequencias">⭐⭐ Sequências lógicas</option>
+                    <option value="sintaxe">1. Sintaxe e Tipos de Dados</option>
+                    <option value="poo">2. Orientação a Objetos (POO)</option>
+                    <option value="modificadores">3. Modificadores (static/final)</option>
+                    <option value="colecoes">4. Coleções e Generics</option>
+                    <option value="streams">5. Streams e Lambdas (Java 8+)</option>
+                    <option value="excecoes">6. Tratamento de Exceções</option>
+                    <option value="jpa">7. JPA e Hibernate (ORM)</option>
+                    <option value="gof">8. Padrões de Projeto GoF</option>
                   </select>
                   <button 
                     onClick={handleShowTheory} 
                     className="btn" 
                     style={{ 
-                      width: '42px',           // Força a largura fixa
-                      height: '42px',          // Força a altura fixa
-                      display: 'flex',         // Centraliza o ícone
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      padding: '0',            // Remove o padding interno que causava a distorção
-                      background: 'var(--primary-light)', 
-                      color: 'var(--primary)', 
-                      border: '1px solid var(--primary)', 
-                      borderRadius: '8px', 
-                      flexShrink: 0 
+                      width: '42px', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: '8px', flexShrink: 0 
                     }} 
                     title="Ver Resumo Teórico do Assunto Selecionado"
                   >
@@ -534,18 +482,18 @@ export default function GabariteLogica() {
               <div style={{ marginBottom: '15px' }}>
                 <label className="label">Dificuldade</label>
                 <select className="select" value={configDifficulty} onChange={e => setConfigDifficulty(e.target.value)}>
-                  <option value="medio">Média (Padrão PF/PRF/TJ)</option>
-                  <option value="facil">Fácil</option>
-                  <option value="dificil">Difícil (Pegadinhas complexas)</option>
-                  <option value="avancado">Avançado (Analista/Auditor CGU/TCU)</option>
+                  <option value="medio">Média (Padrão Analista de TI)</option>
+                  <option value="facil">Fácil (Técnico / Fundamentos)</option>
+                  <option value="dificil">Difícil (Pegadinhas de Código e Frameworks)</option>
+                  <option value="avancado">Avançado (Auditor de TI / Arquitetura)</option>
                 </select>
               </div>
 
               <div style={{ marginBottom: '15px' }}>
                 <label className="label">Formato da Questão</label>
                 <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', width: '100%' }}>
-                  <option value="Certo/Errado">Certo / Errado (Padrão CESPE)</option>
                   <option value="Múltipla Escolha">Múltipla Escolha (A, B, C, D)</option>
+                  <option value="Certo/Errado">Certo / Errado (Padrão CESPE)</option>
                 </select>
               </div>
 
@@ -573,7 +521,7 @@ export default function GabariteLogica() {
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', cursor: 'pointer' }} onClick={() => setConfigTextBase(!configTextBase)}>
                 <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
-                  <FileText size={18} /> Gerar Situação Hipotética
+                  <FileText size={18} /> Gerar Snippet / Classe Base
                 </span>
                 <div style={{ width: '40px', height: '22px', background: configTextBase ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
                   <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configTextBase ? '20px' : '2px', transition: '0.3s' }}></div>
@@ -595,13 +543,13 @@ export default function GabariteLogica() {
                 className="btn primary" 
                 style={{ width: '100%', marginTop: '25px', padding: '15px', fontSize: '1.05rem', gap: '10px' }}
               >
-                <Sparkles size={20} /> Gerar Questões Lógicas
+                <Sparkles size={20} /> Gerar Questões de Java
               </button>
               {error && <div style={{ color: 'var(--error-text)', fontSize: '0.85rem', marginTop: '10px', textAlign: 'center', fontWeight: 'bold' }}>{error}</div>}
             </div>
 
             <div className="panel" style={{ padding: '20px', background: 'var(--card-bg)' }}>
-              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Aproveitamento RLM</h3>
+              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Aproveitamento em Java</h3>
               <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '15px' }}>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)', margin: 0 }}>{stats.correct}</p>
@@ -625,11 +573,11 @@ export default function GabariteLogica() {
             {viewState === "initial" && (
               <div className="panel" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent', boxShadow: 'none' }}>
                 <div style={{ width: '90px', height: '90px', background: 'var(--primary-light)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' }}>
-                  <Binary size={48} color="var(--primary)" />
+                  <Code size={48} color="var(--primary)" />
                 </div>
-                <h2 style={{ fontSize: '1.5rem', color: 'var(--heading-color)', marginBottom: '10px' }}>Raciocínio Lógico Matemático (CESPE)</h2>
+                <h2 style={{ fontSize: '1.5rem', color: 'var(--heading-color)', marginBottom: '10px' }}>Desenvolvimento Java (CESPE)</h2>
                 <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginBottom: '25px' }}>
-                  Treine tabelas-verdade, negações, equivalências e probabilidade com situações hipotéticas inéditas criadas pela IA.
+                  Treine POO, Streams, Coleções e JPA com trechos de código e cenários inéditos criados pela Inteligência Artificial com foco em Editais de TI.
                 </p>
                 <button onClick={generateExam} className="btn primary" style={{ padding: '10px 25px' }}>Gerar Primeiro Simulado</button>
               </div>
@@ -677,17 +625,14 @@ export default function GabariteLogica() {
                   
                   return (
                     <React.Fragment key={q.id}>
-                      {/* RENDERIZA O TEXTO-BASE INTERCALADO (Se for a 1ª questão de um lote) */}
                       {q.textoVinculado && (
                         <div className="panel" style={{ borderLeft: '4px solid var(--primary)', position: 'relative', marginTop: index > 0 ? '30px' : '0', marginBottom: '20px' }}>
                           <div style={{ position: 'absolute', top: '-15px', left: '-15px', background: 'var(--primary)', color: 'white', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-md)' }}>
-                            <AlignLeft size={16} />
+                            <Code size={16} />
                           </div>
-                          <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Situação Hipotética</h3>
-                          <div style={{ fontSize: '1.05rem', lineHeight: '1.8', color: 'var(--text-main)', fontFamily: 'serif' }}>
-                            {q.textoVinculado.split('\n').filter(p => p.trim()).map((p, i) => (
-                              <p key={`p_${i}`} style={{ textIndent: '2rem', marginBottom: '10px', textAlign: 'justify' }}>{p}</p>
-                            ))}
+                          <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Código Base / Cenário</h3>
+                          <div className="markdown-format" style={{ fontSize: '1rem', color: 'var(--text-main)' }}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.textoVinculado}</ReactMarkdown>
                           </div>
                         </div>
                       )}
@@ -704,9 +649,9 @@ export default function GabariteLogica() {
                             <span style={{ display: 'inline-block', padding: '4px 8px', background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontSize: '0.75rem', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px' }}>
                               {q.assunto}
                             </span>
-                            <p style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
-                              {q.enunciado}
-                            </p>
+                            <div className="markdown-format" style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
+                              <ReactMarkdown>{q.enunciado}</ReactMarkdown>
+                            </div>
                             
                             <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
                               {q.alternativas && q.alternativas.length > 0 ? (
@@ -793,9 +738,9 @@ export default function GabariteLogica() {
                 {showLessonAction && (
                   <div style={{ background: 'var(--warning-bg, #fffbeb)', border: '1px solid #fcd34d', padding: '25px', borderRadius: '12px', textAlign: 'center', margin: '20px auto', maxWidth: '500px', boxShadow: 'var(--shadow-md)' }}>
                     <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1.2rem' }}>
-                      <GraduationCap size={24} /> Professor de RLM (IA)
+                      <GraduationCap size={24} /> Professor Sênior de Java (IA)
                     </h4>
-                    <p style={{ color: '#92400e', fontSize: '0.95rem', marginBottom: '20px' }}>Você errou {wrongCount} questão(ões) de Lógica. Quer uma explicação passo-a-passo (tabelas-verdade e fórmulas) focada no que errou?</p>
+                    <p style={{ color: '#92400e', fontSize: '0.95rem', marginBottom: '20px' }}>Você errou {wrongCount} questão(ões) de Código/Teoria. Quer uma explicação passo-a-passo e análise técnica focada no que errou?</p>
                     <button onClick={() => generateLesson(getWrongQuestions())} className="btn" style={{ background: '#f59e0b', color: 'white', border: 'none', width: '100%', padding: '12px', fontSize: '1.05rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '8px' }}>
                       <Wand2 size={20} /> Gerar Explicação Detalhada
                     </button>
@@ -807,13 +752,11 @@ export default function GabariteLogica() {
         </div>
       </div>
 
-      {/* MODAL DE CONFIGURAÇÃO DE IA COM ABAS (OPENROUTER / AISTUDIO) */}
       {showConfig && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
             <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
             
-            {/* Navegação entre as Abas de Provedores */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
               <button
                 onClick={() => {
@@ -837,7 +780,6 @@ export default function GabariteLogica() {
               </button>
             </div>
 
-            {/* Conteúdo da Aba: OpenRouter */}
             {providerTab === "openrouter" && (
               <div style={{ marginBottom: '20px' }}>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
@@ -854,7 +796,6 @@ export default function GabariteLogica() {
               </div>
             )}
 
-            {/* Conteúdo da Aba: Google AI Studio */}
             {providerTab === "aistudio" && (
               <div style={{ marginBottom: '20px' }}>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px', lineHeight: '1.4' }}>
@@ -909,7 +850,7 @@ export default function GabariteLogica() {
           <div className="panel" style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
             <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)' }}>
               <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <PieChart size={22} color="var(--primary)" /> Histórico de Lógica
+                <PieChart size={22} color="var(--primary)" /> Histórico de Java
               </h2>
               <button onClick={() => setShowStatsModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={24} /></button>
             </div>

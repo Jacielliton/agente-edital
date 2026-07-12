@@ -22,6 +22,7 @@ const GabariteLogica = lazy(() => import("./pages/GabariteLogica"));
 const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe")); 
 const GabariteDireito = lazy(() => import("./pages/GabariteDireito"));
 const GabariteIngles = lazy(() => import("./pages/GabariteIngles"));
+const GabariteJava = lazy(() => import("./pages/GabariteJava"));
 
 // Componente de Carregamento para o Suspense
 const LoadingFallback = () => (
@@ -162,6 +163,7 @@ export default function App() {
               <Route path="/gabarite-sintaxe" element={<PrivateRoute><GabariteSintaxe /></PrivateRoute>} />
               <Route path="/gabarite-direito" element={<PrivateRoute><GabariteDireito /></PrivateRoute>} />
               <Route path="/gabarite-ingles" element={<PrivateRoute><GabariteIngles /></PrivateRoute>} />
+              <Route path="/gabarite-java" element={<PrivateRoute><GabariteJava /></PrivateRoute>} /> {/* NOVA ROTA */}
               <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
               <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
               

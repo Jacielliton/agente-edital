@@ -2428,13 +2428,21 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         PROIBIDO incluir abordagens gramaticais, sintáticas ou de lógica computacional/matemática.
         """
 
-    # NOVAS DIRETRIZES: Isolamento para Língua Inglesa
+   # NOVAS DIRETRIZES: Isolamento para Língua Inglesa
     elif req.subject == "Língua Inglesa":
         if req.focus == 'compreensao': focus_instructions = "Foque EXCLUSIVAMENTE na compreensão textual, skimming, scanning e inferência de informações."
         elif req.focus == 'vocabulario': focus_instructions = "Foque em itens gramaticais como sinônimos, antônimos, falsos cognatos e tempos verbais aplicados ao contexto."
         elif req.focus == 'coesao': focus_instructions = "Foque em coesão, coerência, referência pronominal e uso de conectivos (linking words)."
         else: focus_instructions = "Distribua as questões entre compreensão textual, vocabulário aplicado e coesão pronominal na língua inglesa."
         
+    # NOVAS DIRETRIZES: Isolamento para Programação Java
+    elif req.subject == "Java":
+        focus_instructions = f"""
+        Foque estritamente em desenvolvimento Java para concursos de TI (Analista/Auditor). O objetivo é avaliar conhecimentos técnicos e práticos sobre: {req.focus}.
+        Apresente trechos de código (snippets) válidos, avalie a saída do console, analise a estrutura da linguagem ou trate de conceitos de arquitetura e frameworks ligados ao ecossistema Java (POO, Streams, JPA, GoF). 
+        PROIBIDO exigir linguagens genéricas ou conhecimentos que não sejam do ecossistema Java. Use markdown para formatar nomes de classes e métodos.
+        """
+
     else: 
         if req.focus.startswith('Foco na vertente:') or req.focus.startswith('DIRETRIZ OBRIGATÓRIA:'):
             focus_instructions = req.focus # Permite que o frontend injete tipologia e tamanho textuais
@@ -2456,6 +2464,8 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
             text_instruction = "Crie um caso prático ou situação hipotética jurídica curta para servir de base."
         elif req.subject == "Língua Inglesa":
             text_instruction = "Gere um autêntico texto base EM INGLÊS (ex: trecho de reportagem, artigo ou texto acadêmico curto), rico em vocabulário, para servir de alvo das questões."
+        elif req.subject == "Java":
+            text_instruction = "Gere um autêntico trecho de código Java (snippet) formatado em Markdown (```java) que contenha uma classe, interface ou lógica funcional, para servir de alvo de análise pelas questões."
         else: # Língua Portuguesa e Sintaxe
             text_instruction = "Gere um texto base primoroso, com tamanho e tipologia adequados às instruções, rico em vocabulário e coesão, para servir de alvo das questões."
     else:
