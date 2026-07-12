@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { User, Key, Cpu } from "lucide-react"; // Removi importações não utilizadas
+import { User, Key, Cpu, Clock } from "lucide-react"; // Adicionado ícone Clock
 
 // Função robusta para capturar o token (Mesma do AdminPanel)
 const getAuthToken = () => {
@@ -36,6 +36,10 @@ export default function Profile() {
   const [userModel, setUserModel] = useState("");
   const [isSavingAI, setIsSavingAI] = useState(false);
 
+  // Estados para o histórico de comissões
+  const [commissionHistory, setCommissionHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   useEffect(() => {
     // Busca as configurações de IA do utilizador ao carregar a página
     const fetchSettings = async () => {
@@ -62,7 +66,32 @@ export default function Profile() {
         console.error("Erro ao buscar configurações:", err); 
       }
     };
+
+    // Busca o histórico de comissões/pagamentos
+    const fetchHistory = async () => {
+      setLoadingHistory(true);
+      try {
+        const token = getAuthToken();
+        if (!token) return;
+
+        const res = await fetch(`${API_URL}/users/me/commission-history`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          // Assume-se que o backend devolve um array de registos
+          setCommissionHistory(data);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar histórico:", err);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
     fetchSettings();
+    fetchHistory();
   }, [API_URL]);
 
   const handlePasswordChange = async (e) => {
@@ -149,7 +178,7 @@ export default function Profile() {
 
   if (!user) return null;
 
-  // Lógica de cálculo do Status do Plano (Substitui a variável indefinida 'userPlan')
+  // Lógica de cálculo do Status do Plano
   let planStatus = "Grátis (Sem Plano)";
   let planColor = "var(--text-main)";
 
@@ -177,6 +206,97 @@ export default function Profile() {
       </header>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+        
+        {/* BLOCO: PROGRAMA DE AFILIADOS - INSTANTÂNEO & HISTÓRICO */}
+        <div style={{ background: 'var(--card-bg)', padding: '25px', borderRadius: '12px', border: '1px solid var(--primary)', boxShadow: 'var(--shadow-sm)' }}>
+          <h3 style={{ marginTop: 0, color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+             Programa de Indicações (Ganhe 20%)
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+            Partilhe o seu link. Por cada pessoa que se cadastrar e comprar um plano, você ganha 20% de comissão.
+          </p>
+          
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginTop: '15px' }}>
+            <div style={{ flex: 1, minWidth: '250px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '5px' }}>Seu Link de Divulgação:</label>
+              <input 
+                type="text" 
+                readOnly 
+                value={user?.referral_code ? `${window.location.origin}/login?ref=${user.referral_code}` : 'Carregando link...'}
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px dashed var(--primary)', background: 'var(--bg)', color: 'var(--text-main)', outline: 'none' }}
+              />
+            </div>
+            <button 
+              className="btn primary"
+              disabled={!user?.referral_code}
+              onClick={() => {
+                if (user?.referral_code) {
+                  navigator.clipboard.writeText(`${window.location.origin}/login?ref=${user.referral_code}`);
+                  alert('Link copiado com sucesso!');
+                }
+              }}
+            >
+              Copiar Link
+            </button>
+          </div>
+
+          <div style={{ marginTop: '20px', padding: '15px', background: 'var(--success-bg)', borderRadius: '8px', border: '1px solid var(--success-text)', display: 'inline-block' }}>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>Suas Comissões Acumuladas:</span><br/>
+            <strong style={{ fontSize: '1.5rem', color: 'var(--success-text)' }}>
+              R$ {user?.commission_balance ? user.commission_balance.toFixed(2).replace('.', ',') : '0,00'}
+            </strong>
+          </div>
+
+          {/* NOVO: HISTÓRICO DE COMISSÕES */}
+          <div style={{ marginTop: '30px' }}>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '15px' }}>
+              <Clock size={18} color="var(--primary)" /> Histórico de Movimentações
+            </h4>
+            
+            {loadingHistory ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>A carregar histórico...</p>
+            ) : commissionHistory.length > 0 ? (
+              <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
+                  <thead style={{ background: 'var(--bg)' }}>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Data</th>
+                      <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Ação</th>
+                      <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Valor</th>
+                      <th style={{ padding: '12px', color: 'var(--text-muted)' }}>Descrição</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {commissionHistory.map((item, idx) => {
+                      const isPayment = item.action_type === "pagamento";
+                      const amountColor = isPayment ? "var(--error-text)" : "var(--success-text)";
+                      const sign = isPayment ? "-" : "+";
+                      
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '12px', color: 'var(--text-main)' }}>
+                            {new Date(item.created_at || new Date()).toLocaleDateString()}
+                          </td>
+                          <td style={{ padding: '12px', color: 'var(--text-main)', textTransform: 'capitalize' }}>
+                            {item.action_type || 'Comissão'}
+                          </td>
+                          <td style={{ padding: '12px', color: amountColor, fontWeight: 'bold' }}>
+                            {sign} R$ {item.amount ? item.amount.toFixed(2).replace('.', ',') : '0,00'}
+                          </td>
+                          <td style={{ padding: '12px', color: 'var(--text-secondary)' }}>
+                            {item.description || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhuma movimentação registada até ao momento.</p>
+            )}
+          </div>
+        </div>
         
         {/* BLOCO 1: INFORMAÇÕES DA CONTA */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '15px' }}>

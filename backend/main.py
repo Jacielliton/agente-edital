@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from typing import Literal
 import mercadopago
 from fastapi import Request
+import uuid
 
 from passlib.context import CryptContext
 from jose import JWTError, jwt
@@ -98,7 +99,34 @@ class User(Base):
     session_version = Column(Integer, default=1)
     plan_expires_at = Column(DateTime, nullable=True) # Controle do Mercado Pago
     is_active = Column(Boolean, default=True)
+    
+    # --- NOVOS CAMPOS PARA INDICAÇÃO (Devem ficar alinhados aqui dentro do User) ---
+    referral_code = Column(String, unique=True, index=True, nullable=True) # Código único do usuário
+    referred_by_id = Column(Integer, nullable=True)                        # ID de quem o indicou
+    commission_balance = Column(Float, default=0.0)
 
+class CommissionHistory(Base):
+    __tablename__ = "commission_history"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    amount = Column(Float)
+    action_type = Column(String) # 'ganho', 'pagamento' ou 'ajuste'
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+     
+    
+class CommissionActionRequest(BaseModel):
+    action: str
+    amount: float
+    description: Optional[str] = None
+
+class CommissionHistoryResponse(BaseModel):
+    id: int
+    amount: float
+    action_type: str
+    description: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
 # ============================================================================
 # 3. SEGURANÇA (JWT & HASH)
@@ -224,6 +252,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     role: str = "user"
+    referral_code: Optional[str] = None
     
 class UserSettingsUpdate(BaseModel):
     api_key: Optional[str] = None
@@ -326,6 +355,8 @@ class UserResponse(BaseModel):
     can_manage_lessons: bool 
     plan_expires_at: Optional[datetime] = None
     is_active: bool = True # NOVO
+    referral_code: Optional[str] = None     # NOVO
+    commission_balance: Optional[float] = 0.0 # NOVO
     model_config = ConfigDict(from_attributes=True)
 
 class UserCreateAdmin(BaseModel):
@@ -437,9 +468,29 @@ app.add_middleware(
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.email == user.email))
     if result.scalars().first(): raise HTTPException(status_code=400, detail="Email já cadastrado")
+    
+    # 1. Verifica quem indicou (se houver código de indicação)
+    referrer_id = None
+    if user.referral_code:
+        ref_result = await db.execute(select(User).filter(User.referral_code == user.referral_code))
+        referrer = ref_result.scalars().first()
+        if referrer:
+            referrer_id = referrer.id
+
+    # 2. Gera um código único para o NOVO usuário divulgar
+    new_referral_code = str(uuid.uuid4().hex)[:8].upper()
+
     hashed_pw = get_password_hash(user.password)
-    # Define a expiração para o momento exato do cadastro (forçando a ativação imediata após login)
-    new_user = User(email=user.email, hashed_password=hashed_pw, role=user.role, plan_expires_at=datetime.utcnow())
+    
+    new_user = User(
+        email=user.email, 
+        hashed_password=hashed_pw, 
+        role=user.role, 
+        plan_expires_at=datetime.utcnow(),
+        referral_code=new_referral_code, # Salva o código dele
+        referred_by_id=referrer_id,      # Salva quem o indicou
+        commission_balance=0.0
+    )
     db.add(new_user)
     await db.commit()
     return {"message": "Usuário criado com sucesso"}
@@ -1999,9 +2050,21 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     return {"ok": True, "message": "Usuário deletado"}
 
-@app.get("/users/me", response_model=UserResponse)
-async def read_users_me(current_user: User = Depends(get_current_user)):
+@app.get("/users/me", response_model=UserResponse) 
+async def read_users_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db) # <-- Adicionamos a sessão do banco aqui
+):
     """Retorna os dados do usuário atualmente logado para o Frontend"""
+    
+    # --- AUTO-CORREÇÃO PARA USUÁRIOS ANTIGOS ---
+    # Se o usuário não tiver um código de indicação, cria um agora mesmo
+    if not current_user.referral_code:
+        current_user.referral_code = str(uuid.uuid4().hex)[:8].upper()
+        await db.commit()
+        await db.refresh(current_user)
+    # ------------------------------------------
+        
     return current_user
 
 @app.get("/users/me/settings", response_model=UserSettingsResponse)
@@ -2044,6 +2107,22 @@ async def update_my_password(payload: PasswordUpdate, current_user: User = Depen
     current_user.hashed_password = get_password_hash(payload.new_password)
     await db.commit()
     return {"ok": True, "message": "Palavra-passe atualizada com sucesso."}
+
+# =========================================================================
+# NOVA ROTA: HISTÓRICO DE COMISSÕES DO UTILIZADOR LOGADO
+# =========================================================================
+@app.get("/users/me/commission-history", response_model=List[CommissionHistoryResponse])
+async def get_my_commission_history(
+    current_user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """Devolve o histórico de movimentações (ganhos e pagamentos) do utilizador atual."""
+    result = await db.execute(
+        select(CommissionHistory)
+        .filter(CommissionHistory.user_id == current_user.id)
+        .order_by(desc(CommissionHistory.created_at))
+    )
+    return result.scalars().all()
     
 @app.post("/chat")
 async def chat_tutor(req: ChatMessageRequest):
@@ -2698,13 +2777,35 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
                             base_date = user.plan_expires_at
                             
                         user.plan_expires_at = base_date + timedelta(days=dias)
+
+                        # --- NOVA LÓGICA DE COMISSÃO (20%) ---
+                        if user.referred_by_id:
+                            planos_precos = {"mensal": 49.90, "trimestral": 119.90, "semestral": 199.90, "anual": 349.90}
+                            preco_plano = planos_precos.get(plano, 0)
+                            
+                            if preco_plano > 0:
+                                comissao = preco_plano * 0.20 # 20% do valor
+                                
+                                ref_user_result = await db.execute(select(User).filter(User.id == user.referred_by_id))
+                                referrer = ref_user_result.scalars().first()
+                                if referrer:
+                                    referrer.commission_balance = (referrer.commission_balance or 0.0) + comissao
+                                    
+                                    # REGISTRA O GANHO NO HISTÓRICO
+                                    hist = CommissionHistory(
+                                        user_id=referrer.id,
+                                        amount=comissao,
+                                        action_type="ganho",
+                                        description=f"Comissão (20%) - Plano {plano.capitalize()} de {email}"
+                                    )
+                                    db.add(hist)
+                        # -------------------------------------
                         
                         # 2. REGISTRA QUE O PAGAMENTO FOI PROCESSADO
                         new_processed = ProcessedPayment(payment_id=payment_id)
                         db.add(new_processed)
                         
                         await db.commit()
-                        print(f"✅ Plano de {email} atualizado (+{dias} dias)")
     
     return {"status": "ok"}
 
@@ -2760,6 +2861,59 @@ async def revoke_plan(
     await db.refresh(target_user)
     return {"message": "Plano removido com sucesso", "expires_at": target_user.plan_expires_at}
 
+@app.get("/admin/users/{user_id}/commissions", response_model=List[CommissionHistoryResponse])
+async def get_user_commissions(user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    result = await db.execute(select(CommissionHistory).filter(CommissionHistory.user_id == user_id).order_by(desc(CommissionHistory.created_at)))
+    return result.scalars().all()
+
+@app.post("/admin/users/{user_id}/commission-action")
+async def handle_commission_action(
+    user_id: int, 
+    req: CommissionActionRequest,
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    result = await db.execute(select(User).filter(User.id == user_id))
+    target_user = result.scalars().first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    
+    saldo_atual = target_user.commission_balance or 0.0
+    
+    # LÓGICA DE PAGAMENTO (Abatimento)
+    if req.action == "pagamento":
+        if req.amount <= 0: raise HTTPException(status_code=400, detail="Valor inválido.")
+        if req.amount > saldo_atual: raise HTTPException(status_code=400, detail="Saldo insuficiente para o pagamento.")
+        target_user.commission_balance = saldo_atual - req.amount
+        desc = req.description or "Pagamento realizado"
+        
+    # LÓGICA DE AJUSTE (Edição Livre)
+    elif req.action == "ajuste":
+        if req.amount < 0: raise HTTPException(status_code=400, detail="O saldo não pode ser negativo.")
+        target_user.commission_balance = req.amount
+        desc = req.description or "Ajuste manual de saldo"
+    else:
+        raise HTTPException(status_code=400, detail="Ação inválida")
+        
+    # Salva no Histórico
+    hist = CommissionHistory(
+        user_id=user_id,
+        amount=req.amount,
+        action_type=req.action,
+        description=desc
+    )
+    db.add(hist)
+    
+    await db.commit()
+    await db.refresh(target_user)
+    
+    return {"message": "Ação realizada com sucesso", "new_balance": target_user.commission_balance}
                     
 if __name__ == "__main__":
     # O Railway injeta dinamicamente a variável de ambiente PORT. Se não achar, usa 8000.

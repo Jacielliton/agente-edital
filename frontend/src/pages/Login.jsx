@@ -12,6 +12,9 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
+  // Captura o código da URL, se existir
+  const refCodeUrl = new URLSearchParams(location.search).get('ref');
+  const [referralCode, setReferralCode] = useState(refCodeUrl || '');
   
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -61,7 +64,8 @@ export default function Login() {
           body: JSON.stringify({ 
             email, 
             password,
-            role: "user" 
+            role: "user",
+            referral_code: referralCode // <--- Envia o código para a API
           }),
         });
 

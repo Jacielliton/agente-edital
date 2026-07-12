@@ -11,6 +11,7 @@ G:\PROJETOS-CODER\SITES\agente-edital\backend\.env.example
 G:\PROJETOS-CODER\SITES\agente-edital\backend\database.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\docker-compose.yml 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\fix_db.py 
+G:\PROJETOS-CODER\SITES\agente-edital\backend\fix_db2.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\main.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\migrate.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\openrouter_api.py 
@@ -61,6 +62,7 @@ G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\Ferramentas.jsx
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\GabariteCespe.jsx 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\GabariteDireito.jsx 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\GabariteIngles.jsx 
+G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\GabariteJava.jsx 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\GabariteLogica.jsx 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\GabariteSintaxe.jsx 
 G:\PROJETOS-CODER\SITES\agente-edital\frontend\src\pages\Generator.jsx 
