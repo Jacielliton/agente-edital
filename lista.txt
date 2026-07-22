@@ -8,6 +8,8 @@ G:\PROJETOS-CODER\SITES\agente-edital\refatorar_urls.py
 G:\PROJETOS-CODER\SITES\agente-edital\teste.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\.env 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\.env.example 
+G:\PROJETOS-CODER\SITES\agente-edital\backend\add_ref_columns.py 
+G:\PROJETOS-CODER\SITES\agente-edital\backend\create_history_table.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\database.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\docker-compose.yml 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\fix_db.py 

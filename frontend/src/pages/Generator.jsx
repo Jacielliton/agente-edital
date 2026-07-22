@@ -265,7 +265,7 @@ export default function Generator() {
   };
 
   const openConfigModal = () => {
-    setTempModel(userModel || "arcee-ai/trinity-large-thinking:free");
+    setTempModel(userModel || "deepseek/deepseek-v4-flash");
     setShowConfig(true);
   };
 
@@ -485,7 +485,7 @@ export default function Generator() {
 
             <div style={{ marginBottom: '25px' }}>
               <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA (Opcional):</label>
-              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: arcee-ai/trinity-large-thinking:free" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
+              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: deepseek/deepseek-v4-flash" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
               
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
                 O sistema utiliza modelos gratuitos por padrão. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.

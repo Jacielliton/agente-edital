@@ -163,7 +163,7 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
           aula_titulo: "Conhecimento Geral da Área",
           mensagem: newMsg.content,
           historico: messages.slice(-4),
-          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
           api_key: userApiKey || null
         })
       });
@@ -274,7 +274,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           comando: discursiva.comando || "",
           aspectos: discursiva.aspectos || [],
           resposta_aluno: answer,
-          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
           api_key: userApiKey || null
         })
       });
@@ -310,7 +310,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           aula_titulo: aula.titulo || "Aula",
           lesson_content: aula, 
           nivel: nivel, // <-- ENVIANDO O NÍVEL PARA A API
-          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
           api_key: userApiKey || null
         })
       });
@@ -495,7 +495,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
           area: area || "Assunto Geral",
           aulas_titulos: aulasTitulos,
           nivel: nivel, // <-- ENVIANDO O NÍVEL PARA A API
-          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
           api_key: userApiKey || null
         })
       });
@@ -532,7 +532,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
           comando: discursiva.comando || "",
           aspectos: discursiva.aspectos || [],
           resposta_aluno: answer,
-          model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
+          model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
           api_key: userApiKey || null
         })
       });      
@@ -867,7 +867,7 @@ export default function LessonContent({ result }) {
                 area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
                 topico: aula.titulo || `Tópico ${i+1}`,
                 conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
-                model: userModel || defaultModel || "arcee-ai/trinity-large-thinking:free",
+                model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
                 api_key: userApiKey || null,
                 qtd_questoes: parseInt(simuladoQtd, 10), 
                 nivel: simuladoNivel,

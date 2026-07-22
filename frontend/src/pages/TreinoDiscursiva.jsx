@@ -166,7 +166,7 @@ export default function TreinoDiscursiva() {
         body: JSON.stringify({
           texto: editalTrecho,
           api_key: userApiKey || null, 
-          model: userModel || "arcee-ai/trinity-large-thinking:free"
+          model: userModel || "deepseek/deepseek-v4-flash"
         })
       });
 
@@ -265,7 +265,7 @@ export default function TreinoDiscursiva() {
           nivel: nivel,
           edital_regras_prova: tipoProva === "Personalizado" ? editalRegrasProva : null,
           api_key: userApiKey || null, 
-          model: userModel || "arcee-ai/trinity-large-thinking:free"
+          model: userModel || "deepseek/deepseek-v4-flash"
         })
       });
       
@@ -300,7 +300,7 @@ export default function TreinoDiscursiva() {
           aspectos: prova.aspectos || [],
           resposta_aluno: textoFinal,
           api_key: userApiKey || null, 
-          model: userModel || "arcee-ai/trinity-large-thinking:free"
+          model: userModel || "deepseek/deepseek-v4-flash"
         })
       });
 

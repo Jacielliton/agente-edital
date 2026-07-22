@@ -249,7 +249,7 @@ export default function GabariteJava() {
         const currentBatchSize = Math.min(batchSize, configAmount - (i * batchSize));
 
         const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
-        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "deepseek/deepseek-v4-flash";
 
         const payload = {
           subject: "Java", // Adaptado para requisição de Java
@@ -320,7 +320,7 @@ export default function GabariteJava() {
     try {
       const token = getAuthToken();
       const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
-      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "deepseek/deepseek-v4-flash";
 
       const data = await fetchStreamAsJson(`${API_URL}/generate-lesson-cespe`, {
         method: "POST",

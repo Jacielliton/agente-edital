@@ -257,7 +257,7 @@ export default function GabariteSintaxe() {
         // 1. Descobre se a chave é do Google (não começa com sk-or-)
         const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
         // 2. Define o modelo de segurança compatível
-        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "deepseek/deepseek-v4-flash";
 
         const payload = {
           subject: "Língua Portuguesa",
@@ -400,7 +400,7 @@ export default function GabariteSintaxe() {
       
       // 1. Resolve o problema de roteamento do modelo (anti-404)
       const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
-      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "deepseek/deepseek-v4-flash";
 
       // 2. SUBSTITUI o fetch normal pela sua função blindada fetchStreamAsJson
       const data = await fetchStreamAsJson(`${API_URL}/generate-lesson-cespe`, {

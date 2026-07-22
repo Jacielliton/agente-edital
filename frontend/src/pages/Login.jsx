@@ -1,21 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { UserPlus, LogIn, AlertCircle, CheckCircle, Brain, FileText, MessageSquare, Target } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { UserPlus, LogIn, AlertCircle, CheckCircle, Brain, FileText, MessageSquare, Sparkles, Zap, Ticket, ArrowRight, ArrowLeft } from 'lucide-react';
+
+// 1. Dicionário de preços base para cálculo dinâmico
+const PLAN_PRICES = {
+  mensal_simples: 49.90,
+  trimestral_simples: 119.90,
+  semestral_simples: 199.90,
+  mensal_plus: 99.90,
+  trimestral_plus: 159.90,
+  semestral_plus: 239.90,
+  trimestral_pro: 189.90,
+  semestral_pro: 269.90,
+};
 
 export default function Login() {
   const location = useLocation();
   const [isRegistering, setIsRegistering] = useState(false); 
-  const [selectedPlan, setSelectedPlan] = useState('mensal');
+  const [registrationStep, setRegistrationStep] = useState(1); // Nova variável para controle de etapas
+  const [selectedPlan, setSelectedPlan] = useState('mensal_simples');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
-  // Captura o código da URL, se existir
+  
   const refCodeUrl = new URLSearchParams(location.search).get('ref');
   const [referralCode, setReferralCode] = useState(refCodeUrl || '');
   
+  const [couponCode, setCouponCode] = useState('');
+  
+  // 2. Novos estados para gerenciar o desconto na interface
+  const [discount, setDiscount] = useState(0); 
+  const [discountType, setDiscountType] = useState('fixed'); 
+  const [couponMessage, setCouponMessage] = useState({ text: '', type: '' });
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,25 +43,107 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   
-  // O useEffect foi movido para a raiz do componente (fora do handleSubmit)
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
   useEffect(() => {
     const queryParams = new URLSearchParams(location.search);
     const status = queryParams.get('status');
     
     if (status === 'approved') {
-      setSuccessMsg('🎉 Seu pagamento foi aprovado com sucesso! O sistema está processando sua liberação. Tente fazer login em instantes.');
+      setSuccessMsg('🎉 Seu pagamento foi aprovado com sucesso! O sistema está a processar a sua liberação. Tente fazer login em instantes.');
     } else if (status === 'pending') {
-      setSuccessMsg('⏳ Seu pagamento está pendente (Aguardando compensação do Boleto/Pix). Assim que compensado, seu acesso será liberado.');
+      setSuccessMsg('⏳ Seu pagamento está pendente (Aguardando compensação). Assim que compensado, seu acesso será liberado.');
     }
   }, [location]);
 
   const toggleMode = () => {
     setIsRegistering(!isRegistering);
+    setRegistrationStep(1); // Reseta a etapa ao alternar modo
     setError('');
     setSuccessMsg('');
     setEmail('');
     setPassword('');
     setConfirmPassword('');
+    setCouponCode('');
+    setDiscount(0);
+    setCouponMessage({ text: '', type: '' });
+  };
+
+  const handleNextStep = () => {
+    // Validações antes de passar para a etapa do plano
+    if (!email || !password || !confirmPassword) {
+      setError("Por favor, preencha todos os campos antes de continuar.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    setError('');
+    setRegistrationStep(2);
+  };
+
+  // 3. Função para validar o cupom no backend
+  const handleApplyCoupon = async () => {
+    if (!couponCode) {
+      setCouponMessage({ text: 'Digite um código de cupom.', type: 'error' });
+      return;
+    }
+    
+    setIsApplyingCoupon(true);
+    setCouponMessage({ text: '', type: '' });
+    
+    try {
+      const res = await fetch(`${API_URL}/coupons/validate/${couponCode}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || 'Cupom inválido ou expirado.');
+      }
+
+      setDiscount(data.discount_value);
+      setDiscountType(data.discount_type || 'fixed');
+      setCouponMessage({ text: 'Cupom aplicado com sucesso!', type: 'success' });
+      
+    } catch (err) {
+      setDiscount(0);
+      setCouponMessage({ text: err.message, type: 'error' });
+    } finally {
+      setIsApplyingCoupon(false);
+    }
+  };
+
+  // 4. Função auxiliar para renderizar o preço com ou sem desconto
+  const renderPrice = (planKey, defaultColor) => {
+    const basePrice = PLAN_PRICES[planKey];
+    let finalPrice = basePrice;
+    
+    if (discount > 0) {
+      if (discountType === 'percent') {
+        finalPrice = basePrice - (basePrice * (discount / 100));
+      } else {
+        finalPrice = Math.max(0, basePrice - discount);
+      }
+    }
+
+    const hasDiscount = discount > 0 && finalPrice < basePrice;
+
+    return (
+      <div style={{ textAlign: 'right', minWidth: '80px' }}>
+        {hasDiscount && (
+          <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>
+            R$ {basePrice.toFixed(2).replace('.', ',')}
+          </span>
+        )}
+        <strong style={{ color: hasDiscount ? '#10b981' : defaultColor, fontSize: '0.95rem' }}>
+          R$ {finalPrice.toFixed(2).replace('.', ',')}
+        </strong>
+      </div>
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -49,8 +151,6 @@ export default function Login() {
     setError('');
     setSuccessMsg('');
     setLoading(true);
-
-    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
     try {
       if (isRegistering) {
@@ -65,7 +165,7 @@ export default function Login() {
             email, 
             password,
             role: "user",
-            referral_code: referralCode // <--- Envia o código para a API
+            referral_code: referralCode
           }),
         });
 
@@ -75,19 +175,21 @@ export default function Login() {
           throw new Error(data.detail || "Erro ao criar conta.");
         }
 
-        // Em vez de apenas mostrar mensagem, gera a cobrança do plano escolhido
         const payRes = await fetch(`${API_URL}/payments/create-preference`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, plano: selectedPlan })
+          body: JSON.stringify({ 
+            email, 
+            plano: selectedPlan,
+            coupon_code: discount > 0 ? couponCode : null 
+          })
         });
         
         const payData = await payRes.json();
-        if (!payRes.ok) throw new Error(payData.detail || "Conta criada, mas falhou ao gerar cobrança do Mercado Pago.");
+        if (!payRes.ok) throw new Error(payData.detail || "Conta criada, mas falhou ao gerar cobrança.");
 
-        // Redireciona o usuário direto para o checkout do Mercado Pago
         window.location.href = payData.init_point;
-        return; // Para a execução da função para não dar conflito
+        return;
 
       } else {
         await login(email, password);
@@ -107,7 +209,6 @@ export default function Login() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh', padding: '2rem 1rem' }}>
       
-      {/* Estilos de Animação Inline */}
       <style>
         {`
           @keyframes fadeSlideUp {
@@ -126,9 +227,9 @@ export default function Login() {
           .login-wrapper {
             display: flex;
             width: 100%;
-            max-width: 1000px;
+            max-width: 1050px;
             gap: 3rem;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
             flex-wrap: wrap;
           }
@@ -140,7 +241,7 @@ export default function Login() {
           .login-form-container {
             flex: 1;
             min-width: 320px;
-            max-width: 450px;
+            max-width: 480px;
             animation: fadeSlideUp 0.8s ease-out 0.2s backwards;
           }
           .feature-item {
@@ -166,12 +267,33 @@ export default function Login() {
             border-radius: 10px;
             animation: floatIcon 4s ease-in-out infinite;
           }
+          .plan-group-title {
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin: 12px 0 6px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+          .plan-option-card {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            background: var(--input-bg);
+            transition: all 0.2s ease;
+          }
         `}
       </style>
 
       <div className="login-wrapper">
         
-        {/* LADO ESQUERDO: Informações e Features */}
+        {/* LADO ESQUERDO: Informações e Recursos */}
         <div className="login-info">
           <h1 style={{ color: 'var(--heading-color)', fontSize: '2.5rem', marginBottom: '1rem', lineHeight: '1.2' }}>
             Domine o seu edital com Inteligência Artificial.
@@ -209,17 +331,20 @@ export default function Login() {
         <div className="login-form-container">
           <div className="card" style={{ padding: '2.5rem 2rem', background: 'var(--card-bg)', borderColor: 'var(--border)' }}>
             
-            <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
               <h2 style={{ color: 'var(--heading-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', margin: '0 0 10px 0' }}>
                 {isRegistering ? <UserPlus size={28} color="var(--primary)" /> : <LogIn size={28} color="var(--primary)" />}
-                {isRegistering ? 'Criar Nova Conta' : 'Acesso ao Sistema'}
+                {isRegistering 
+                  ? (registrationStep === 1 ? 'Criar Nova Conta (1/2)' : 'Escolha o Plano (2/2)') 
+                  : 'Acesso ao Sistema'}
               </h2>
               <p className="muted" style={{ margin: 0 }}>
-                {isRegistering ? 'Preencha os dados abaixo para iniciar os seus estudos.' : 'Bem-vindo de volta! Insira as suas credenciais.'}
+                {isRegistering 
+                  ? (registrationStep === 1 ? 'Preencha os dados abaixo para iniciar.' : 'Selecione a sua assinatura para concluir.')
+                  : 'Bem-vindo de volta! Insira as suas credenciais.'}
               </p>
             </div>
 
-            {/* Mensagens de Sucesso ou Erro */}
             {successMsg && (
               <div className="status" style={{ background: 'var(--success-bg)', color: 'var(--success-text)', borderColor: 'var(--success-text)', marginBottom: '1.5rem' }}>
                 <CheckCircle size={18} /> {successMsg}
@@ -244,106 +369,244 @@ export default function Login() {
             ) : null}
 
             <form onSubmit={handleSubmit}>
-              <div className="row">
-                <label className="label">E-mail de Acesso</label>
-                <input 
-                  className="input" 
-                  type="email" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)} 
-                  placeholder="aluno@exemplo.com"
-                  required 
-                />
-              </div>
+              
+              {/* === ETAPA 1: LOGIN OU DADOS DA CONTA === */}
+              {(!isRegistering || (isRegistering && registrationStep === 1)) && (
+                <div style={{ animation: 'fadeSlideRight 0.3s ease-out' }}>
+                  <div className="row">
+                    <label className="label">E-mail de Acesso</label>
+                    <input 
+                      className="input" 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      placeholder="aluno@exemplo.com"
+                      required={!isRegistering || registrationStep === 1}
+                    />
+                  </div>
 
-              <div className="row">
-                <label className="label">Senha</label>
-                <input 
-                  className="input" 
-                  type="password" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)} 
-                  placeholder="••••••••"
-                  required 
-                />
-              </div>
+                  <div className="row">
+                    <label className="label">Senha</label>
+                    <input 
+                      className="input" 
+                      type="password" 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                      placeholder="••••••••"
+                      required={!isRegistering || registrationStep === 1}
+                    />
+                  </div>
 
-              {isRegistering && (
-                <div className="row" style={{ animation: 'fadeSlideUp 0.3s ease-out' }}>
-                  <label className="label">Confirmar Senha</label>
-                  <input 
-                    className="input" 
-                    type="password" 
-                    value={confirmPassword} 
-                    onChange={(e) => setConfirmPassword(e.target.value)} 
-                    placeholder="Repita a sua senha"
-                    required 
-                  />
-                  
-                  <div style={{ marginTop: '1.5rem' }}>
-                    <label className="label" style={{ marginBottom: '10px', display: 'block' }}>Escolha o seu Plano (Pagamentos Únicos)</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      
-                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'mensal' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="mensal" checked={selectedPlan === 'mensal'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Mensal</strong>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
-                          </div>
-                        </div>
-                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 49,90</strong>
-                      </label>
-
-                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'trimestral' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="trimestral" checked={selectedPlan === 'trimestral'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Trimestral</strong>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
-                          </div>
-                        </div>
-                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 119,90</strong>
-                      </label>
-
-                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'semestral' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="semestral" checked={selectedPlan === 'semestral'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Semestral</strong>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
-                          </div>
-                        </div>
-                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 199,90</strong>
-                      </label>
-
-                      <label style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', border: selectedPlan === 'anual' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '8px', cursor: 'pointer', background: 'var(--input-bg)', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="anual" checked={selectedPlan === 'anual'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 10px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', display: 'block' }}>Anual</strong>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Renovação Manual</span>
-                          </div>
-                        </div>
-                        <strong style={{ color: 'var(--heading-color)', fontSize: '1.1rem' }}>R$ 349,90</strong>
-                      </label>
-                      
+                  {isRegistering && (
+                    <div className="row">
+                      <label className="label">Confirmar Senha</label>
+                      <input 
+                        className="input" 
+                        type="password" 
+                        value={confirmPassword} 
+                        onChange={(e) => setConfirmPassword(e.target.value)} 
+                        placeholder="Repita a sua senha"
+                        required={registrationStep === 1}
+                      />
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* === ETAPA 2: ESCOLHER PLANO E CUPOM === */}
+              {isRegistering && registrationStep === 2 && (
+                <div style={{ animation: 'fadeSlideUp 0.3s ease-out' }}>
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
+                      
+                      {/* CATEGORIA 1: PLANO SIMPLES */}
+                      <span className="plan-group-title">Plano Simples (Usa Chave Pessoal)</span>
+                      
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'mensal_simples' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="mensal_simples" checked={selectedPlan === 'mensal_simples'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Simples Mensal</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>30 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('mensal_simples', 'var(--heading-color)')}
+                      </label>
+
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'trimestral_simples' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="trimestral_simples" checked={selectedPlan === 'trimestral_simples'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Simples Trimestral</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>90 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('trimestral_simples', 'var(--heading-color)')}
+                      </label>
+
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'semestral_simples' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="semestral_simples" checked={selectedPlan === 'semestral_simples'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Simples Semestral</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>180 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('semestral_simples', 'var(--heading-color)')}
+                      </label>
+
+                      {/* CATEGORIA 2: PLANO PLUS */}
+                      <span className="plan-group-title" style={{ color: '#0284c7' }}>
+                        <Sparkles size={14} /> Plano Plus (IA Global - 3M Tokens/mês)
+                      </span>
+
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'mensal_plus' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="mensal_plus" checked={selectedPlan === 'mensal_plus'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Plus Mensal</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>30 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('mensal_plus', '#0284c7')}
+                      </label>
+
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'trimestral_plus' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="trimestral_plus" checked={selectedPlan === 'trimestral_plus'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Plus Trimestral</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>90 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('trimestral_plus', '#0284c7')}
+                      </label>
+
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'semestral_plus' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="semestral_plus" checked={selectedPlan === 'semestral_plus'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Plus Semestral</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>180 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('semestral_plus', '#0284c7')}
+                      </label>
+
+                      {/* CATEGORIA 3: PLANO PRO */}
+                      <span className="plan-group-title" style={{ color: '#7c3aed' }}>
+                        <Zap size={14} /> Plano Pro (IA Global - 6M Tokens/mês)
+                      </span>
+
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'trimestral_pro' ? '2px solid #7c3aed' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="trimestral_pro" checked={selectedPlan === 'trimestral_pro'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Pro Trimestral</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>90 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('trimestral_pro', '#7c3aed')}
+                      </label>
+
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'semestral_pro' ? '2px solid #7c3aed' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="semestral_pro" checked={selectedPlan === 'semestral_pro'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Pro Semestral</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>180 Dias de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('semestral_pro', '#7c3aed')}
+                      </label>
+
+                    </div>
+                  </div>
+
+                  {/* CAMPO DE CUPOM COM BOTÃO DE APLICAR */}
+                  <div style={{ padding: '12px', borderRadius: '8px', border: '1px dashed var(--border)', background: 'var(--bg)' }}>
+                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-main)', fontWeight: 'bold' }}>
+                      <Ticket size={16} /> Cupom de Desconto (Opcional)
+                    </label>
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                      <input 
+                        className="input" 
+                        type="text" 
+                        value={couponCode} 
+                        onChange={(e) => {
+                          setCouponCode(e.target.value.toUpperCase());
+                          if (discount > 0) {
+                            setDiscount(0); 
+                            setCouponMessage({ text: '', type: '' });
+                          }
+                        }} 
+                        placeholder="Ex: APROVADO20"
+                        style={{ flex: 1, textTransform: 'uppercase' }}
+                      />
+                      <button 
+                        type="button" 
+                        onClick={handleApplyCoupon}
+                        disabled={!couponCode || isApplyingCoupon}
+                        style={{
+                          padding: '0 16px',
+                          background: 'var(--primary)',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: (!couponCode || isApplyingCoupon) ? 'not-allowed' : 'pointer',
+                          fontWeight: 'bold',
+                          opacity: (!couponCode || isApplyingCoupon) ? 0.7 : 1
+                        }}
+                      >
+                        {isApplyingCoupon ? 'Aguarde...' : 'Aplicar'}
+                      </button>
+                    </div>
+                    {couponMessage.text && (
+                      <span style={{ display: 'block', marginTop: '8px', fontSize: '0.85rem', color: couponMessage.type === 'success' ? '#10b981' : '#ef4444' }}>
+                        {couponMessage.text}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
 
-              <div className="actions" style={{ flexDirection: 'column', gap: '1rem', marginTop: '2rem' }}>
-                <button 
-                  className="btn primary" 
-                  type="submit" 
-                  style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '1.05rem', boxShadow: '0 4px 12px var(--primary-light)' }}
-                  disabled={loading}
-                >
-                  {loading ? 'A processar...' : (isRegistering ? 'Cadastrar e Ativar Plano' : 'Entrar no Painel')}
-                </button>
+              {/* === BOTÕES DE AÇÃO PRINCIPAIS === */}
+              <div className="actions" style={{ flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
                 
-                <div style={{ position: 'relative', width: '100%', textAlign: 'center', margin: '10px 0' }}>
+                {isRegistering && registrationStep === 1 ? (
+                  <button 
+                    className="btn primary" 
+                    type="button" 
+                    onClick={handleNextStep}
+                    style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '1.05rem', boxShadow: '0 4px 12px var(--primary-light)' }}
+                  >
+                    Continuar <ArrowRight size={18} />
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+                    {isRegistering && registrationStep === 2 && (
+                      <button 
+                        className="btn" 
+                        type="button" 
+                        onClick={() => setRegistrationStep(1)}
+                        style={{ flex: '1', justifyContent: 'center', padding: '12px', background: 'var(--bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }}
+                      >
+                        <ArrowLeft size={18} /> Voltar
+                      </button>
+                    )}
+                    <button 
+                      className="btn primary" 
+                      type="submit" 
+                      style={{ flex: isRegistering && registrationStep === 2 ? '2' : '1', width: '100%', justifyContent: 'center', padding: '12px', fontSize: '1.05rem', boxShadow: '0 4px 12px var(--primary-light)' }}
+                      disabled={loading}
+                    >
+                      {loading ? 'A processar...' : (isRegistering ? 'Finalizar Cadastro' : 'Entrar no Painel')}
+                    </button>
+                  </div>
+                )}
+                
+                <div style={{ position: 'relative', width: '100%', textAlign: 'center', margin: '5px 0' }}>
                   <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0' }} />
                   <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '0 10px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>OU</span>
                 </div>
@@ -359,7 +622,6 @@ export default function Login() {
                     : 'Não tem conta? Cadastre-se agora'}
                 </button>
                 
-                {/* NOVO: Botão persistente para ativar conta já existente */}
                 {!isRegistering && (
                   <button 
                     type="button"

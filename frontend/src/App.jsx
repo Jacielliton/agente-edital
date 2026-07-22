@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, PlusCircle, Settings, BookOpen, LogOut, LogIn, Moon, Sun, Menu, X, UserCircle, Wrench } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Settings, BookOpen, LogOut, LogIn, Moon, Sun, Menu, X, UserCircle, Wrench, Instagram, Youtube } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import "./App.css";
 
@@ -16,7 +16,7 @@ const OpenRouterCallback = lazy(() => import("./pages/OpenRouterCallback"));
 const Profile = lazy(() => import("./pages/Profile"));
 const TreinoDiscursiva = lazy(() => import("./pages/TreinoDiscursiva"));
 const Ferramentas = lazy(() => import("./pages/Ferramentas"));
-const Planos = lazy(() => import("./pages/Planos")); // NOVO
+const Planos = lazy(() => import("./pages/Planos")); 
 const GabariteCespe = lazy(() => import("./pages/GabariteCespe"));
 const GabariteLogica = lazy(() => import("./pages/GabariteLogica"));
 const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe")); 
@@ -130,7 +130,7 @@ function NavBar() {
               </button>
             </>
           ) : (
-            <Link to="/login" className="nav-item"><LogIn size={18}/> Entrar</Link>
+            <Link to="/" className="nav-item"><LogIn size={18}/> Entrar</Link>
           )}
         </div>
       </div>
@@ -138,41 +138,96 @@ function NavBar() {
   );
 }
 
+// Componente Footer (Rodapé)
+function Footer() {
+  return (
+    <footer style={{
+      borderTop: '1px solid var(--border)',
+      backgroundColor: 'var(--header-bg)',
+      padding: '2rem 1.5rem',
+      textAlign: 'center',
+      marginTop: 'auto' // Garante que fique no final da página
+    }}>
+      <div style={{ marginBottom: '1rem', color: 'var(--text-secondary)', fontWeight: '400' }}>
+        Siga-nos nas redes sociais
+      </div>
+      
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem' }}>
+        <a 
+          href="https://www.instagram.com/tecnopriv.top/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style={{ color: 'var(--text-secondary)', transition: 'color 0.2s' }}
+          onMouseOver={(e) => e.currentTarget.style.color = '#e1306c'}
+          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+          title="Instagram Tecnopriv"
+        >
+          <Instagram size={28} />
+        </a>
+        <a 
+          href="https://www.youtube.com/@tecnopriv.top1" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style={{ color: 'var(--text-secondary)', transition: 'color 0.2s' }}
+          onMouseOver={(e) => e.currentTarget.style.color = '#ff0000'}
+          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+          title="YouTube Tecnopriv"
+        >
+          <Youtube size={32} />
+        </a>
+      </div>
+      
+      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+        &copy; {new Date().getFullYear()} AgenteIA Edital. Todos os direitos reservados.
+      </div>
+    </footer>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <NavBar />
-        <div className="main-content">
-          <Suspense fallback={<LoadingFallback />}>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/planos" element={<Planos />} />
-              <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-              <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-              <Route path="/aula/:id" element={<PrivateRoute><SingleLesson /></PrivateRoute>} />
-              <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
-              <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-              <Route path="/callback" element={<PrivateRoute><OpenRouterCallback /></PrivateRoute>} />
-              
-              {/* ROTAS DAS FERRAMENTAS */}
-              <Route path="/ferramentas" element={<PrivateRoute><Ferramentas /></PrivateRoute>} />
-              <Route path="/treino" element={<PrivateRoute><TreinoDiscursiva /></PrivateRoute>} />
-              <Route path="/gabarite-cespe" element={<PrivateRoute><GabariteCespe /></PrivateRoute>} />
-              <Route path="/gabarite-logica" element={<PrivateRoute><GabariteLogica /></PrivateRoute>} />
-              <Route path="/gabarite-sintaxe" element={<PrivateRoute><GabariteSintaxe /></PrivateRoute>} />
-              <Route path="/gabarite-direito" element={<PrivateRoute><GabariteDireito /></PrivateRoute>} />
-              <Route path="/gabarite-ingles" element={<PrivateRoute><GabariteIngles /></PrivateRoute>} />
-              <Route path="/gabarite-java" element={<PrivateRoute><GabariteJava /></PrivateRoute>} /> {/* NOVA ROTA */}
-              <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
-              <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
-              
-              <Route path="/admin" element={<PrivateRoute adminOnly={true}><AdminPanel /></PrivateRoute>} />
+        {/* Container flex para garantir que o rodapé fique no fim (Sticky Footer) */}
+        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          
+          <NavBar />
+          
+          {/* flex: 1 faz o conteúdo principal empurrar o rodapé para baixo */}
+          <div className="main-content" style={{ flex: 1, paddingBottom: '3rem' }}>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/planos" element={<Planos />} />
+                <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+                <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+                <Route path="/aula/:id" element={<PrivateRoute><SingleLesson /></PrivateRoute>} />
+                <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
+                <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+                <Route path="/callback" element={<PrivateRoute><OpenRouterCallback /></PrivateRoute>} />
+                
+                {/* ROTAS DAS FERRAMENTAS */}
+                <Route path="/ferramentas" element={<PrivateRoute><Ferramentas /></PrivateRoute>} />
+                <Route path="/treino" element={<PrivateRoute><TreinoDiscursiva /></PrivateRoute>} />
+                <Route path="/gabarite-cespe" element={<PrivateRoute><GabariteCespe /></PrivateRoute>} />
+                <Route path="/gabarite-logica" element={<PrivateRoute><GabariteLogica /></PrivateRoute>} />
+                <Route path="/gabarite-sintaxe" element={<PrivateRoute><GabariteSintaxe /></PrivateRoute>} />
+                <Route path="/gabarite-direito" element={<PrivateRoute><GabariteDireito /></PrivateRoute>} />
+                <Route path="/gabarite-ingles" element={<PrivateRoute><GabariteIngles /></PrivateRoute>} />
+                <Route path="/gabarite-java" element={<PrivateRoute><GabariteJava /></PrivateRoute>} /> 
+                <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
+                <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
+                
+                <Route path="/admin" element={<PrivateRoute adminOnly={true}><AdminPanel /></PrivateRoute>} />
 
-              {/* ROTA 404 (Catch-all) */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+                {/* ROTA 404 (Catch-all) */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </div>
+
+          <Footer />
+
         </div>
       </BrowserRouter>
     </AuthProvider>

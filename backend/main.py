@@ -5,6 +5,7 @@ import json
 import re
 import asyncio
 import random
+import contextvars
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
@@ -18,7 +19,7 @@ from typing import Literal
 import mercadopago
 from fastapi import Request
 import uuid
-
+from json_repair import repair_json
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
@@ -30,6 +31,7 @@ from sqlalchemy.orm import declarative_base
 
 # Cliente OpenAI/OpenRouter
 from openai import AsyncOpenAI
+current_user_ctx = contextvars.ContextVar('current_user_ctx', default=None)
 
 # ============================================================================
 # 1. CONFIGURAÇÃO DE AMBIENTE E BANCO DE DADOS
@@ -104,6 +106,35 @@ class User(Base):
     referral_code = Column(String, unique=True, index=True, nullable=True) # Código único do usuário
     referred_by_id = Column(Integer, nullable=True)                        # ID de quem o indicou
     commission_balance = Column(Float, default=0.0)
+    
+    # --- NOVOS CAMPOS IA E ASSINATURA ---
+    plan_type = Column(String, default="Simples") # Simples, Plus, Pro
+    tokens_used = Column(Integer, default=0)
+    token_limit = Column(Integer, default=0)
+    token_reset_date = Column(DateTime, nullable=True)
+    ai_blocked = Column(Boolean, default=False)
+
+class GlobalAIConfig(Base):
+    __tablename__ = "global_ai_config"
+    id = Column(Integer, primary_key=True, index=True)
+    model = Column(String, default="openai/gpt-4o-mini")
+    api_key = Column(String, nullable=True)
+    global_prompt = Column(String, nullable=True)
+    temperature = Column(Float, default=0.5)
+    max_tokens = Column(Integer, default=8192)
+    top_p = Column(Float, default=1.0)
+    penalties = Column(Float, default=0.0)
+    timeout = Column(Integer, default=30)
+
+class AITokenLog(Base):
+    __tablename__ = "ai_token_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True)
+    plan_type = Column(String)
+    tokens_prompt = Column(Integer, default=0)
+    tokens_completion = Column(Integer, default=0)
+    tokens_total = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class CommissionHistory(Base):
     __tablename__ = "commission_history"
@@ -113,7 +144,14 @@ class CommissionHistory(Base):
     action_type = Column(String) # 'ganho', 'pagamento' ou 'ajuste'
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-     
+    
+class Coupon(Base):
+    __tablename__ = "coupons"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True)
+    discount_percentage = Column(Float)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)     
     
 class CommissionActionRequest(BaseModel):
     action: str
@@ -253,6 +291,11 @@ class UserCreate(BaseModel):
     password: str
     role: str = "user"
     referral_code: Optional[str] = None
+
+# ADICIONADO: Schema para validação e criação do cupom
+class CouponCreate(BaseModel):
+    code: str
+    discount_percentage: float
     
 class UserSettingsUpdate(BaseModel):
     api_key: Optional[str] = None
@@ -357,6 +400,11 @@ class UserResponse(BaseModel):
     is_active: bool = True # NOVO
     referral_code: Optional[str] = None     # NOVO
     commission_balance: Optional[float] = 0.0 # NOVO
+    plan_type: str = "Simples"
+    tokens_used: int = 0
+    token_limit: int = 0
+    token_reset_date: Optional[datetime] = None
+    ai_blocked: bool = False
     model_config = ConfigDict(from_attributes=True)
 
 class UserCreateAdmin(BaseModel):
@@ -401,6 +449,27 @@ class ProcessedPayment(Base):
     __tablename__ = "processed_payments"
     payment_id = Column(String, primary_key=True, index=True)
     processed_at = Column(DateTime, default=datetime.utcnow)
+    
+class UserUpdateRole(BaseModel):
+    role: str
+
+class AIConfigSchema(BaseModel):
+    model: str
+    api_key: str
+    global_prompt: Optional[str] = None
+    temperature: float
+    max_tokens: int
+    top_p: float
+    penalties: float
+    timeout: int
+
+class AIStatsResponse(BaseModel):
+    total_plus: int
+    total_pro: int
+    tokens_today: int
+    tokens_month: int
+    tokens_total: int
+    estimated_cost: float
 # ============================================================================
 # 5. CLIENTE OPENROUTER
 # ============================================================================
@@ -463,6 +532,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def context_user_middleware(request: Request, call_next):
+    token = request.headers.get("Authorization")
+    if token and token.startswith("Bearer "):
+        try:
+            clean_token = token.replace("Bearer ", "").replace('"', '').replace("'", "")
+            payload = jwt.decode(clean_token, SECRET_KEY, algorithms=[ALGORITHM])
+            email = payload.get("sub")
+            if email:
+                async with AsyncSessionLocal() as db:
+                    user = (await db.execute(select(User).filter(User.email == email))).scalars().first()
+                    if user:
+                        current_user_ctx.set(user)
+        except Exception:
+            pass
+    response = await call_next(request)
+    return response
 
 @app.post("/auth/register")
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
@@ -853,6 +940,32 @@ def shuffle_question_options(question: Dict[str, Any]) -> Dict[str, Any]:
 async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None):
     """Lê o stream e repassa os chunks em tempo real para manter a conexão viva."""
     
+    is_shared_ai = False
+    current_user = current_user_ctx.get()
+    
+    async with AsyncSessionLocal() as db_session:
+        config = (await db_session.execute(select(GlobalAIConfig).filter(GlobalAIConfig.id == 1))).scalars().first()
+        
+        # O usuário não passou chave pessoal. Vamos processar regras da IA compartilhada.
+        if not api_key or not api_key.strip():
+            if current_user:
+                if current_user.role != "admin":
+                    if current_user.ai_blocked:
+                        yield '{"error": "Seu acesso à IA está temporariamente bloqueado pelo administrador."}'
+                        return
+                    if current_user.plan_type == "Simples":
+                        yield '{"error": "O plano Simples não possui acesso à IA. Para utilizar os recursos de inteligência, faça upgrade para o plano Plus ou Pro."}'
+                        return
+                    if current_user.token_limit > 0 and current_user.tokens_used >= current_user.token_limit:
+                        yield '{"error": "O limite de processamento (tokens) do seu plano foi atingido neste ciclo."}'
+                        return
+            
+            is_shared_ai = True
+            if config and config.api_key:
+                api_key = config.api_key
+                model_name = config.model
+                temp = config.temperature
+
     # === CORREÇÃO DE ROTEAMENTO DE API ===
     if api_key and api_key.strip():
         chave_limpa = api_key.strip()
@@ -876,55 +989,77 @@ async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25,
             return
 
     try:
-        response = await client.chat.completions.create(
-            model=(model_name or DEFAULT_MODEL),
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Você é um sistema que responde ÚNICA e EXCLUSIVAMENTE em formato JSON estruturado e válido.\n"
-                        "REGRAS VITAIS:\n"
-                        "1. NÃO use formatação markdown como ```json antes ou depois.\n"
-                        "2. NÃO retorne NENHUM texto fora do JSON.\n"
-                        "3. ATENÇÃO CRÍTICA: Escape corretamente TODAS as aspas duplas internas com \\\" e quebras de linha com \\n.\n"
-                        "4. Certifique-se de fechar corretamente todas as chaves e colchetes no final."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=temp,
-            max_tokens=8192,
-            stream=True  # <-- A MÁGICA ACONTECE AQUI
-        )
-        async for chunk in response:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
+            stream_opts = {"include_usage": True} if is_shared_ai else None
+            
+            system_content = (
+                "Você é um sistema que responde ÚNICA e EXCLUSIVAMENTE em formato JSON estruturado e válido.\n"
+                "REGRAS VITAIS E ABSOLUTAS DE FORMATAÇÃO (RISCO DE QUEBRA DE SISTEMA):\n"
+                "1. NUNCA, SOB NENHUMA HIPÓTESE, use aspas duplas (\") DENTRO dos valores de texto do JSON. Se precisar citar algo, destacar palavras ou escrever código, use APENAS aspas simples (') ou a entidade HTML &quot;.\n"
+                "2. CÓDIGOS E FÓRMULAS: Ao escrever fórmulas matemáticas (LaTeX) ou códigos, você DEVE usar a barra invertida dupla (\\\\) em vez de simples (ex: \\\\sigma, \\\\mu, \\\\n) para não causar o erro 'Invalid escape'.\n"
+                "3. NÃO retorne NENHUM texto fora do JSON (NÃO use blocos markdown como ```json).\n"
+                "4. Quebras de linha reais são estritamente proibidas dentro das strings. Use apenas \\n."
+            )
+            
+            if is_shared_ai and config and config.global_prompt:
+                system_content += f"\nDIRETRIZES GLOBAIS DO ADMIN:\n{config.global_prompt}"
+
+            kwargs = {
+                "model": (model_name or DEFAULT_MODEL),
+                "messages": [
+                    {"role": "system", "content": system_content},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": temp,
+                "max_tokens": config.max_tokens if is_shared_ai and config else 8192,
+                "top_p": config.top_p if is_shared_ai and config else 1.0,
+                "stream": True
+            }
+            if stream_opts: kwargs["stream_options"] = stream_opts
+
+            response = await client.chat.completions.create(**kwargs)
+            
+            async for chunk in response:
+                # O parâmetro include_usage injeta a estatística enviada/recebida no último chunk vazio
+                if is_shared_ai and current_user and hasattr(chunk, 'usage') and chunk.usage:
+                    async with AsyncSessionLocal() as db_session:
+                        usr = (await db_session.execute(select(User).filter(User.id == current_user.id))).scalars().first()
+                        if usr:
+                            p_tokens = chunk.usage.prompt_tokens
+                            c_tokens = chunk.usage.completion_tokens
+                            t_total = chunk.usage.total_tokens
+                            usr.tokens_used += t_total
+                            db_session.add(AITokenLog(user_id=usr.id, plan_type=usr.plan_type, tokens_prompt=p_tokens, tokens_completion=c_tokens, tokens_total=t_total))
+                            await db_session.commit()
+
+                if chunk.choices and len(chunk.choices) > 0 and chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
     except Exception as e:
         yield f'{{"error": "{str(e)}"}}'
         
 def clean_response(text: str) -> str:
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    # Remove blocos markdown de JSON
-    text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text)
-    return text.strip()
+    # Limpeza rigorosa de blocos markdown
+    text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
+    return text
 
 def try_parse_json_loose(text: str) -> Any:
     text = text.strip()
+    
+    # 1. Nova Vacina Anti-LaTeX corrigida (usa Negative Lookbehind)
+    # Só duplica a barra se ela NÃO tiver uma barra antes e NÃO for um escape válido.
+    text = re.sub(r'(?<!\\)\\(?!["\\/bfnrtu])', r'\\\\', text)
+    
     try: 
         return json.loads(text, strict=False)
-    except Exception:
-        text_no_trailing = re.sub(r',\s*([\]}])', r'\1', text)
-        try:
-            return json.loads(text_no_trailing, strict=False)
-        except Exception:
-            m = re.search(r"\{.*\}|\[.*\]", text_no_trailing, flags=re.DOTALL)
-            if m:
-                try: 
-                    return json.loads(m.group(0), strict=False)
-                except Exception:
-                    pass
-            raise
+    except Exception as e:
+        # 2. O Salvador da Pátria: repara aspas duplas, quebras de linha e falhas de estrutura
+        repaired = repair_json(text, return_objects=True)
+        if repaired:
+            return repaired
+            
+        # Se falhar até no repair, printa o trecho problemático no console para debug
+        print(f"⚠️ Falha Crítica no JSON: {str(e)}\nTrecho: {text[:300]}...")
+        raise
 
 def clamp_text(s: str, max_len: int) -> str: return (s or "")[:max_len]
 
@@ -1087,11 +1222,11 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
                         "role": "system",
                         "content": (
                             "Você é um sistema que responde ÚNICA e EXCLUSIVAMENTE em formato JSON estruturado e válido.\n"
-                            "REGRAS VITAIS:\n"
-                            "1. NÃO use formatação markdown como ```json antes ou depois.\n"
-                            "2. NÃO retorne NENHUM texto fora do JSON.\n"
-                            "3. ATENÇÃO CRÍTICA: Escape corretamente TODAS as aspas duplas internas com \\\" e quebras de linha com \\n.\n"
-                            "4. Certifique-se de fechar corretamente todas as chaves e colchetes no final."
+                            "REGRAS VITAIS E ABSOLUTAS DE FORMATAÇÃO (RISCO DE QUEBRA DE SISTEMA):\n"
+                            "1. NUNCA, SOB NENHUMA HIPÓTESE, use aspas duplas (\") DENTRO dos valores de texto do JSON. Se precisar citar algo, destacar palavras ou escrever código, use APENAS aspas simples (') ou a entidade HTML &quot;.\n"
+                            "2. CÓDIGOS E FÓRMULAS: Ao escrever fórmulas matemáticas (LaTeX) ou códigos, você DEVE usar a barra invertida dupla (\\\\) em vez de simples (ex: \\\\sigma, \\\\mu, \\\\n) para não causar o erro 'Invalid escape'.\n"
+                            "3. NÃO retorne NENHUM texto fora do JSON (NÃO use blocos markdown como ```json).\n"
+                            "4. Quebras de linha reais são estritamente proibidas dentro das strings. Use apenas \\n."
                         ),
                     },
                     {"role": "user", "content": prompt},
@@ -1997,9 +2132,173 @@ async def analyze_syllabus_deep(request: SyllabusRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class UserUpdateRole(BaseModel):
-    role: str
 
+@app.get("/admin/ai-config")
+async def get_ai_config(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
+    config = (await db.execute(select(GlobalAIConfig).filter(GlobalAIConfig.id == 1))).scalars().first()
+    if not config: return {}
+    return config
+
+@app.put("/admin/ai-config")
+async def update_ai_config(payload: AIConfigSchema, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
+    config = (await db.execute(select(GlobalAIConfig).filter(GlobalAIConfig.id == 1))).scalars().first()
+    if not config:
+        config = GlobalAIConfig(id=1)
+        db.add(config)
+    
+    config.model = payload.model
+    if payload.api_key: config.api_key = payload.api_key
+    config.global_prompt = payload.global_prompt
+    config.temperature = payload.temperature
+    config.max_tokens = payload.max_tokens
+    config.top_p = payload.top_p
+    config.penalties = payload.penalties
+    config.timeout = payload.timeout
+    
+    await db.commit()
+    return {"message": "Configurações da IA atualizadas!"}
+
+@app.get("/admin/ai-stats", response_model=AIStatsResponse)
+async def get_ai_stats(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    total_plus = (await db.execute(select(func.count(User.id)).filter(User.plan_type == 'Plus'))).scalar()
+    total_pro = (await db.execute(select(func.count(User.id)).filter(User.plan_type == 'Pro'))).scalar()
+    
+    hoje = datetime.utcnow().date()
+    inicio_mes = hoje.replace(day=1)
+    
+    logs = (await db.execute(select(AITokenLog))).scalars().all()
+    tokens_hoje = sum(l.tokens_total for l in logs if l.created_at.date() == hoje)
+    tokens_mes = sum(l.tokens_total for l in logs if l.created_at.date() >= inicio_mes)
+    tokens_totais = sum(l.tokens_total for l in logs)
+    
+    # Custo estimado baseado em valor médio da OpenRouter (Aproximadamente $0.00015 por 1k tokens)
+    custo_estimado = (tokens_totais / 1000) * 0.00015 
+    
+    return {
+        "total_plus": total_plus or 0,
+        "total_pro": total_pro or 0,
+        "tokens_today": tokens_hoje,
+        "tokens_month": tokens_mes,
+        "tokens_total": tokens_totais,
+        "estimated_cost": custo_estimado
+    }
+
+@app.post("/admin/users/{user_id}/reset-tokens")
+async def reset_user_tokens(user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
+    target = (await db.execute(select(User).filter(User.id == user_id))).scalars().first()
+    if not target: raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    target.tokens_used = 0
+    target.token_reset_date = datetime.utcnow() + timedelta(days=30)
+    await db.commit()
+    return {"message": "Tokens zerados com sucesso", "tokens_used": 0}
+
+@app.post("/admin/users/{user_id}/toggle-ai-block")
+async def toggle_ai_block(user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
+    target = (await db.execute(select(User).filter(User.id == user_id))).scalars().first()
+    if not target: raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    target.ai_blocked = not target.ai_blocked
+    await db.commit()
+    return {"message": "Status de bloqueio atualizado", "ai_blocked": target.ai_blocked}
+
+# ADICIONADO: Nova rota para lidar com a criação/validação de cupons
+@app.post("/admin/coupons")
+async def create_coupon(
+    coupon: CouponCreate, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Validação de segurança para garantir que apenas admins gerenciem
+    if current_user.role != "admin": 
+        raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    # 2. Verifica se o código do cupom já existe no banco
+    result = await db.execute(select(Coupon).filter(Coupon.code == coupon.code))
+    existing_coupon = result.scalars().first()
+    if existing_coupon:
+        raise HTTPException(status_code=400, detail="Este código de cupom já existe.")
+        
+    # 3. Salva no banco de dados
+    db_coupon = Coupon(
+        code=coupon.code,
+        discount_percentage=coupon.discount_percentage
+    )
+    db.add(db_coupon)
+    await db.commit()
+    await db.refresh(db_coupon)
+    
+    return {
+        "ok": True, 
+        "message": f"Cupom {coupon.code} criado com sucesso!", 
+        "discount": coupon.discount_percentage
+    }
+    
+@app.get("/admin/coupons")
+async def list_coupons(
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Lista todos os cupons cadastrados. Exclusivo para administradores.
+    """
+    # 1. Validação de segurança
+    if current_user.role != "admin": 
+        raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    # 2. Busca os cupons no banco de dados ordenados do mais recente ao mais antigo
+    result = await db.execute(select(Coupon).order_by(desc(Coupon.id)))
+    coupons = result.scalars().all()
+    
+    return coupons
+
+@app.delete("/admin/coupons/{coupon_id}")
+async def delete_coupon(
+    coupon_id: int, 
+    db: AsyncSession = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin": 
+        raise HTTPException(status_code=403, detail="Não autorizado")
+    
+    result = await db.execute(select(Coupon).filter(Coupon.id == coupon_id))
+    coupon_to_delete = result.scalars().first()
+    
+    if not coupon_to_delete:
+        raise HTTPException(status_code=404, detail="Cupom não encontrado")
+        
+    await db.delete(coupon_to_delete)
+    await db.commit()
+    
+    return {"ok": True, "message": "Cupom deletado com sucesso!"}
+
+@app.get("/coupons/validate/{code}")
+async def validate_coupon(
+    code: str, 
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Valida um código de cupom enviado pelo frontend.
+    Esta rota não exige autenticação de administrador, pois é usada no checkout/login.
+    """
+    # Busca o cupom no banco de dados (o frontend já envia em maiúsculas)
+    result = await db.execute(select(Coupon).filter(Coupon.code == code))
+    coupon = result.scalars().first()
+    
+    # Se não encontrar o cupom, retorna erro 404
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Cupom inválido ou inexistente.")
+        
+    # Se encontrar, retorna o valor do desconto no formato que o frontend espera
+    return {
+        "discount_value": coupon.discount_percentage,
+        "discount_type": "percent" # Como seu banco salva 'discount_percentage', definimos como porcentagem
+    }
+    
 @app.get("/users", response_model=List[UserResponse])
 async def list_users(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).order_by(User.id))
@@ -2675,23 +2974,53 @@ sdk = mercadopago.SDK(mp_access_token)
 class PaymentRequest(BaseModel):
     email: str
     plano: str
+    coupon_code: Optional[str] = None
 
 @app.post("/payments/create-preference")
-async def create_preference(req: PaymentRequest):
+async def create_preference(
+    req: PaymentRequest, 
+    db: AsyncSession = Depends(get_db)
+):
     planos = {
-        "mensal": {"price": 49.90, "title": "Acesso Mensal (Renovação Manual)", "days": 30},
-        "trimestral": {"price": 119.90, "title": "Acesso Trimestral (Renovação Manual)", "days": 90},
-        "semestral": {"price": 199.90, "title": "Acesso Semestral (Renovação Manual)", "days": 180},
-        "anual": {"price": 349.90, "title": "Acesso Anual (Renovação Manual)", "days": 365}
+        "mensal_simples": {"price": 49.90, "title": "Plano Mensal Simples", "days": 30},
+        "trimestral_simples": {"price": 119.90, "title": "Plano Trimestral Simples", "days": 90},
+        "semestral_simples": {"price": 199.90, "title": "Plano Semestral Simples", "days": 180},
+        "mensal_plus": {"price": 99.90, "title": "Plano Mensal Plus (IA Compartilhada)", "days": 30},
+        "trimestral_plus": {"price": 159.90, "title": "Plano Trimestral Plus (IA Compartilhada)", "days": 90},
+        "semestral_plus": {"price": 239.90, "title": "Plano Semestral Plus (IA Compartilhada)", "days": 180},
+        "trimestral_pro": {"price": 189.90, "title": "Plano Trimestral Pro (IA Compartilhada)", "days": 90},
+        "semestral_pro": {"price": 269.90, "title": "Plano Semestral Pro (IA Compartilhada)", "days": 180}
     }
     
     if req.plano not in planos:
         raise HTTPException(status_code=400, detail="Plano inválido")
     
     plano_sel = planos[req.plano]
+    
+    # -------------------------------------------------------------
+    # 3. LÓGICA DE DESCONTO COM O CUPOM
+    # -------------------------------------------------------------
+    final_price = plano_sel["price"]
+    
+    if req.coupon_code:
+        # Busca o cupom no banco de dados
+        result = await db.execute(select(Coupon).filter(Coupon.code == req.coupon_code.upper()))
+        coupon = result.scalars().first()
+        
+        if not coupon:
+            raise HTTPException(status_code=400, detail="Cupom inválido ou inexistente.")
+            
+        # Calcula o desconto (baseado em porcentagem)
+        discount_amount = final_price * (coupon.discount_percentage / 100.0)
+        final_price -= discount_amount
+        
+        # Garante que o valor não seja negativo ou zero (Mercado Pago não aceita valor <= 0)
+        final_price = round(max(0.01, final_price), 2)
+        
+        print(f"🎟️ [DEBUG] Cupom {req.coupon_code} aplicado. Preço caiu de {plano_sel['price']} para {final_price}")
 
     # -------------------------------------------------------------
-    # 1. CORREÇÃO DEFINITIVA DA URL DO FRONTEND 
+    # CORREÇÃO DEFINITIVA DA URL DO FRONTEND 
     # -------------------------------------------------------------
     front_url = os.getenv("FRONTEND_URL")
     
@@ -2701,19 +3030,18 @@ async def create_preference(req: PaymentRequest):
         
     # Se ainda assim estiver vazio, força o padrão
     if not front_url:
-        front_url = "https://agente-edital.tecnopriv.top/"
+        front_url = "https://agente-edital.tecnopriv.top"
         
-    # LOG NO TERMINAL PARA VOCÊ VER EXATAMENTE O QUE ESTÁ A SER ENVIADO
     print(f"🔗 [DEBUG] URL do Frontend enviada ao Mercado Pago: {front_url}/login")
     # -------------------------------------------------------------
 
     preference_data = {
         "items": [
             {
-                "title": plano_sel["title"],
+                "title": plano_sel["title"] + (f" (CUPOM: {req.coupon_code})" if req.coupon_code else ""),
                 "quantity": 1,
                 "currency_id": "BRL",
-                "unit_price": plano_sel["price"]
+                "unit_price": final_price # Usamos o preço calculado com desconto
             }
         ],
         "payer": {"email": req.email},
@@ -2748,14 +3076,14 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
         return {"status": "ignored"}
         
     if data.get("action") == "payment.created" or data.get("type") == "payment":
-        payment_id = str(data.get("data", {}).get("id")) # Garante que é string
+        payment_id = str(data.get("data", {}).get("id"))
         
         if payment_id:
             # 1. VERIFICA SE JÁ PROCESSOU ESSE PAGAMENTO
             existing_payment = await db.execute(select(ProcessedPayment).filter(ProcessedPayment.payment_id == payment_id))
             if existing_payment.scalars().first():
                 print(f"⚠️ Pagamento {payment_id} já processado anteriormente. Ignorando duplicata.")
-                return {"status": "ok"} # Retorna OK para o MP parar de tentar enviar
+                return {"status": "ok"} 
 
             payment_info = sdk.payment().get(payment_id)
             payment = payment_info.get("response", {})
@@ -2765,8 +3093,17 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
                 if external_ref and "|" in external_ref:
                     email, plano = external_ref.split("|")
                     
-                    planos_dias = {"mensal": 30, "trimestral": 90, "semestral": 180, "anual": 365}
-                    dias = planos_dias.get(plano, 30)
+                    planos_info = {
+                        "mensal_simples": {"dias": 30, "preco": 49.90, "tipo": "Simples", "limite": 0},
+                        "trimestral_simples": {"dias": 90, "preco": 119.90, "tipo": "Simples", "limite": 0},
+                        "semestral_simples": {"dias": 180, "preco": 199.90, "tipo": "Simples", "limite": 0},
+                        "mensal_plus": {"dias": 30, "preco": 99.90, "tipo": "Plus", "limite": 3000000},
+                        "trimestral_plus": {"dias": 90, "preco": 159.90, "tipo": "Plus", "limite": 3000000},
+                        "semestral_plus": {"dias": 180, "preco": 239.90, "tipo": "Plus", "limite": 3000000},
+                        "trimestral_pro": {"dias": 90, "preco": 189.90, "tipo": "Pro", "limite": 6000000},
+                        "semestral_pro": {"dias": 180, "preco": 269.90, "tipo": "Pro", "limite": 6000000}
+                    }
+                    info = planos_info.get(plano, {"dias": 30, "preco": 49.90, "tipo": "Simples", "limite": 0})
                     
                     result = await db.execute(select(User).filter(User.email == email))
                     user = result.scalars().first()
@@ -2776,37 +3113,47 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
                         if user.plan_expires_at and user.plan_expires_at > base_date:
                             base_date = user.plan_expires_at
                             
-                        user.plan_expires_at = base_date + timedelta(days=dias)
+                        user.plan_expires_at = base_date + timedelta(days=info["dias"])
+                        user.plan_type = info["tipo"]
+                        user.token_limit = info["limite"]
+                        user.tokens_used = 0 
+                        user.token_reset_date = datetime.utcnow() + timedelta(days=30)
 
-                        # --- NOVA LÓGICA DE COMISSÃO (20%) ---
-                        if user.referred_by_id:
-                            planos_precos = {"mensal": 49.90, "trimestral": 119.90, "semestral": 199.90, "anual": 349.90}
-                            preco_plano = planos_precos.get(plano, 0)
+                        # --- NOVA LÓGICA: ATUALIZAÇÃO DO MODELO DE IA ---
+                        if info["tipo"] in ["Plus", "Pro"]:
+                            config_result = await db.execute(select(GlobalAIConfig).limit(1))
+                            global_config = config_result.scalars().first()
                             
-                            if preco_plano > 0:
-                                comissao = preco_plano * 0.20 # 20% do valor
+                            if global_config:
+                                user.preferred_model = global_config.model
+                        # ------------------------------------------------
+
+                        # LÓGICA DE COMISSÃO (20%)
+                        if user.referred_by_id:
+                            preco_plano = info["preco"]
+                            comissao = preco_plano * 0.20
+                            
+                            referrer_result = await db.execute(select(User).filter(User.id == user.referred_by_id))
+                            referrer = referrer_result.scalars().first()
+                            
+                            if referrer:
+                                referrer.commission_balance += comissao
                                 
-                                ref_user_result = await db.execute(select(User).filter(User.id == user.referred_by_id))
-                                referrer = ref_user_result.scalars().first()
-                                if referrer:
-                                    referrer.commission_balance = (referrer.commission_balance or 0.0) + comissao
-                                    
-                                    # REGISTRA O GANHO NO HISTÓRICO
-                                    hist = CommissionHistory(
-                                        user_id=referrer.id,
-                                        amount=comissao,
-                                        action_type="ganho",
-                                        description=f"Comissão (20%) - Plano {plano.capitalize()} de {email}"
-                                    )
-                                    db.add(hist)
-                        # -------------------------------------
-                        
-                        # 2. REGISTRA QUE O PAGAMENTO FOI PROCESSADO
-                        new_processed = ProcessedPayment(payment_id=payment_id)
-                        db.add(new_processed)
+                                # Registra o histórico da comissão
+                                nova_comissao = CommissionHistory(
+                                    user_id=referrer.id,
+                                    amount=comissao,
+                                    action_type="ganho",
+                                    description=f"Comissão de 20% pela assinatura do plano {info['tipo']}."
+                                )
+                                db.add(nova_comissao)
+
+                        # 2. SALVA O PAGAMENTO COMO PROCESSADO
+                        novo_pagamento = ProcessedPayment(payment_id=payment_id)
+                        db.add(novo_pagamento)
                         
                         await db.commit()
-    
+
     return {"status": "ok"}
 
 
@@ -2820,21 +3167,32 @@ async def grant_plan(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Não autorizado")
 
-    # Mapeamento de dias
-    planos_dias = {"mensal": 30, "trimestral": 90, "semestral": 180, "anual": 365}
-    dias = planos_dias.get(plan.lower(), 30)
+    # Mapeamento dos novos planos
+    planos_info = {
+        "mensal_simples": {"dias": 30, "tipo": "Simples", "limite": 0},
+        "trimestral_simples": {"dias": 90, "tipo": "Simples", "limite": 0},
+        "semestral_simples": {"dias": 180, "tipo": "Simples", "limite": 0},
+        "mensal_plus": {"dias": 30, "tipo": "Plus", "limite": 3000000},
+        "trimestral_plus": {"dias": 90, "tipo": "Plus", "limite": 3000000},
+        "semestral_plus": {"dias": 180, "tipo": "Plus", "limite": 3000000},
+        "trimestral_pro": {"dias": 90, "tipo": "Pro", "limite": 6000000},
+        "semestral_pro": {"dias": 180, "tipo": "Pro", "limite": 6000000}
+    }
+    info = planos_info.get(plan.lower(), {"dias": 30, "tipo": "Simples", "limite": 0})
 
     result = await db.execute(select(User).filter(User.id == user_id))
     target_user = result.scalars().first()
     if not target_user:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
-    # Lógica: Se o plano ainda é válido, soma os dias à data atual de expiração.
-    # Se já expirou ou é nulo, começa a contar a partir de hoje.
     now = datetime.utcnow()
     base_date = target_user.plan_expires_at if (target_user.plan_expires_at and target_user.plan_expires_at > now) else now
     
-    target_user.plan_expires_at = base_date + timedelta(days=dias)
+    target_user.plan_expires_at = base_date + timedelta(days=info["dias"])
+    target_user.plan_type = info["tipo"]
+    target_user.token_limit = info["limite"]
+    target_user.tokens_used = 0
+    target_user.token_reset_date = now + timedelta(days=30)
     
     await db.commit()
     await db.refresh(target_user)

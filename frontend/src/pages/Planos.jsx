@@ -3,16 +3,21 @@ import { CreditCard, CheckCircle } from 'lucide-react';
 
 export default function Planos() {
   const [email, setEmail] = useState('');
+  const [cupom, setCupom] = useState(''); // ADICIONADO: Estado para o cupom
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   const planos = [
-    { id: 'mensal', nome: 'Mensal', preco: '49,90', sub: 'Renovação Manual' },
-    { id: 'trimestral', nome: 'Trimestral', preco: '119,90', sub: 'Renovação Manual', destaque: true },
-    { id: 'semestral', nome: 'Semestral', preco: '199,90', sub: 'Renovação Manual' },
-    { id: 'anual', nome: 'Anual', preco: '349,90', sub: 'Renovação Manual' }
+    { id: 'mensal_simples', nome: 'Mensal Simples', preco: '49,90', sub: 'Acesso Padrão (Sem IA)' },
+    { id: 'trimestral_simples', nome: 'Trimestral Simples', preco: '119,90', sub: 'Acesso Padrão (Sem IA)' },
+    { id: 'semestral_simples', nome: 'Semestral Simples', preco: '199,90', sub: 'Acesso Padrão (Sem IA)' },
+    { id: 'mensal_plus', nome: 'Mensal Plus', preco: '99,90', sub: 'IA Ativada (300k Tokens)', destaque: true },
+    { id: 'trimestral_plus', nome: 'Trimestral Plus', preco: '159,90', sub: 'IA Ativada (300k Tokens)' },
+    { id: 'semestral_plus', nome: 'Semestral Plus', preco: '239,90', sub: 'IA Ativada (300k Tokens)' },
+    { id: 'trimestral_pro', nome: 'Trimestral Pro', preco: '189,90', sub: 'IA Ativada (600k Tokens)' },
+    { id: 'semestral_pro', nome: 'Semestral Pro', preco: '269,90', sub: 'IA Ativada (600k Tokens)' }
   ];
 
   const handleCheckout = async (planoId) => {
@@ -28,9 +33,9 @@ export default function Planos() {
       const res = await fetch(`${API_URL}/payments/create-preference`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, plano: planoId })
+        // ADICIONADO: Envia o cupom (em maiúsculas) se ele foi preenchido
+        body: JSON.stringify({ email, plano: planoId, cupom: cupom ? cupom.toUpperCase() : null })
       });
-
       const data = await res.json();
       
       if (!res.ok) throw new Error(data.detail || "Erro ao gerar cobrança.");
@@ -62,7 +67,20 @@ export default function Planos() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          style={{ marginBottom: '15px' }}
         />
+        
+        {/* ADICIONADO: Campo para inserir o cupom de desconto */}
+        <label className="label" style={{ fontWeight: 'bold' }}>Cupom de Desconto (Opcional)</label>
+        <input 
+          className="input" 
+          type="text" 
+          placeholder="Ex: PROMO20"
+          value={cupom}
+          onChange={(e) => setCupom(e.target.value)}
+          style={{ textTransform: 'uppercase' }}
+        />
+
         {error && <p style={{ color: 'var(--error-text)', fontSize: '0.9rem', marginTop: '10px' }}>{error}</p>}
       </div>
 

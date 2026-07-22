@@ -274,7 +274,7 @@ export default function GabariteIngles() {
         // 1. Descobre se a chave é do Google (não começa com sk-or-)
         const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
         // 2. Define o modelo de segurança compatível
-        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+        const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "deepseek/deepseek-v4-flash";
 
         const payload = {
           subject: "Língua Inglesa", 
@@ -350,7 +350,7 @@ export default function GabariteIngles() {
       
       // 1. Resolve o problema de roteamento do modelo (anti-404)
       const isGoogleKey = userApiKey && !userApiKey.startsWith("sk-or-");
-      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "arcee-ai/trinity-large-thinking:free";
+      const defaultModel = isGoogleKey ? "gemini-2.5-flash-lite" : "deepseek/deepseek-v4-flash";
 
       // 2. SUBSTITUI o fetch normal pela sua função blindada fetchStreamAsJson
       const data = await fetchStreamAsJson(`${API_URL}/generate-lesson-cespe`, {
@@ -544,7 +544,7 @@ export default function GabariteIngles() {
         },
         body: JSON.stringify({
           word: cleanWord,
-          model: userModel || "arcee-ai/trinity-large-thinking:free", // Corrigido para a variável real
+          model: userModel || "deepseek/deepseek-v4-flash", // Corrigido para a variável real
           api_key: userApiKey || null // Corrigido para a variável real
         })
       });
@@ -584,7 +584,7 @@ export default function GabariteIngles() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
         <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-          Modelo Atual: <strong style={{ color: 'var(--primary)' }}>{userModel || "arcee-ai/trinity-large-thinking:free"}</strong>
+          Modelo Atual: <strong style={{ color: 'var(--primary)' }}>{userModel || "deepseek/deepseek-v4-flash"}</strong>
         </div>
         <button onClick={openConfigModal} className="btn outline" style={{ padding: '8px 12px', fontSize: '0.85rem' }}>
           <SlidersHorizontal size={16} /> Configurar IA

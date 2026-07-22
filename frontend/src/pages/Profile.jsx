@@ -56,7 +56,7 @@ export default function Profile() {
           const key = data.api_key || "";
           setUserApiKey(key);
           setTempApiKey(key);
-          setUserModel(data.preferred_model || "arcee-ai/trinity-large-thinking:free");
+          setUserModel(data.preferred_model || "deepseek/deepseek-v4-flash");
           
           if (key && !key.startsWith("sk-or-")) {
             setProviderTab("aistudio");
@@ -314,13 +314,29 @@ export default function Profile() {
             <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Status da Assinatura</label>
             <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: planColor }}>
               {planStatus}
+              {user.plan_type && user.role !== 'admin' && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Plano atual: {user.plan_type}</div>}
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Permissões Extras</label>
-            <div style={{ fontSize: '0.95rem', color: 'var(--text-main)' }}>
-              {user.can_manage_lessons || user.role === 'admin' ? "✅ Geração e Gestão de Aulas" : "❌ Apenas Leitura (Aluno)"}
-            </div>
+            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Consumo de IA Compartilhada</label>
+            {user.role === 'admin' ? (
+              <div style={{ fontSize: '0.95rem', color: 'var(--primary)', fontWeight: 'bold' }}>Uso Ilimitado (Admin)</div>
+            ) : user.plan_type === 'Simples' ? (
+              <div style={{ fontSize: '0.95rem', color: 'var(--error-text)', fontWeight: 'bold' }}>Plano Sem IA (Faça Upgrade)</div>
+            ) : (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '5px' }}>
+                  <span>{user.tokens_used?.toLocaleString() || 0} tokens usados</span>
+                  <span>{user.token_limit?.toLocaleString() || 0}</span>
+                </div>
+                <div style={{ width: '100%', background: 'var(--border)', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(((user.tokens_used || 0) / (user.token_limit || 1)) * 100, 100)}%`, background: user.tokens_used >= user.token_limit ? 'var(--error-text)' : 'var(--success-text)', height: '100%', transition: 'width 0.5s' }}></div>
+                </div>
+                {user.tokens_used >= user.token_limit && (
+                   <div style={{ fontSize: '0.75rem', color: 'var(--error-text)', marginTop: '5px' }}>Limite atingido. O acesso será restabelecido na próxima renovação.</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
