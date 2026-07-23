@@ -200,7 +200,8 @@ export default function GerenciarAulas() {
       };
 
       // Converte para JSON formatado (com indentação de 2 espaços)
-      const dataStr = JSON.stringify(exportData, null, 2);
+      //ALTEREI exportData POR content PARA MANTER O MESMO FORMATO DE BACKUP ANTIGO
+      const dataStr = JSON.stringify(content, null, 2);
       const blob = new Blob([dataStr], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       
