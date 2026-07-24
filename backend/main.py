@@ -101,6 +101,7 @@ class User(Base):
     session_version = Column(Integer, default=1)
     plan_expires_at = Column(DateTime, nullable=True) # Controle do Mercado Pago
     is_active = Column(Boolean, default=True)
+    allowed_concursos = Column(String, nullable=True)
     
     # --- NOVOS CAMPOS PARA INDICAÇÃO (Devem ficar alinhados aqui dentro do User) ---
     referral_code = Column(String, unique=True, index=True, nullable=True) # Código único do usuário
@@ -405,6 +406,7 @@ class UserResponse(BaseModel):
     token_limit: int = 0
     token_reset_date: Optional[datetime] = None
     ai_blocked: bool = False
+    allowed_concursos: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 class UserCreateAdmin(BaseModel):
@@ -413,6 +415,7 @@ class UserCreateAdmin(BaseModel):
     role: str = "user"
     can_manage_lessons: bool = False
     is_active: bool = True # NOVO
+    allowed_concursos: Optional[str] = None
 
 class UserUpdateAdmin(BaseModel):
     email: Optional[str] = None
@@ -420,6 +423,7 @@ class UserUpdateAdmin(BaseModel):
     can_manage_lessons: Optional[bool] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None # NOVO
+    allowed_concursos: Optional[str] = None
     
 class PaginatedPlansResponse(BaseModel):
     items: List[PlanSummaryResponse]
@@ -710,26 +714,49 @@ async def list_plans(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # Lógica de JOIN para pegar o email do dono (sem duplicatas, logo, sem necessidade de .distinct)
     query = select(StoredPlan, User.email).outerjoin(User, StoredPlan.owner_id == User.id)
     
     if current_user.role != 'admin':
         if manage_mode:
             query = query.where(StoredPlan.owner_id == current_user.id)
         else:
-            # Subquery eficiente: verifica se existe registro de permissão privada sem multiplicar linhas
             has_private_access = select(PlanShare).where(
                 PlanShare.plan_id == StoredPlan.id, 
                 PlanShare.user_email == current_user.email
             ).exists()
 
-            query = query.where(
-                or_(
-                    StoredPlan.owner_id == current_user.id,
-                    StoredPlan.visibility == 'public',
-                    has_private_access
+            # --- NOVA LÓGICA DE VISIBILIDADE PARA USUÁRIO PERSONALIZADO ---
+            if current_user.role == 'custom':
+                allowed_str = current_user.allowed_concursos or ""
+                allowed_list = [c.strip().upper() for c in allowed_str.split(",") if c.strip()]
+                
+                # Usuário "custom" vê apenas suas próprias aulas, aulas compartilhadas diretamente com ele,
+                # ou aulas onde o concurso bate exatamente com a lista liberada para ele (ignorando maiúscula/minúscula).
+                if allowed_list:
+                    query = query.where(
+                        or_(
+                            StoredPlan.owner_id == current_user.id,
+                            has_private_access,
+                            func.upper(StoredPlan.concurso).in_(allowed_list)
+                        )
+                    )
+                else:
+                    # Se for custom, mas não tiver concursos atribuídos, ele só vê o que for dono ou compartilhado direto
+                    query = query.where(
+                        or_(
+                            StoredPlan.owner_id == current_user.id,
+                            has_private_access
+                        )
+                    )
+            else:
+                # Lógica Original para usuário Padrão
+                query = query.where(
+                    or_(
+                        StoredPlan.owner_id == current_user.id,
+                        StoredPlan.visibility == 'public',
+                        has_private_access
+                    )
                 )
-            )
     
     # <--- 2. LÓGICA DO FILTRO DE BUSCA ADICIONADA AQUI --->
     if search and search.strip():
@@ -1188,6 +1215,18 @@ def sanitize_quiz(quiz: Any) -> List[Dict[str, Any]]:
 
 async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None) -> Any:
     
+    # === TRAVA DE SEGURANÇA: FORÇAR MODELO GLOBAL SE O USUÁRIO USAR A IA COMPARTILHADA ===
+    async with AsyncSessionLocal() as db_session:
+        config = (await db_session.execute(select(GlobalAIConfig).filter(GlobalAIConfig.id == 1))).scalars().first()
+        if not api_key or not api_key.strip():
+            if config:
+                if config.api_key:
+                    api_key = config.api_key
+                if config.model:
+                    model_name = config.model # <--- O modelo do usuário é IGNORADO e sobrescrito pelo do Admin!
+                if config.temperature:
+                    temp = config.temperature
+
     # === CORREÇÃO DE ROTEAMENTO DE API ===
     if api_key and api_key.strip():
         chave_limpa = api_key.strip()
@@ -1199,7 +1238,6 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
             url_base = "https://generativelanguage.googleapis.com/v1beta/openai/"
             
             # --- VACINA ANTI-ERRO 404 ---
-            # Remove o prefixo se a requisição estiver indo direto para o Google
             if model_name and model_name.startswith("google/"):
                 model_name = model_name.replace("google/", "")
                 
@@ -2314,7 +2352,8 @@ async def create_user(payload: UserCreateAdmin, db: AsyncSession = Depends(get_d
         email=payload.email,
         hashed_password=get_password_hash(payload.password),
         role=payload.role,
-        can_manage_lessons=payload.can_manage_lessons
+        can_manage_lessons=payload.can_manage_lessons,
+        allowed_concursos=payload.allowed_concursos
     )
     db.add(new_user)
     await db.commit()
@@ -2329,6 +2368,7 @@ async def update_user_admin(user_id: int, payload: UserUpdateAdmin, db: AsyncSes
     
     if payload.email is not None: user.email = payload.email
     if payload.role is not None: user.role = payload.role
+    if payload.allowed_concursos is not None: user.allowed_concursos = payload.allowed_concursos
     if payload.can_manage_lessons is not None: user.can_manage_lessons = payload.can_manage_lessons
     if payload.is_active is not None: user.is_active = payload.is_active # NOVO
     if payload.password is not None and payload.password.strip():

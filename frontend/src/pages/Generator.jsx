@@ -485,11 +485,33 @@ export default function Generator() {
 
             <div style={{ marginBottom: '25px' }}>
               <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA (Opcional):</label>
-              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} placeholder="ex: deepseek/deepseek-v4-flash" style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '1rem', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
+              <input 
+                type="text" 
+                value={tempModel} 
+                onChange={(e) => setTempModel(e.target.value)} 
+                placeholder="ex: deepseek/deepseek-v4-flash" 
+                disabled={!userApiKey}
+                style={{ 
+                  width: '100%', 
+                  padding: '12px', 
+                  borderRadius: '6px', 
+                  border: '1px solid var(--border)', 
+                  fontSize: '1rem', 
+                  backgroundColor: !userApiKey ? 'var(--bg)' : 'var(--input-bg)', 
+                  color: !userApiKey ? 'var(--text-muted)' : 'var(--text-main)',
+                  cursor: !userApiKey ? 'not-allowed' : 'text'
+                }} 
+              />
               
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
-                O sistema utiliza modelos gratuitos por padrão. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.
-              </span>
+              {!userApiKey ? (
+                <span style={{ fontSize: '0.85rem', color: 'var(--error-text)', marginTop: '8px', display: 'block', fontWeight: 'bold' }}>
+                  🔒 Como você está usando a IA Compartilhada, o modelo é definido automaticamente pelo administrador da plataforma.
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
+                  O sistema utiliza modelos gratuitos por padrão. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.
+                </span>
+              )}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '10px' }}>

@@ -31,7 +31,7 @@ export default function AdminPanel() {
   const [searchTerm, setSearchTerm] = useState(""); 
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [userFormData, setUserFormData] = useState({ email: '', password: '', role: 'user', can_manage_lessons: false, is_active: true });
+  const [userFormData, setUserFormData] = useState({ email: '', password: '', role: 'user', can_manage_lessons: false, is_active: true, allowed_concursos: '' });
   const [savingUser, setSavingUser] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -86,9 +86,23 @@ export default function AdminPanel() {
   const handleOpenUserModal = (userData = null) => {
     setEditingUser(userData);
     if (userData) {
-      setUserFormData({ email: userData.email, password: '', role: userData.role, can_manage_lessons: userData.can_manage_lessons || false, is_active: userData.is_active !== undefined ? userData.is_active : true });
+      setUserFormData({ 
+        email: userData.email, 
+        password: '', 
+        role: userData.role, 
+        can_manage_lessons: userData.can_manage_lessons || false, 
+        is_active: userData.is_active !== undefined ? userData.is_active : true,
+        allowed_concursos: userData.allowed_concursos || '' // <-- Novo campo
+      });
     } else {
-      setUserFormData({ email: '', password: '', role: 'user', can_manage_lessons: false, is_active: true });
+      setUserFormData({ 
+        email: '', 
+        password: '', 
+        role: 'user', 
+        can_manage_lessons: false, 
+        is_active: true,
+        allowed_concursos: '' // <-- Novo campo
+      });
     }
     setUserModalOpen(true);
   };
@@ -649,13 +663,31 @@ export default function AdminPanel() {
               <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Senha {editingUser && <span style={{fontWeight: 'normal', color: 'var(--text-muted)'}}>(Deixe em branco para manter)</span>}</label>
               <input type="password" value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} />
             </div>
+            
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Nível de Acesso</label>
               <select value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }}>
-                <option value="user">Usuário Padrão (Aluno)</option>
+                <option value="user">Usuário Padrão (Aluno - Acesso Público)</option>
+                <option value="custom">Usuário Personalizado (Apenas Concursos Atribuídos)</option>
                 <option value="admin">Administrador Global</option>
               </select>
             </div>
+
+            {/* Renderização condicional do campo de concursos */}
+            {userFormData.role === 'custom' && (
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>
+                  Concursos Permitidos <span style={{fontWeight: 'normal', color: 'var(--text-muted)'}}>(Separados por vírgula)</span>
+                </label>
+                <input 
+                  type="text" 
+                  value={userFormData.allowed_concursos} 
+                  onChange={e => setUserFormData({...userFormData, allowed_concursos: e.target.value})} 
+                  placeholder="Ex: Polícia Federal, INSS, Banco do Brasil" 
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} 
+                />
+              </div>
+            )}
             <div style={{ marginBottom: '25px', background: 'var(--bg)', padding: '15px', borderRadius: '6px', border: '1px solid var(--border)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-main)' }}>
                 <input type="checkbox" checked={userFormData.can_manage_lessons} onChange={e => setUserFormData({...userFormData, can_manage_lessons: e.target.checked})} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />

@@ -9,6 +9,7 @@ G:\PROJETOS-CODER\SITES\agente-edital\teste.py
 G:\PROJETOS-CODER\SITES\agente-edital\backend\.env 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\.env.example 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\add_ref_columns.py 
+G:\PROJETOS-CODER\SITES\agente-edital\backend\create_coupons_table.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\create_history_table.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\database.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\docker-compose.yml 
@@ -20,6 +21,7 @@ G:\PROJETOS-CODER\SITES\agente-edital\backend\openrouter_api.py
 G:\PROJETOS-CODER\SITES\agente-edital\backend\package-lock.json 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\package.json 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\requirements.txt 
+G:\PROJETOS-CODER\SITES\agente-edital\backend\update_db_ia.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\update_perf_db.py 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\__pycache__ 
 G:\PROJETOS-CODER\SITES\agente-edital\backend\__pycache__\database.cpython-314.pyc 

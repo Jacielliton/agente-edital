@@ -20,27 +20,64 @@ const getAuthToken = () => {
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
 
+// Função Anti-Erro e Limpeza de Resposta da IA com suporte a Streams e Fallback Supremo
 const fetchStreamAsJson = async (url, options, onProgress = null) => {
   const res = await fetch(url, options);
   if (!res.ok) throw new Error(`Erro do servidor: ${res.status}`);
   const reader = res.body.getReader();
   const decoder = new TextDecoder("utf-8");
   let rawText = "";
+  let bytesReceived = 0;
   
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    bytesReceived += value.length;
+    if (onProgress) onProgress(bytesReceived);
     rawText += decoder.decode(value, { stream: true });
   }
   
+  // Limpeza inicial de tags de raciocínio (DeepSeek/Thinking models)
+  let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
+  
+  // Tenta isolar o bloco estruturado do JSON
+  const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (jsonMatch) cleanText = jsonMatch[0];
+
   try {
-    let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
-    const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-    if (jsonMatch) cleanText = jsonMatch[0];
-    cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
+    // 1. Tenta o parse direto (caso o JSON venha perfeito)
     return JSON.parse(cleanText);
   } catch (e) {
-    throw new Error("A IA gerou um formato inválido. Tente novamente.");
+    try {
+      // 2. Segunda tentativa limpando quebras de linha literais e vírgulas órfãs
+      let processedText = cleanText.replace(/[\n\r\t]+/g, ' ').replace(/,\s*([\]}])/g, '$1');
+      return JSON.parse(processedText);
+    } catch (secondError) {
+      
+      // 3. FALLBACK SUPREMO: Ignora JSON corrompido com aspas soltas
+      if (cleanText.includes("lesson_markdown")) {
+        // Captura TUDO depois de "lesson_markdown": " até o final do texto
+        const match = cleanText.match(/"lesson_markdown"\s*:\s*"([\s\S]*)/);
+        
+        if (match && match[1]) {
+          let extractedText = match[1];
+          
+          // Limpa o fechamento do JSON no final da string ("} ou só ")
+          extractedText = extractedText.replace(/"\s*\}\s*$/, '').replace(/"\s*$/, '');
+          
+          // Restaura quebras de linha e aspas escapadas da IA
+          extractedText = extractedText
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"');
+          
+          return { lesson_markdown: extractedText };
+        }
+      }
+      
+      // Se não for aula e falhar mesmo assim, exibe no console e lança o erro padrão
+      console.error("TEXTO COM ERRO COMPLETO DA IA:", rawText);
+      throw new Error("A IA gerou um formato inválido de dados.");
+    }
   }
 };
 

@@ -433,14 +433,27 @@ export default function Profile() {
                   value={userModel} 
                   onChange={(e) => setUserModel(e.target.value)} 
                   className="input" 
-                  style={{ flex: 1, backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} 
+                  style={{ 
+                    flex: 1, 
+                    backgroundColor: !userApiKey ? 'var(--bg)' : 'var(--input-bg)', 
+                    color: !userApiKey ? 'var(--text-muted)' : 'var(--text-main)',
+                    cursor: !userApiKey ? 'not-allowed' : 'text'
+                  }} 
                   placeholder="ex: gemini-2.5-flash"
+                  disabled={!userApiKey}
                 />
-                <button onClick={handleSaveAIConfig} disabled={isSavingAI} className="btn primary">{isSavingAI ? "..." : "Salvar Configurações"}</button>
+                <button onClick={handleSaveAIConfig} disabled={isSavingAI || !userApiKey} className="btn primary">{isSavingAI ? "..." : "Salvar Configurações"}</button>
               </div>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block' }}>
-                Recomendamos deixar o modelo padrão gerado automaticamente pela aba escolhida.
-              </span>
+              
+              {!userApiKey ? (
+                <span style={{ fontSize: '0.85rem', color: 'var(--error-text)', marginTop: '8px', display: 'block', fontWeight: 'bold' }}>
+                  🔒 Como você está usando a IA Compartilhada da plataforma, o modelo é gerido pelo administrador. Vincule uma chave própria para personalizar.
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block' }}>
+                  Recomendamos deixar o modelo padrão gerado automaticamente pela aba escolhida.
+                </span>
+              )}
             </div>
           </div>
         </div>
