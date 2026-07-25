@@ -139,12 +139,13 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
 
   const handleSend = async () => {
     if (!input.trim()) return;
+    /*
     // --- NOVA TRAVA ---
     if (!userApiKey) {
       setIsOpen(false); // Fecha o chat
       onOpenConfig();   // Abre o modal de configuração
       return;
-    }
+    }*/
     
     const newMsg = { role: "user", content: input };
     const updatedMessages = [...messages, newMsg];
@@ -257,7 +258,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   const excedeuLinhas = linhasEstimadas > 30;
 
   const handleCorrect = async () => {
-    if (!userApiKey) { onOpenConfig(); return; }
+    //if (!userApiKey) { onOpenConfig(); return; }
 
     if (answer.trim().length < 50) {
       alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
@@ -297,7 +298,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   };
 
   const handleGenerateNew = async () => {
-    if (!userApiKey) { onOpenConfig(); return; }
+    //if (!userApiKey) { onOpenConfig(); return; }
 
     setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
     try {
@@ -481,7 +482,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
   const excedeuLinhas = linhasEstimadas > 30;
 
   const handleGenerateNew = async () => {
-    if (!userApiKey) { onOpenConfig(); return; }
+    //if (!userApiKey) { onOpenConfig(); return; }
     
     setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
     try {
@@ -515,7 +516,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
   };
 
   const handleCorrect = async () => {
-    if (!userApiKey) { onOpenConfig(); return; }
+    //if (!userApiKey) { onOpenConfig(); return; }
 
     if (answer.trim().length < 50) {
       alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
@@ -827,10 +828,12 @@ export default function LessonContent({ result }) {
 
   // FUNÇÃO PARA GERAR O SIMULADO EM TEMPO REAL COM A IA (COM RETRIES)
   const handleGerarSimuladoIA = async () => {
+    /* TRAVA DE SEGURANÇA SE NAO TIVER CONFIGURADA A IA
     if (!userApiKey) {
       openConfigModal();
       return;
     }
+      */
     
     setSimuladoAcertos(0);
     setSimuladoFinalizado(false);
