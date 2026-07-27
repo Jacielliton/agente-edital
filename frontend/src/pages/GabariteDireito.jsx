@@ -656,11 +656,13 @@ export default function GabariteDireito() {
   };
 
   const generateQuiz = async () => {
+    /* COMENTADO PARA UTILIZAÇÃO DA CHAVE GLOBAL DO USUÁRIO
     if (!userApiKey) {
       alert("Por favor, configure sua Chave API do OpenRouter ou AI Studio nas configurações.");
       openConfigModal();
       return;
     }
+      */
 
     setViewState("loading");
 

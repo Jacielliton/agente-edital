@@ -229,11 +229,13 @@ export default function GabariteSintaxe() {
   };
 
   const generateQuiz = async () => {
+    /* COMENTADO PARA UTILIZAÇÃO DA CHAVE GLOBAL DO USUÁRIO
     if (!userApiKey) {
       alert("Por favor, configure sua Chave API do OpenRouter ou AI Studio nas configurações para gerar questões.");
       openConfigModal();
       return;
     }
+      */
 
     setViewState("loading");
 
