@@ -10,8 +10,11 @@ const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
   for (const storage of storages) {
-    let t = storage.getItem("access_token") || storage.getItem("token");
+    // ATUALIZAÇÃO AQUI: Adicionado o fallback para "professor_ai_token"
+    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
+    
     if (t && t.startsWith("eyJ")) return t;
+    
     try {
       const uStr = storage.getItem("user");
       if (uStr && uStr.startsWith("{")) {
@@ -20,6 +23,8 @@ const getAuthToken = () => {
         if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
       }
     } catch(e) {}
+    
+    // Loop profundo (já existente no seu LessonContent)
     for (let i = 0; i < storage.length; i++) {
       const key = storage.key(i);
       const val = storage.getItem(key);
@@ -870,7 +875,7 @@ export default function LessonContent({ result }) {
                 area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
                 topico: aula.titulo || `Tópico ${i+1}`,
                 conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
-                model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
+                model: userModel || result?.modelo_utilizado || "deepseek/deepseek-v4-flash", // ✅ CORRIGIDO
                 api_key: userApiKey || null,
                 qtd_questoes: parseInt(simuladoQtd, 10), 
                 nivel: simuladoNivel,
@@ -894,7 +899,14 @@ export default function LessonContent({ result }) {
           } catch (err) {
             tentativaAtual++;
             console.warn(`⚠️ Falha no tópico ${i+1} (Tentativa ${tentativaAtual}/${maxTentativas}).`, err.message);
-            if (tentativaAtual >= maxTentativas) throw new Error(`Falha crítica no tópico "${aula.titulo}".`);
+            
+            // --- INÍCIO DA MODIFICAÇÃO PARA DESCOBRIR O ERRO ---
+            if (tentativaAtual >= maxTentativas) {
+              console.error("🕵️ ERRO BRUTO DETECTADO:", err); // Isso vai imprimir a falha real!
+              throw new Error(`Falha crítica no tópico "${aula.titulo}".`);
+            }
+            // --- FIM DA MODIFICAÇÃO ---
+
             await new Promise(resolve => setTimeout(resolve, 2500));
           }
         }
