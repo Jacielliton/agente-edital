@@ -161,9 +161,14 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
     
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+
       const data = await fetchStreamAsJson(`${apiUrl}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+        },
         body: JSON.stringify({
           area: area || "Assunto Geral",
           aula_titulo: "Conhecimento Geral da Área",
@@ -174,9 +179,15 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
         })
       });
 
+      // <-- ADICIONA A PROTEÇÃO DE ERRO VINDA DO BACKEND
+      if (data && data.error) {
+        throw new Error(data.error);
+      }
+
       setMessages([...updatedMessages, { role: "assistant", content: data.resposta }]);
     } catch (e) {
-      setMessages([...updatedMessages, { role: "assistant", content: "⚠️ *Desculpe, falha na conexão.* Verifique sua chave API ou tente novamente." }]);
+      // Exibe o erro real (ex: plano expirado) ou a mensagem de falha de conexão
+      setMessages([...updatedMessages, { role: "assistant", content: `⚠️ *${e.message || "Desculpe, falha na conexão."}*` }]);
     } finally {
       setLoading(false);
     }
@@ -272,9 +283,14 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
     setLoading(true); setError(null); setCorrection(null);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+
       const data = await fetchStreamAsJson(`${apiUrl}/correct-essay`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+        },
         body: JSON.stringify({
           texto_motivador: discursiva.texto_motivador || "",
           comando: discursiva.comando || "",
@@ -284,6 +300,9 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           api_key: userApiKey || null
         })
       });
+      
+      // <-- ADICIONA A PROTEÇÃO DE ERRO
+      if (data && data.error) throw new Error(data.error);
       
       const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
         ? data.avaliacoes_aspectos.reduce((acc, curr) => acc + (parseFloat(curr.nota_atribuida) || 0), 0)
@@ -308,18 +327,26 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
     setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+
       const data = await fetchStreamAsJson(`${apiUrl}/generate-essay`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+        },
         body: JSON.stringify({
           area: area || "Assunto Geral",
           aula_titulo: aula.titulo || "Aula",
           lesson_content: aula, 
-          nivel: nivel, // <-- ENVIANDO O NÍVEL PARA A API
+          nivel: nivel, 
           model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
           api_key: userApiKey || null
         })
       });
+      
+      // <-- ADICIONA A PROTEÇÃO DE ERRO
+      if (data && data.error) throw new Error(data.error);
       
       const novaQuestao = data.discursiva ? data.discursiva : data;
       if (novaQuestao && novaQuestao.comando) {
@@ -493,18 +520,25 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
       const aulasTitulos = aulas.map(a => a.titulo);
+      const token = getAuthToken(); // <-- CAPTURA O TOKEN
       
       const data = await fetchStreamAsJson(`${apiUrl}/generate-global-essay`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+        },
         body: JSON.stringify({
           area: area || "Assunto Geral",
           aulas_titulos: aulasTitulos,
-          nivel: nivel, // <-- ENVIANDO O NÍVEL PARA A API
+          nivel: nivel,
           model: userModel || defaultModel || "deepseek/deepseek-v4-flash",
           api_key: userApiKey || null
         })
       });
+
+      // <-- ADICIONA A PROTEÇÃO DE ERRO
+      if (data && data.error) throw new Error(data.error);
       
       const novaQuestao = data.discursiva ? data.discursiva : data;
       if (novaQuestao && novaQuestao.comando) {
@@ -530,9 +564,14 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
     setLoading(true); setError(null); setCorrection(null);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+
       const data = await fetchStreamAsJson(`${apiUrl}/correct-essay`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+        },
         body: JSON.stringify({
           texto_motivador: discursiva.texto_motivador || "",
           comando: discursiva.comando || "",
@@ -542,6 +581,9 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
           api_key: userApiKey || null
         })
       });      
+      
+      // <-- ADICIONA A PROTEÇÃO DE ERRO
+      if (data && data.error) throw new Error(data.error);    
       
       const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
         ? data.avaliacoes_aspectos.reduce((acc, curr) => acc + (parseFloat(curr.nota_atribuida) || 0), 0)
@@ -843,13 +885,13 @@ export default function LessonContent({ result }) {
     setSimuladoAcertos(0);
     setSimuladoFinalizado(false);
     setSimuladoLoading(true);
-    setSimuladoQuestoes([]); // NOVO: Inicia com Array Vazio para preenchimento em tempo real
+    setSimuladoQuestoes([]); 
     setSimuladoProgress(0);
     
     let errorGlobal = false;
     const totalAulas = safeArray(result?.aulas).length;
+    const token = getAuthToken(); // <-- CAPTURA O TOKEN UMA VEZ AQUI
 
-    // Desce a tela logo no início para o utilizador acompanhar a renderização ao vivo
     setTimeout(() => {
       document.getElementById('simulado-progress-anchor')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
@@ -870,12 +912,15 @@ export default function LessonContent({ result }) {
 
             const data = await fetchStreamAsJson(`${apiUrl}/generate-simulado-topic`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { 
+                "Content-Type": "application/json",
+                "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN NA REQUISIÇÃO
+              },
               body: JSON.stringify({
                 area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
                 topico: aula.titulo || `Tópico ${i+1}`,
                 conteudo: aula.aula_teorica_aprofundada || aula.visao_geral || "",
-                model: userModel || result?.modelo_utilizado || "deepseek/deepseek-v4-flash", // ✅ CORRIGIDO
+                model: userModel || result?.modelo_utilizado || "deepseek/deepseek-v4-flash",
                 api_key: userApiKey || null,
                 qtd_questoes: parseInt(simuladoQtd, 10), 
                 nivel: simuladoNivel,
