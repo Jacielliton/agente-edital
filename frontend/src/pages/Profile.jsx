@@ -316,6 +316,17 @@ export default function Profile() {
               {planStatus}
               {user.plan_type && user.role !== 'admin' && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Plano atual: {user.plan_type}</div>}
             </div>
+            {/* NOVO: Botão de Upgrade / Renovação */}
+            {user.role !== 'admin' && (
+              <button 
+                onClick={() => window.location.href = '/planos'} 
+                className="btn primary" 
+                style={{ marginTop: '10px', padding: '6px 12px', fontSize: '0.85rem' }}
+              >
+                Fazer Upgrade de Plano
+              </button>
+            )}
+            
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '5px' }}>Consumo de IA Compartilhada</label>

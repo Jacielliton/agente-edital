@@ -5,6 +5,7 @@ import { UserPlus, LogIn, AlertCircle, CheckCircle, Brain, FileText, MessageSqua
 
 // 1. Dicionário de preços base para cálculo dinâmico
 const PLAN_PRICES = {
+  diario_teste: 1.90,
   mensal_simples: 49.90,
   trimestral_simples: 119.90,
   semestral_simples: 199.90,
@@ -422,6 +423,16 @@ export default function Login() {
                       
                       {/* CATEGORIA 1: PLANO SIMPLES */}
                       <span className="plan-group-title">Plano Simples (Usa Chave Pessoal)</span>
+                      <label className="plan-option-card" style={{ border: selectedPlan === 'diario_teste' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input type="radio" name="plano" value="diario_teste" checked={selectedPlan === 'diario_teste'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
+                          <div>
+                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Teste Diário Plus</strong>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>1 Dia de acesso</span>
+                          </div>
+                        </div>
+                        {renderPrice('diario_teste', '#0284c7')}
+                      </label>
                       
                       <label className="plan-option-card" style={{ border: selectedPlan === 'mensal_simples' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center' }}>

@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CreditCard, CheckCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext'; // ADICIONADO: Importação do contexto
 
 export default function Planos() {
-  const [email, setEmail] = useState('');
-  const [cupom, setCupom] = useState(''); // ADICIONADO: Estado para o cupom
+  const { user } = useAuth(); // ADICIONADO: Puxa o usuário logado
+  
+  // O e-mail começa com o e-mail do usuário logado (se houver)
+  const [email, setEmail] = useState(user?.email || '');
+  const [cupom, setCupom] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+  // ADICIONADO: Sincroniza o e-mail caso o contexto carregue milissegundos depois
+  useEffect(() => {
+    if (user?.email) {
+      setEmail(user.email);
+    }
+  }, [user]);
+
   const planos = [
+    { id: 'diario_teste', nome: 'Teste Diário Plus', preco: '1,90', sub: 'IA Ativada (1 Dia)' }, // Inclusão do plano de R$ 1.90
     { id: 'mensal_simples', nome: 'Mensal Simples', preco: '49,90', sub: 'Acesso Padrão (Sem IA)' },
     { id: 'trimestral_simples', nome: 'Trimestral Simples', preco: '119,90', sub: 'Acesso Padrão (Sem IA)' },
     { id: 'semestral_simples', nome: 'Semestral Simples', preco: '199,90', sub: 'Acesso Padrão (Sem IA)' },
@@ -33,8 +45,8 @@ export default function Planos() {
       const res = await fetch(`${API_URL}/payments/create-preference`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // ADICIONADO: Envia o cupom (em maiúsculas) se ele foi preenchido
-        body: JSON.stringify({ email, plano: planoId, cupom: cupom ? cupom.toUpperCase() : null })
+        // CORRIGIDO: O backend do Mercado Pago espera 'coupon_code' conforme definido no seu main.py
+        body: JSON.stringify({ email, plano: planoId, coupon_code: cupom ? cupom.toUpperCase() : null })
       });
       const data = await res.json();
       
@@ -59,18 +71,30 @@ export default function Planos() {
       </div>
 
       <div className="card" style={{ maxWidth: '500px', margin: '0 auto 3rem auto', padding: '2rem' }}>
-        <label className="label" style={{ fontWeight: 'bold' }}>Qual o e-mail da sua conta?</label>
-        <input 
-          className="input" 
-          type="email" 
-          placeholder="seu.email@exemplo.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={{ marginBottom: '15px' }}
-        />
         
-        {/* ADICIONADO: Campo para inserir o cupom de desconto */}
+        {/* LÓGICA CONDICIONAL: Exibe como texto fixo se logado, input se deslogado */}
+        {user ? (
+          <div style={{ marginBottom: '15px' }}>
+            <label className="label" style={{ fontWeight: 'bold' }}>Conta conectada</label>
+            <div style={{ padding: '10px', background: 'var(--input-bg)', borderRadius: '6px', border: '1px solid var(--border)', color: 'var(--text-main)', opacity: 0.7, cursor: 'not-allowed' }}>
+              {user.email}
+            </div>
+          </div>
+        ) : (
+          <>
+            <label className="label" style={{ fontWeight: 'bold' }}>Qual o e-mail da sua conta?</label>
+            <input 
+              className="input" 
+              type="email" 
+              placeholder="seu.email@exemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{ marginBottom: '15px' }}
+            />
+          </>
+        )}
+        
         <label className="label" style={{ fontWeight: 'bold' }}>Cupom de Desconto (Opcional)</label>
         <input 
           className="input" 

@@ -3022,6 +3022,7 @@ async def create_preference(
     db: AsyncSession = Depends(get_db)
 ):
     planos = {
+        "diario_teste": {"price": 1.90, "title": "Plano de Teste Diário (Plus)", "days": 1},
         "mensal_simples": {"price": 49.90, "title": "Plano Mensal Simples", "days": 30},
         "trimestral_simples": {"price": 119.90, "title": "Plano Trimestral Simples", "days": 90},
         "semestral_simples": {"price": 199.90, "title": "Plano Semestral Simples", "days": 180},
@@ -3134,6 +3135,7 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
                     email, plano = external_ref.split("|")
                     
                     planos_info = {
+                        "diario_teste": {"dias": 1, "preco": 1.90, "tipo": "Plus", "limite": 200000},
                         "mensal_simples": {"dias": 30, "preco": 49.90, "tipo": "Simples", "limite": 0},
                         "trimestral_simples": {"dias": 90, "preco": 119.90, "tipo": "Simples", "limite": 0},
                         "semestral_simples": {"dias": 180, "preco": 199.90, "tipo": "Simples", "limite": 0},
@@ -3209,6 +3211,7 @@ async def grant_plan(
 
     # Mapeamento dos novos planos
     planos_info = {
+        "diario_teste": {"dias": 1, "tipo": "Plus", "limite": 200000},
         "mensal_simples": {"dias": 30, "tipo": "Simples", "limite": 0},
         "trimestral_simples": {"dias": 90, "tipo": "Simples", "limite": 0},
         "semestral_simples": {"dias": 180, "tipo": "Simples", "limite": 0},

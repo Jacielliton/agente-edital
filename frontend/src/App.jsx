@@ -149,7 +149,7 @@ function Footer() {
       marginTop: 'auto' // Garante que fique no final da página
     }}>
       <div style={{ marginBottom: '1rem', color: 'var(--text-secondary)', fontWeight: '400' }}>
-        Siga-nos nas redes sociais
+        A IA pode cometer erros, na dúvida, consulte sempre o material oficial do edital.
       </div>
       
       <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem' }}>
