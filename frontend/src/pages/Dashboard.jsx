@@ -23,7 +23,7 @@ export default function Dashboard() {
   const [totalPages, setTotalPages] = useState(1);
   const [expandedConcurso, setExpandedConcurso] = useState(null); 
   
-  const limitPerPage = 60; 
+  const limitPerPage = 100; 
 
   // Função para ler exatamente a chave salva pelo AuthContext
   const getAuthToken = () => {

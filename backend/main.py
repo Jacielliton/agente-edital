@@ -204,6 +204,7 @@ class UpdatePlanRequest(BaseModel):
     banca: Optional[str] = None
     concurso: Optional[str] = None
     visibility: Optional[str] = None  
+    content: Optional[Dict[str, Any]] = None
 
 class ShareRequest(BaseModel):
     email: str
@@ -832,6 +833,7 @@ async def update_plan(plan_id: int, req: UpdatePlanRequest, current_user: User =
     if req.banca is not None: plan.banca = req.banca
     if req.concurso is not None: plan.concurso = req.concurso
     if req.visibility is not None: plan.visibility = req.visibility
+    if req.content is not None: plan.content = req.content # <--- NOVA LINHA ADICIONADA
     
     await db.commit()
     return {"ok": True, "message": "Aula atualizada com sucesso"}

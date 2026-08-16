@@ -92,8 +92,37 @@ export default function GerenciarAulas() {
   const handleOpenEdit = (plan) => {
     setEditingPlan(plan);
     setEditFormData({
-      title: plan.title || '', area: plan.area || '', ano: plan.ano || '', banca: plan.banca || '', concurso: plan.concurso || '', visibility: plan.visibility || 'public' 
+      title: plan.title || '', 
+      area: plan.area || '', 
+      ano: plan.ano || '', 
+      banca: plan.banca || '', 
+      concurso: plan.concurso || '', 
+      visibility: plan.visibility || 'public',
+      content: null // <--- ADICIONADO
     });
+  };
+
+  // --- NOVA FUNÇÃO PARA UPLOAD DE JSON ---
+  const handleJsonUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target.result);
+        
+        // Verifica se o JSON tem estrutura de backup { meta: {...}, content: {...} } ou se é direto
+        const actualContent = (json.meta && json.content) ? json.content : json;
+        
+        setEditFormData(prev => ({ ...prev, content: actualContent }));
+        alert("✅ Arquivo JSON carregado com sucesso! Clique em 'Guardar Alterações' para aplicar na nuvem.");
+      } catch (error) {
+        console.error("Erro ao fazer parse do JSON:", error);
+        alert("❌ Erro ao ler o arquivo. Certifique-se de que é um JSON válido e não está corrompido.");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleSaveEdit = async () => {
@@ -533,6 +562,25 @@ export default function GerenciarAulas() {
                  <input type="text" value={editFormData.concurso} onChange={e => setEditFormData({...editFormData, concurso: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
               </div>
             </div>
+
+            {/* --- NOVO CAMPO ADICIONADO AQUI --- */}
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>
+                Substituir Conteúdo da Aula (Upload .json)
+              </label>
+              <input 
+                type="file" 
+                accept=".json" 
+                onChange={handleJsonUpload} 
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px dashed var(--primary)', backgroundColor: 'var(--bg)', color: 'var(--text-main)', cursor: 'pointer' }} 
+              />
+              {editFormData.content && (
+                <small style={{ color: 'var(--success-text)', display: 'block', marginTop: '5px', fontWeight: 'bold' }}>
+                  Arquivo preparado. Salve para confirmar.
+                </small>
+              )}
+            </div>
+            {/* --------------------------------- */}
 
             <div style={{ marginBottom: '25px' }}>
               <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Visibilidade</label>
