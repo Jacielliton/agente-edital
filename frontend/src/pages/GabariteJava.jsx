@@ -420,6 +420,47 @@ export default function GabariteJava() {
   const wrongCount = getWrongQuestions().length;
   const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && wrongCount > 0;
 
+  // --- ESTILOS CUSTOMIZADOS PARA MARKDOWN (CÓDIGO IDENTADO) ---
+  const markdownComponents = {
+    code({ node, inline, className, children, ...props }) {
+      const match = /language-(\w+)/.exec(className || "");
+      return !inline ? (
+        <div style={{ margin: "15px 0", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ background: "#2d2d2d", color: "#ccc", fontSize: "0.75rem", padding: "5px 15px", fontFamily: "sans-serif", textTransform: "uppercase" }}>
+            {match ? match[1] : "JAVA"}
+          </div>
+          <pre style={{ 
+            background: "#1e1e1e", 
+            padding: "15px", 
+            overflowX: "auto", 
+            margin: 0,
+            whiteSpace: "pre-wrap", 
+            wordBreak: "break-word",
+            fontFamily: '"Fira Code", "Courier New", Courier, monospace',
+            color: "#d4d4d4",
+            fontSize: "0.95rem",
+            lineHeight: "1.5"
+          }}>
+            <code className={className} {...props}>
+              {children}
+            </code>
+          </pre>
+        </div>
+      ) : (
+        <code style={{ 
+          background: "var(--hover-bg)", 
+          color: "var(--primary)", 
+          padding: "2px 6px", 
+          borderRadius: "4px", 
+          fontFamily: '"Fira Code", "Courier New", Courier, monospace',
+          fontSize: "0.9em" 
+        }} {...props}>
+          {children}
+        </code>
+      );
+    }
+  };
+
   return (
     <div className="container">
       <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
@@ -632,7 +673,9 @@ export default function GabariteJava() {
                           </div>
                           <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Código Base / Cenário</h3>
                           <div className="markdown-format" style={{ fontSize: '1rem', color: 'var(--text-main)' }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.textoVinculado}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                              {q.textoVinculado}
+                            </ReactMarkdown>
                           </div>
                         </div>
                       )}
@@ -650,7 +693,9 @@ export default function GabariteJava() {
                               {q.assunto}
                             </span>
                             <div className="markdown-format" style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
-                              <ReactMarkdown>{q.enunciado}</ReactMarkdown>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                {q.enunciado}
+                              </ReactMarkdown>
                             </div>
                             
                             <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
@@ -672,7 +717,17 @@ export default function GabariteJava() {
                                         opacity: (showExp && uAns !== letra && !isCorrectAlt) ? 0.5 : 1
                                       }}
                                     >
-                                      <span style={{ flex: 1 }}>{alt}</span>
+                                      <span style={{ flex: 1, textAlign: 'left', whiteSpace: 'pre-line' }}>
+                                        <ReactMarkdown 
+                                          remarkPlugins={[remarkGfm]} 
+                                          components={{
+                                            ...markdownComponents,
+                                            p: ({node, ...props}) => <span {...props} />
+                                          }}
+                                        >
+                                          {alt}
+                                        </ReactMarkdown>
+                                      </span>
                                       {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)" style={{ flexShrink: 0, marginLeft: '10px' }}/>}
                                     </button>
                                   )
@@ -718,7 +773,9 @@ export default function GabariteJava() {
                                   {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
                                 </div>
                                 <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{q.explicacao}</ReactMarkdown>
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                    {q.explicacao}
+                                  </ReactMarkdown>
                                 </div>
                               </div>
                             )}
@@ -909,7 +966,9 @@ export default function GabariteJava() {
             </div>
             <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
               <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{lessonContent}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {lessonContent}
+                </ReactMarkdown>
               </div>
             </div>
           </div>

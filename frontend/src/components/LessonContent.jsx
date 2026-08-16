@@ -4,13 +4,53 @@ import remarkGfm from "remark-gfm";
 import QuizCard from "../QuizCard";
 import Mermaid from "./Mermaid";
 
+// --- ESTILOS CUSTOMIZADOS PARA MARKDOWN (CÓDIGO IDENTADO) ---
+const markdownComponents = {
+  code({ node, inline, className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || "");
+    return !inline ? (
+      <div style={{ margin: "15px 0", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}>
+        <div style={{ background: "#2d2d2d", color: "#ccc", fontSize: "0.75rem", padding: "5px 15px", fontFamily: "sans-serif", textTransform: "uppercase" }}>
+          {match ? match[1] : "CÓDIGO"}
+        </div>
+        <pre style={{ 
+          background: "#1e1e1e", 
+          padding: "15px", 
+          overflowX: "auto", 
+          margin: 0,
+          whiteSpace: "pre-wrap", // <- Propriedade crucial para manter a indentação
+          wordBreak: "break-word",
+          fontFamily: '"Fira Code", "Courier New", Courier, monospace',
+          color: "#d4d4d4",
+          fontSize: "0.95rem",
+          lineHeight: "1.5"
+        }}>
+          <code className={className} {...props}>
+            {children}
+          </code>
+        </pre>
+      </div>
+    ) : (
+      <code style={{ 
+        background: "var(--hover-bg)", 
+        color: "var(--primary)", 
+        padding: "2px 6px", 
+        borderRadius: "4px", 
+        fontFamily: '"Fira Code", "Courier New", Courier, monospace',
+        fontSize: "0.9em" 
+      }} {...props}>
+        {children}
+      </code>
+    );
+  }
+};
+
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
 
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
   for (const storage of storages) {
-    // ATUALIZAÇÃO AQUI: Adicionado o fallback para "professor_ai_token"
     let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
     
     if (t && t.startsWith("eyJ")) return t;
@@ -24,7 +64,6 @@ const getAuthToken = () => {
       }
     } catch(e) {}
     
-    // Loop profundo (já existente no seu LessonContent)
     for (let i = 0; i < storage.length; i++) {
       const key = storage.key(i);
       const val = storage.getItem(key);
@@ -69,6 +108,7 @@ const savePerformance = async (tipo, tema, notaObtida, notaMaxima, nivel, format
     console.error("Erro ao salvar desempenho:", err);
   }
 };
+
 // NOVA FUNÇÃO: Lê o stream e possui extração inteligente e VACINA ANTI-QUEBRA
 const fetchStreamAsJson = async (url, options) => {
   const res = await fetch(url, options);
@@ -89,43 +129,35 @@ const fetchStreamAsJson = async (url, options) => {
   }
   
   try {
-    // 1. Limpa tags de raciocínio e blocos markdown embutidos erradamente
     let cleanText = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(); 
     cleanText = cleanText.replace(/^```json/i, "").replace(/```$/i, "").trim();
     
-    // 2. Extração Robusta do bloco JSON
     const jsonMatch = cleanText.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (jsonMatch) {
       cleanText = jsonMatch[0];
     }
     
-    // 3. Remove vírgulas presas no fim de arrays
     cleanText = cleanText.replace(/,\s*([\]}])/g, '$1');
 
-    // 4. RECUPERAÇÃO DE STRING CORTADA (Cut-off)
-    // Se a string não fechar, forçamos o fechamento do JSON para tentar salvar
     if (!cleanText.endsWith("}") && !cleanText.endsWith("]")) {
         cleanText += '"}'; 
     }
     
-    // ATENÇÃO: A "Vacina 1" de replace global de \n foi removida daqui, 
-    // pois ela estava destruindo a formatação estrutural de JSONs grandes!
-
     return JSON.parse(cleanText);
   } catch (e) {
     console.error("Erro ao parsear JSON. Texto bruto recebido:", rawText);
     
-    // ULTIMA LINHA DE DEFESA (Fallback Extremo para o Chat do Tutor)
     const fallbackMatch = rawText.match(/"resposta"\s*:\s*"([\s\S]*)/);
     if (fallbackMatch && fallbackMatch[1]) {
-        let extracted = fallbackMatch[1].replace(/"\s*\}\s*$/, ''); // Remove sujeiras do final
-        extracted = extracted.replace(/\\n/g, '\n'); // Restaura as quebras de linha
+        let extracted = fallbackMatch[1].replace(/"\s*\}\s*$/, ''); 
+        extracted = extracted.replace(/\\n/g, '\n'); 
         return { resposta: extracted + "..." }; 
     }
     
     throw new Error("A IA gerou um formato inválido ou a conexão foi interrompida.");
   }
 };
+
 // ==========================================
 // COMPONENTE: CHAT DO TUTOR (FLUTUANTE DIREITO)
 // ==========================================
@@ -144,13 +176,6 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    /*
-    // --- NOVA TRAVA ---
-    if (!userApiKey) {
-      setIsOpen(false); // Fecha o chat
-      onOpenConfig();   // Abre o modal de configuração
-      return;
-    }*/
     
     const newMsg = { role: "user", content: input };
     const updatedMessages = [...messages, newMsg];
@@ -161,13 +186,13 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
     
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+      const token = getAuthToken();
 
       const data = await fetchStreamAsJson(`${apiUrl}/chat`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+          "Authorization": token ? `Bearer ${token}` : ""
         },
         body: JSON.stringify({
           area: area || "Assunto Geral",
@@ -179,14 +204,12 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
         })
       });
 
-      // <-- ADICIONA A PROTEÇÃO DE ERRO VINDA DO BACKEND
       if (data && data.error) {
         throw new Error(data.error);
       }
 
       setMessages([...updatedMessages, { role: "assistant", content: data.resposta }]);
     } catch (e) {
-      // Exibe o erro real (ex: plano expirado) ou a mensagem de falha de conexão
       setMessages([...updatedMessages, { role: "assistant", content: `⚠️ *${e.message || "Desculpe, falha na conexão."}*` }]);
     } finally {
       setLoading(false);
@@ -212,7 +235,7 @@ function TutorChat({ area, defaultModel, userApiKey, userModel, onOpenConfig }) 
             {messages.map((msg, idx) => (
               <div key={idx} className={`chat-msg ${msg.role}`} style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', padding: '10px 15px', borderRadius: '12px', backgroundColor: msg.role === 'user' ? 'var(--primary)' : 'var(--card-bg)', color: msg.role === 'user' ? '#fff' : 'var(--text-main)', border: msg.role === 'assistant' ? '1px solid var(--border)' : 'none' }}>
                 {msg.role === 'assistant' ? (
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{msg.content}</ReactMarkdown>
                 ) : (
                   msg.content
                 )}
@@ -264,18 +287,15 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   const [loading, setLoading] = useState(false);
   const [loadingGen, setLoadingGen] = useState(false);
   const [error, setError] = useState(null);
-  const [nivel, setNivel] = useState("Normal"); // <-- ESTADO DO NÍVEL
+  const [nivel, setNivel] = useState("Normal");
 
   if (!discursiva || !discursiva.comando) return null;
 
-  // LÓGICA DO TERMÔMETRO DE LINHAS
   const palavrasCount = answer.trim() === "" ? 0 : answer.trim().split(/\s+/).length;
-  const linhasEstimadas = Math.ceil(palavrasCount / 9); // Média de 9 palavras por linha manuscrita
+  const linhasEstimadas = Math.ceil(palavrasCount / 9);
   const excedeuLinhas = linhasEstimadas > 30;
 
   const handleCorrect = async () => {
-    //if (!userApiKey) { onOpenConfig(); return; }
-
     if (answer.trim().length < 50) {
       alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
       return;
@@ -283,13 +303,13 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
     setLoading(true); setError(null); setCorrection(null);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+      const token = getAuthToken();
 
       const data = await fetchStreamAsJson(`${apiUrl}/correct-essay`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+          "Authorization": token ? `Bearer ${token}` : ""
         },
         body: JSON.stringify({
           texto_motivador: discursiva.texto_motivador || "",
@@ -301,7 +321,6 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
         })
       });
       
-      // <-- ADICIONA A PROTEÇÃO DE ERRO
       if (data && data.error) throw new Error(data.error);
       
       const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
@@ -311,7 +330,6 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
       data.nota_final_calculada = notaCalculada; 
       setCorrection(data);
       
-      // Salva a nota com o nível de dificuldade
       await savePerformance("discursiva", area ? `${area} - ${aula?.titulo || 'Tópico'}` : "Prova Discursiva", notaCalculada, 10.0, nivel);
       
     } catch (err) {
@@ -322,18 +340,16 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
   };
 
   const handleGenerateNew = async () => {
-    //if (!userApiKey) { onOpenConfig(); return; }
-
     setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+      const token = getAuthToken();
 
       const data = await fetchStreamAsJson(`${apiUrl}/generate-essay`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+          "Authorization": token ? `Bearer ${token}` : ""
         },
         body: JSON.stringify({
           area: area || "Assunto Geral",
@@ -345,7 +361,6 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
         })
       });
       
-      // <-- ADICIONA A PROTEÇÃO DE ERRO
       if (data && data.error) throw new Error(data.error);
       
       const novaQuestao = data.discursiva ? data.discursiva : data;
@@ -371,14 +386,14 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
         <div style={{ marginBottom: '15px' }}>
           <strong style={{color: 'var(--text-main)'}}>📋 Cenário / Texto Motivador:</strong>
           <div className="essay-text" style={{color: 'var(--text-secondary)'}}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.texto_motivador)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(discursiva.texto_motivador)}</ReactMarkdown>
           </div>
         </div>
         
         <div style={{ marginBottom: '15px', background: 'var(--bg)', padding: '10px', borderRadius: '4px', borderLeft: '4px solid var(--primary)' }}>
           <strong style={{color: 'var(--text-main)'}}>📝 Comando da Questão:</strong>
           <div className="essay-text" style={{ fontWeight: '500', margin: '5px 0 0 0', color: 'var(--text-main)' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.comando)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(discursiva.comando)}</ReactMarkdown>
           </div>
         </div>
         
@@ -393,7 +408,6 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
           </ul>
         </div>
         
-        {/* RASCUNHO OFICIAL COM TERMÔMETRO DE LINHAS */}
         <div style={{ position: 'relative' }}>
           <textarea 
             className="essay-textarea" 
@@ -430,7 +444,6 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
 
         {error && (<div className="correction-error" style={{ color: 'var(--error-text)', backgroundColor: 'var(--error-bg)', padding: '10px', borderRadius: '6px', border: '1px solid var(--error-text)', marginTop: '10px' }}><strong>⚠️ Erro: </strong> {error}</div>)}
         
-        {/* BLOCO DIDÁTICO DE CORREÇÃO */}
         {correction && (
           <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
             <div style={{ background: 'var(--success-bg)', padding: '15px 20px', borderBottom: '1px solid var(--success-text)', display: 'flex', alignItems: 'center', gap: '10px', borderRadius: '8px 8px 0 0', margin: '-20px -20px 20px -20px' }}>
@@ -438,7 +451,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
             </div>
             
             <div style={{fontStyle: 'italic', marginBottom: '25px', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '15px', borderRadius: '8px'}}>
-              <strong>Parecer da Banca:</strong> <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.feedback_geral)}</ReactMarkdown>
+              <strong>Parecer da Banca:</strong> <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(correction.feedback_geral)}</ReactMarkdown>
             </div>
             
             <h4 style={{ color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Avaliação e Padrão de Resposta (Espelho)</h4>
@@ -449,7 +462,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
                 
                 <div style={{fontSize: '0.95em', color: 'var(--text-secondary)', marginBottom: '15px'}}>
                   <strong>Análise do seu texto:</strong>
-                  <div style={{ marginTop: '5px' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.comentario)}</ReactMarkdown></div>
+                  <div style={{ marginTop: '5px' }}><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(av.comentario)}</ReactMarkdown></div>
                 </div>
 
                 {av.padrao_esperado && (
@@ -458,7 +471,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
                       💡 Espelho de Correção (Como responder perfeitamente):
                     </strong>
                     <div style={{ color: 'var(--text-main)', marginTop: '8px', fontSize: '0.95em', lineHeight: '1.5' }}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.padrao_esperado)}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(av.padrao_esperado)}</ReactMarkdown>
                     </div>
                   </div>
                 )}
@@ -467,7 +480,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
 
             <h4 style={{ marginTop: '30px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Estrutura e Aspectos Gramaticais</h4>
             <div style={{fontSize: '0.95em', color: 'var(--error-text)', background: 'var(--error-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--error-text)'}}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
             </div>
             
             {correction.dica_estudo && (
@@ -476,7 +489,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
                   📚 Plano de Ação / Dica de Estudo:
                 </strong>
                 <div style={{ color: 'var(--text-main)', marginTop: '10px', fontSize: '1rem', lineHeight: '1.6' }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.dica_estudo)}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(correction.dica_estudo)}</ReactMarkdown>
                 </div>
               </div>
             )}
@@ -506,27 +519,24 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
   const [loading, setLoading] = useState(false);
   const [loadingGen, setLoadingGen] = useState(false);
   const [error, setError] = useState(null);
-  const [nivel, setNivel] = useState("Normal"); // <-- ESTADO DO NÍVEL GLOBAL
+  const [nivel, setNivel] = useState("Normal");
 
-  // LÓGICA DO TERMÔMETRO DE LINHAS
   const palavrasCount = answer.trim() === "" ? 0 : answer.trim().split(/\s+/).length;
   const linhasEstimadas = Math.ceil(palavrasCount / 9);
   const excedeuLinhas = linhasEstimadas > 30;
 
   const handleGenerateNew = async () => {
-    //if (!userApiKey) { onOpenConfig(); return; }
-    
     setLoadingGen(true); setError(null); setCorrection(null); setAnswer("");
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
       const aulasTitulos = aulas.map(a => a.titulo);
-      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+      const token = getAuthToken();
       
       const data = await fetchStreamAsJson(`${apiUrl}/generate-global-essay`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+          "Authorization": token ? `Bearer ${token}` : ""
         },
         body: JSON.stringify({
           area: area || "Assunto Geral",
@@ -537,7 +547,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         })
       });
 
-      // <-- ADICIONA A PROTEÇÃO DE ERRO
       if (data && data.error) throw new Error(data.error);
       
       const novaQuestao = data.discursiva ? data.discursiva : data;
@@ -547,7 +556,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         setError("A IA não retornou um formato válido. Tente gerar novamente.");
       }
     } catch (err) {
-      // Passamos o err.message real para sabermos exatamente o que falhou!
       setError(err.message || "Falha ao comunicar com os servidores da IA.");
     } finally {
       setLoadingGen(false);
@@ -555,8 +563,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
   };
 
   const handleCorrect = async () => {
-    //if (!userApiKey) { onOpenConfig(); return; }
-
     if (answer.trim().length < 50) {
       alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
       return;
@@ -564,13 +570,13 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
     setLoading(true); setError(null); setCorrection(null);
     try {
       const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const token = getAuthToken(); // <-- CAPTURA O TOKEN
+      const token = getAuthToken();
 
       const data = await fetchStreamAsJson(`${apiUrl}/correct-essay`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN
+          "Authorization": token ? `Bearer ${token}` : ""
         },
         body: JSON.stringify({
           texto_motivador: discursiva.texto_motivador || "",
@@ -582,7 +588,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         })
       });      
       
-      // <-- ADICIONA A PROTEÇÃO DE ERRO
       if (data && data.error) throw new Error(data.error);    
       
       const notaCalculada = Array.isArray(data.avaliacoes_aspectos) 
@@ -592,7 +597,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
       data.nota_final_calculada = notaCalculada; 
       setCorrection(data); 
       
-      // Salva a nota com o nível 
       await savePerformance("discursiva", area ? `${area} (Simulado Global)` : "Discursiva Global", notaCalculada, 20.0, nivel);
       
     } catch (err) {
@@ -626,13 +630,13 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
     <div className="essay-container" style={{ padding: '20px', background: 'var(--bg)', borderRadius: '8px', border: '1px solid var(--border)', marginTop: '20px' }}>
       <div style={{ marginBottom: '15px' }}>
         <strong style={{color: 'var(--text-main)'}}>📋 Cenário / Texto Motivador:</strong>
-        <div className="essay-text" style={{color: 'var(--text-secondary)'}}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.texto_motivador)}</ReactMarkdown></div>
+        <div className="essay-text" style={{color: 'var(--text-secondary)'}}><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(discursiva.texto_motivador)}</ReactMarkdown></div>
       </div>
       
       <div style={{ marginBottom: '15px', background: 'var(--card-bg)', padding: '10px', borderRadius: '4px', borderLeft: '4px solid var(--primary)' }}>
         <strong style={{color: 'var(--text-main)'}}>📝 Comando da Questão:</strong>
         <div className="essay-text" style={{ fontWeight: '500', margin: '5px 0 0 0', color: 'var(--text-main)' }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(discursiva.comando)}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(discursiva.comando)}</ReactMarkdown>
         </div>
       </div>
       
@@ -647,7 +651,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
         </ul>
       </div>
       
-      {/* RASCUNHO OFICIAL COM TERMÔMETRO DE LINHAS */}
       <div style={{ position: 'relative' }}>
         <textarea 
           className="essay-textarea" 
@@ -685,7 +688,6 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
 
       {error && (<div className="correction-error" style={{ color: 'var(--error-text)', backgroundColor: 'var(--error-bg)', padding: '10px', borderRadius: '6px', border: '1px solid var(--error-text)', marginTop: '10px' }}><strong>⚠️ Erro: </strong> {error}</div>)}
       
-      {/* BLOCO DIDÁTICO DE CORREÇÃO (GLOBAL) */}
       {correction && (
         <div className="correction-box" style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
           <div style={{ background: 'var(--success-bg)', padding: '15px 20px', borderBottom: '1px solid var(--success-text)', display: 'flex', alignItems: 'center', gap: '10px', borderRadius: '8px 8px 0 0', margin: '-20px -20px 20px -20px' }}>
@@ -693,7 +695,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
           </div>
           
           <div style={{fontStyle: 'italic', marginBottom: '20px', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '15px', borderRadius: '8px'}}>
-            <strong>Parecer Oficial da Banca:</strong> <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.feedback_geral)}</ReactMarkdown>
+            <strong>Parecer Oficial da Banca:</strong> <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(correction.feedback_geral)}</ReactMarkdown>
           </div>
           
           <h4 style={{ color: 'var(--heading-color)' }}>🔹 Detalhamento e Padrão de Resposta (Espelho)</h4>
@@ -704,7 +706,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
               
               <div style={{fontSize: '0.95em', color: 'var(--text-secondary)', marginBottom: '15px'}}>
                 <strong>Análise do seu texto:</strong>
-                <div style={{ marginTop: '5px' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.comentario)}</ReactMarkdown></div>
+                <div style={{ marginTop: '5px' }}><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(av.comentario)}</ReactMarkdown></div>
               </div>
 
               {av.padrao_esperado && (
@@ -713,7 +715,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
                     💡 Espelho de Correção (Como responder perfeitamente):
                   </strong>
                   <div style={{ color: 'var(--text-main)', marginTop: '8px', fontSize: '0.95em', lineHeight: '1.5' }}>
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(av.padrao_esperado)}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(av.padrao_esperado)}</ReactMarkdown>
                   </div>
                 </div>
               )}
@@ -722,7 +724,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
 
           <h4 style={{ marginTop: '30px', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Estrutura e Aspectos Gramaticais (Vale até 1.0)</h4>
           <div style={{fontSize: '0.95em', color: 'var(--error-text)', background: 'var(--error-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--error-text)'}}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(correction.erros_gramaticais)}</ReactMarkdown>
           </div>
           
           {correction.dica_estudo && (
@@ -731,7 +733,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
                 📚 Plano de Ação / Dica de Estudo:
               </strong>
               <div style={{ color: 'var(--text-main)', marginTop: '10px', fontSize: '1rem', lineHeight: '1.6' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(correction.dica_estudo)}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(correction.dica_estudo)}</ReactMarkdown>
               </div>
             </div>
           )}
@@ -756,10 +758,8 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
 export default function LessonContent({ result }) {
   const [selectedMap, setSelectedMap] = useState(null);
   
-  // ESTADO DO MENU LATERAL
   const [isNavOpen, setIsNavOpen] = useState(false);
   
-  // ESTADO GLOBAL DE CONFIGURAÇÃO DE IA
   const [showConfig, setShowConfig] = useState(false);
   const [providerTab, setProviderTab] = useState("openrouter");
   const [tempKey, setTempKey] = useState("");
@@ -773,15 +773,13 @@ export default function LessonContent({ result }) {
     window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
   };
   
-  
-  // ESTADOS PARA O SIMULADO GERAL COM IA
   const [simuladoQuestoes, setSimuladoQuestoes] = useState(null);
   const [simuladoLoading, setSimuladoLoading] = useState(false);
   const [simuladoProgress, setSimuladoProgress] = useState(0);
   const [simuladoAcertos, setSimuladoAcertos] = useState(0);
   const [simuladoFinalizado, setSimuladoFinalizado] = useState(false);
   const [simuladoQtd, setSimuladoQtd] = useState(5);
-  const [simuladoNivel, setSimuladoNivel] = useState("Normal"); // <-- ALTERADO O VALOR DEFAULT
+  const [simuladoNivel, setSimuladoNivel] = useState("Normal");
   const [simuladoFormato, setSimuladoFormato] = useState("Múltipla Escolha");
 
   useEffect(() => {
@@ -873,15 +871,7 @@ export default function LessonContent({ result }) {
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 
-  // FUNÇÃO PARA GERAR O SIMULADO EM TEMPO REAL COM A IA (COM RETRIES)
   const handleGerarSimuladoIA = async () => {
-    /* TRAVA DE SEGURANÇA SE NAO TIVER CONFIGURADA A IA
-    if (!userApiKey) {
-      openConfigModal();
-      return;
-    }
-      */
-    
     setSimuladoAcertos(0);
     setSimuladoFinalizado(false);
     setSimuladoLoading(true);
@@ -890,7 +880,7 @@ export default function LessonContent({ result }) {
     
     let errorGlobal = false;
     const totalAulas = safeArray(result?.aulas).length;
-    const token = getAuthToken(); // <-- CAPTURA O TOKEN UMA VEZ AQUI
+    const token = getAuthToken(); 
 
     setTimeout(() => {
       document.getElementById('simulado-progress-anchor')?.scrollIntoView({ behavior: 'smooth' });
@@ -914,7 +904,7 @@ export default function LessonContent({ result }) {
               method: "POST",
               headers: { 
                 "Content-Type": "application/json",
-                "Authorization": token ? `Bearer ${token}` : "" // <-- INJETA O TOKEN NA REQUISIÇÃO
+                "Authorization": token ? `Bearer ${token}` : "" 
               },
               body: JSON.stringify({
                 area: aula.disciplina || result?.area_identificada || "Conhecimentos Gerais",
@@ -930,7 +920,6 @@ export default function LessonContent({ result }) {
             
             if (data && data.error) throw new Error(data.error); 
             
-            // NOVO: Adiciona imediatamente à tela em vez de esperar tudo terminar
             if (data && data.simulado) {
               setSimuladoQuestoes(prev => [...prev, ...data.simulado]);
               sucessoNoTopico = true;
@@ -945,12 +934,10 @@ export default function LessonContent({ result }) {
             tentativaAtual++;
             console.warn(`⚠️ Falha no tópico ${i+1} (Tentativa ${tentativaAtual}/${maxTentativas}).`, err.message);
             
-            // --- INÍCIO DA MODIFICAÇÃO PARA DESCOBRIR O ERRO ---
             if (tentativaAtual >= maxTentativas) {
-              console.error("🕵️ ERRO BRUTO DETECTADO:", err); // Isso vai imprimir a falha real!
+              console.error("🕵️ ERRO BRUTO DETECTADO:", err); 
               throw new Error(`Falha crítica no tópico "${aula.titulo}".`);
             }
-            // --- FIM DA MODIFICAÇÃO ---
 
             await new Promise(resolve => setTimeout(resolve, 2500));
           }
@@ -997,7 +984,6 @@ export default function LessonContent({ result }) {
         `}
       </style>
 
-      {/* BARRA SUPERIOR DE CONFIGURAÇÃO UNIFICADA */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--hover-bg)', padding: '12px 20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
           <strong>IA Interativa:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Privada Ativa ({userModel})</span> : <span>Configure sua IA gratuitamente para desbloquear o Tutor IA, Gerar Simulado e Discursiva.</span>}
@@ -1015,7 +1001,7 @@ export default function LessonContent({ result }) {
         <div className="summaryItem" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
           <div className="summaryLabel" style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>Resumo do Cargo/Objetivo</div>
           <div className="summaryValue" style={{ color: 'var(--text-main)' }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(result?.resumo_cargo)}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(result?.resumo_cargo)}</ReactMarkdown>
           </div>
         </div>
       </div>
@@ -1023,7 +1009,7 @@ export default function LessonContent({ result }) {
       {!!safeString(result?.plano_estudo) && (
         <details className="details" style={{ margin: '20px 0', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--card-bg)' }}>
           <summary className="summaryTitle" style={{ padding: '15px', background: 'var(--hover-bg)', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer' }}>📅 Plano de Estudo Estratégico</summary>
-          <div className="md" style={{ padding: '20px', color: 'var(--text-main)' }}><ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(result?.plano_estudo)}</ReactMarkdown></div>
+          <div className="md" style={{ padding: '20px', color: 'var(--text-main)' }}><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(result?.plano_estudo)}</ReactMarkdown></div>
         </details>
       )}
 
@@ -1042,20 +1028,18 @@ export default function LessonContent({ result }) {
             </h2>
             
             <div className="section" style={{ marginBottom: '20px', color: 'var(--text-main)' }}>
-              <p><strong>Visão Geral:</strong> <ReactMarkdown components={{ p: 'span' }}>{safeString(aula?.visao_geral)}</ReactMarkdown></p>
+              <p><strong>Visão Geral:</strong> <ReactMarkdown components={{ ...markdownComponents, p: 'span' }}>{safeString(aula?.visao_geral)}</ReactMarkdown></p>
             </div>
 
-            {/* 1. Aula Teórica Aprofundada */}
             <details className="details" style={{ marginBottom: '15px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg)' }}>
               <summary className="summaryTitle" style={{ padding: '15px', background: 'var(--hover-bg)', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
                 📖 Aula Teórica Aprofundada
               </summary>
               <div className="md markdown-format" style={{ padding: '20px', color: 'var(--text-main)' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(aula?.aula_teorica_aprofundada)}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(aula?.aula_teorica_aprofundada)}</ReactMarkdown>
               </div>
             </details>
 
-            {/* 2. Resumo de Termos Chave */}
             {Array.isArray(aula?.resumo_termos_chave) && aula.resumo_termos_chave.length > 0 && (
               <details className="details" style={{ marginBottom: '15px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg)' }}>
                 <summary className="summaryTitle" style={{ padding: '15px', background: 'var(--hover-bg)', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
@@ -1065,7 +1049,7 @@ export default function LessonContent({ result }) {
                   <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
                     {aula.resumo_termos_chave.map((t, k) => (
                       <li key={k} style={{ marginBottom: '12px', background: 'var(--card-bg)', color: 'var(--text-main)', padding: '12px', borderRadius: '6px', borderLeft: '4px solid var(--primary)' }}>
-                        <strong style={{ color: 'var(--primary)' }}>{t.termo}:</strong> <ReactMarkdown components={{ p: 'span' }}>{t.definicao}</ReactMarkdown>
+                        <strong style={{ color: 'var(--primary)' }}>{t.termo}:</strong> <ReactMarkdown components={{ ...markdownComponents, p: 'span' }}>{t.definicao}</ReactMarkdown>
                       </li>
                     ))}
                   </ul>
@@ -1073,31 +1057,28 @@ export default function LessonContent({ result }) {
               </details>
             )}
 
-            {/* 3. Analogias e Contexto */}
             {!!aula?.analogias_contexto && (
               <details className="details" style={{ marginBottom: '15px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg)' }}>
                 <summary className="summaryTitle" style={{ padding: '15px', background: 'var(--hover-bg)', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
                   💡 Analogias e Contexto
                 </summary>
                 <div className="md markdown-format" style={{ padding: '20px', color: 'var(--text-main)' }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(aula.analogias_contexto)}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(aula.analogias_contexto)}</ReactMarkdown>
                 </div>
               </details>
             )}
 
-            {/* 4. Aplicação Prática / Exemplos */}
             {!!aula?.aplicacao_pratica_exemplos && (
               <details className="details" style={{ marginBottom: '15px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg)' }}>
                 <summary className="summaryTitle" style={{ padding: '15px', background: 'var(--hover-bg)', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
                   🛠️ Aplicação Prática / Exemplos
                 </summary>
                 <div className="md markdown-format" style={{ padding: '20px', color: 'var(--text-main)' }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{safeString(aula.aplicacao_pratica_exemplos)}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{safeString(aula.aplicacao_pratica_exemplos)}</ReactMarkdown>
                 </div>
               </details>
             )}
 
-            {/* 5. Fixação de Conhecimento (Questões) */}
             {quiz.length > 0 && (
               <details className="details" style={{ marginBottom: '15px', border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg)' }}>
                 <summary className="summaryTitle" style={{ padding: '15px', background: 'var(--hover-bg)', color: 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', borderRadius: '8px' }}>
@@ -1111,7 +1092,6 @@ export default function LessonContent({ result }) {
               </details>
             )}
 
-            {/* 6. Prova Discursiva */}
             {aula?.discursiva && Object.keys(aula.discursiva).length > 0 && (
               <EssaySection 
                 initialDiscursiva={aula.discursiva} 
@@ -1124,7 +1104,6 @@ export default function LessonContent({ result }) {
               />
             )}
 
-            {/* 7. Mapa Mental */}
             {!!mapaMental.codigo_mermaid && (
               <div style={{ margin: '20px 0' }}>
                 <button 
@@ -1139,16 +1118,12 @@ export default function LessonContent({ result }) {
         );
       })}
 
-      {/* ========================================== */}
-      {/* BOTÃO E BLOCO DO SIMULADO GERAL (COM IA)     */}
-      {/* ========================================== */}
       <div style={{ marginTop: '50px', padding: '40px 20px', background: 'linear-gradient(135deg, var(--bg) 0%, var(--hover-bg) 100%)', borderRadius: '12px', border: '1px solid var(--border)', textAlign: 'center', boxShadow: 'var(--shadow-sm)' }}>
         <h2 style={{ color: 'var(--heading-color)', margin: '0 0 15px 0', fontSize: '1.8rem' }}>🏆 Simulado Final Inédito (Gerado por IA)</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '25px', fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto' }}>
           A Inteligência Artificial vai analisar o conteúdo estudado e criar questões inéditas em tempo real.
         </p>
         
-        {/* NOVOS CONTROLES DE CONFIGURAÇÃO DO SIMULADO */}
         {!simuladoLoading && !simuladoQuestoes && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '25px', flexWrap: 'wrap' }}>
             <div style={{ textAlign: 'left' }}>
@@ -1165,7 +1140,6 @@ export default function LessonContent({ result }) {
               </select>
             </div>
 
-            {/* ---> ADICIONE ESTE BLOCO DO FORMATO <--- */}
             <div style={{ textAlign: 'left' }}>
               <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Formato:</label>
               <select 
@@ -1177,7 +1151,6 @@ export default function LessonContent({ result }) {
                 <option value="Certo/Errado">Certo ou Errado</option>
               </select>
             </div>
-            {/* -------------------------------------- */}
 
             <div style={{ textAlign: 'left' }}>
               <label style={{ display: 'block', color: 'var(--text-main)', fontWeight: 'bold', marginBottom: '8px' }}>Questões por Módulo:</label>
@@ -1215,7 +1188,7 @@ export default function LessonContent({ result }) {
         )}
       </div>
 
-      <div id="simulado-progress-anchor"></div> {/* ÂNCORA PARA A ROLAGEM SUAVE */}
+      <div id="simulado-progress-anchor"></div>
 
       {simuladoQuestoes && simuladoQuestoes.length > 0 && (
         <div id="simulado-section" style={{ marginTop: '40px', padding: '30px', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
@@ -1255,9 +1228,9 @@ export default function LessonContent({ result }) {
                     result?.area_identificada ? `${result.area_identificada} (Simulado Geral)` : "Simulado Geral", 
                     simuladoAcertos, 
                     simuladoQuestoes.length,
-                    simuladoNivel,      // <--- Novo
-                    simuladoFormato,    // <--- Novo
-                    concursoAtual       // <--- Novo
+                    simuladoNivel,     
+                    simuladoFormato,   
+                    concursoAtual       
                   );
                   setSimuladoFinalizado(true);
                 }} 
@@ -1280,9 +1253,6 @@ export default function LessonContent({ result }) {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* BLOCO DA DISCURSIVA GERAL (COM IA)         */}
-      {/* ========================================== */}
       <div style={{ marginTop: '40px', padding: '40px 20px', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
         <h2 style={{ color: 'var(--heading-color)', margin: '0 0 15px 0', fontSize: '1.8rem', textAlign: 'center' }}>✍️ Prova Discursiva Geral (Padrão CEBRASPE)</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '25px', fontSize: '1.1rem', maxWidth: '700px', margin: '0 auto', textAlign: 'center' }}>
@@ -1299,7 +1269,6 @@ export default function LessonContent({ result }) {
         />
       </div>
 
-      {/* BOTÃO FLUTUANTE DO NAVEGADOR ESQUERDO */}
       {!isNavOpen && (
         <button 
           onClick={() => setIsNavOpen(true)}
@@ -1310,7 +1279,6 @@ export default function LessonContent({ result }) {
         </button>
       )}
 
-      {/* MENU NAVEGADOR LATERAL (DRAWER) */}
       {isNavOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.6)', zIndex: 10001, display: 'flex' }} onClick={() => setIsNavOpen(false)}>
           <div className="nav-drawer" style={{ width: '320px', maxWidth: '85vw', height: '100%', backgroundColor: 'var(--card-bg)', boxShadow: '4px 0 15px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
@@ -1344,7 +1312,6 @@ export default function LessonContent({ result }) {
         </div>
       )}
 
-      {/* WIDGET FLUTUANTE DO TUTOR DIREITO */}
       <TutorChat 
         area={result?.area_identificada} 
         defaultModel={result?.modelo_utilizado} 
@@ -1353,7 +1320,6 @@ export default function LessonContent({ result }) {
         onOpenConfig={openConfigModal}
       />
 
-      {/* MODAL DO MAPA MENTAL */}
       {selectedMap && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '20px' }} onClick={() => setSelectedMap(null)}>
           <div style={{ backgroundColor: 'var(--card-bg)', borderRadius: '12px', padding: '25px', width: '100%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)' }} onClick={(e) => e.stopPropagation()}>
@@ -1371,7 +1337,6 @@ export default function LessonContent({ result }) {
         </div>
       )}
 
-      {/* MODAL DE CONFIGURAÇÃO DE IA COM ABAS (OPENROUTER / AISTUDIO) */}
       {showConfig && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
