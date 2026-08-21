@@ -504,6 +504,8 @@ export default function GabariteLogica() {
                     <option value="equivalencia">⭐⭐⭐⭐⭐ Equivalência lógica</option>
                     <option value="diagramas">⭐⭐⭐⭐ Diagramas lógicos</option>
                     <option value="argumentacao">⭐⭐⭐⭐ Argumentação lógica</option>
+                    <option value="primeira_ordem">⭐⭐⭐⭐ Lógica de primeira ordem</option>
+                    <option value="geometria_matricial">⭐⭐⭐ Problemas geométricos e matriciais</option>
                     <option value="probabilidade">⭐⭐⭐ Probabilidade</option>
                     <option value="combinatoria">⭐⭐⭐ Análise combinatória</option>
                     <option value="sequencias">⭐⭐ Sequências lógicas</option>

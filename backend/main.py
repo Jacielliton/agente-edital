@@ -2834,11 +2834,13 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
         elif req.focus == 'condicional': focus_instructions = "Foque em proposições condicionais (se... então), tabela-verdade, condição suficiente e condição necessária."
         elif req.focus == 'equivalencia': focus_instructions = "Foque em equivalências lógicas (contrapositiva, equivalência da disjunção/condicional)."
         elif req.focus == 'diagramas': focus_instructions = "Foque em diagramas lógicos (Todo, Algum, Nenhum) e silogismos categóricos."
-        elif req.focus == 'argumentacao': focus_instructions = "Foque na validade de argumentos lógicos, premissas e conclusões."
+        elif req.focus == 'argumentacao': focus_instructions = "Foque na validade de argumentos lógicos, premissas e conclusões, incluindo analogias e inferências."
+        elif req.focus == 'primeira_ordem': focus_instructions = "Foque EXCLUSIVAMENTE em lógica de primeira ordem: quantificadores universal e existencial, predicados, variáveis livres e ligadas, e negação de sentenças quantificadas."
+        elif req.focus == 'geometria_matricial': focus_instructions = "Foque em raciocínio lógico envolvendo problemas geométricos (áreas, perímetros, figuras) e problemas matriciais (organização de dados em matrizes/tabelas lógicas)."
         elif req.focus == 'probabilidade': focus_instructions = "Foque em probabilidade de eventos, união, intersecção e probabilidade condicional."
         elif req.focus == 'combinatoria': focus_instructions = "Foque em análise combinatória (arranjos, permutações e combinações simples)."
         elif req.focus == 'sequencias': focus_instructions = "Foque em sequências lógicas numéricas, de palavras ou figuras."
-        else: focus_instructions = "Mescle tabela-verdade, negações lógicas e equivalências em situações hipotéticas."
+        else: focus_instructions = "Gere uma prova mista e equilibrada cobrindo: estruturas lógicas, lógica de argumentação (analogias, inferências, deduções e conclusões), proposições simples e compostas, tabelas-verdade, equivalências lógicas, diagramas lógicos, lógica de primeira ordem (quantificadores) e problemas aritméticos, geométricos e matriciais. Distribua os itens de forma equilibrada entre todos esses tópicos, sem se concentrar em apenas um ou dois."
         
     # NOVAS DIRETRIZES: Isolamento para Disciplinas de Direito no Endpoint
     elif "Direito" in req.subject or req.subject in ["Constitucional", "Penal", "Administrativo", "Processual", "Humanos"]:
@@ -2866,15 +2868,19 @@ async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
     else: 
         if req.focus.startswith('Foco na vertente:') or req.focus.startswith('DIRETRIZ OBRIGATÓRIA:'):
             focus_instructions = req.focus # Permite que o frontend injete tipologia e tamanho textuais
-        elif req.focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão."
-        elif req.focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância, regência, crase, pontuação e pronomes."
-        elif req.focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto."
+        elif req.focus == 'interpretacao': focus_instructions = "Foque EXCLUSIVAMENTE em interpretação de texto, inferência e compreensão, incluindo reconhecimento de tipos e gêneros textuais."
+        elif req.focus == 'generos': focus_instructions = "Foque EXCLUSIVAMENTE em reconhecimento de tipos e gêneros textuais (narrativo, descritivo, dissertativo-argumentativo, injuntivo, expositivo, e gêneros como notícia, editorial, carta, e-mail, etc.)."
+        elif req.focus == 'ortografia': focus_instructions = "Foque EXCLUSIVAMENTE em ortografia oficial: acentuação gráfica, uso de letras, hífen e demais regras ortográficas vigentes."
+        elif req.focus == 'gramatica': focus_instructions = "Foque em gramática aplicada: concordância verbal e nominal, regência, crase, pontuação, classes de palavras e pronomes."
+        elif req.focus == 'verbos': focus_instructions = "Foque EXCLUSIVAMENTE no emprego de tempos e modos verbais no contexto do texto base."
+        elif req.focus == 'pontuacao': focus_instructions = "Foque EXCLUSIVAMENTE no emprego dos sinais de pontuação e na colocação dos pronomes átonos (próclise, mesóclise e ênclise)."
+        elif req.focus == 'reescrita': focus_instructions = "Foque EXCLUSIVAMENTE em propostas de reescrita de trechos do texto, incluindo significação e substituição de palavras."
         elif req.focus == 'semantica': focus_instructions = "Foque em coesão, coerência, substituição de conectivos e semântica."
         elif req.focus == 'hardcore': focus_instructions = "NÍVEL MÁXIMO DE DIFICULDADE CESPE. Pegadinhas sutis e extrapolação."
         elif req.focus.startswith('Sintaxe:'): 
             tema_exato = req.focus.replace('Sintaxe:', '').strip()
             focus_instructions = f"Foque ESPECIFICAMENTE E EXCLUSIVAMENTE nas regras sintáticas e pegadinhas gramaticais sobre: {tema_exato}."         
-        else: focus_instructions = "Distribua as questões entre interpretação, reescrita e sintaxe."
+        else: focus_instructions = "Distribua as questões de forma equilibrada entre: interpretação textual, tipos e gêneros textuais, ortografia, coesão, tempos e modos verbais, morfossintaxe (concordância, regência, crase, pontuação, colocação pronominal) e reescrita."
 
     # Define o contexto do texto-base dinamicamente de acordo com a disciplina
     if req.generate_text:

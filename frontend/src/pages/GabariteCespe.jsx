@@ -237,19 +237,35 @@ export default function GabariteCespe() {
         let instrucaoDetalhada = "";
         switch (configFocus) {
           case "interpretacao":
-            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Compreensão e Interpretação Textual.";
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Compreensão e Interpretação Textual, incluindo reconhecimento e diferenciação de tipos e gêneros textuais variados.";
+            break;
+
+          case "generos":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Reconhecimento de Tipos e Gêneros Textuais (narrativo, descritivo, dissertativo-argumentativo, injuntivo, expositivo, e gêneros como notícia, editorial, carta, e-mail, etc.).";
+            break;
+
+          case "ortografia":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Domínio da Ortografia Oficial (acentuação gráfica, uso de letras, hífen e demais regras ortográficas vigentes).";
             break;
             
           case "gramatica":
-            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Morfosintaxe, Regência e Crase.";
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Morfosintaxe, Regência, Crase, Concordância Verbal e Nominal, e Classes de Palavras.";
+            break;
+
+          case "verbos":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Emprego de Tempos e Modos Verbais no contexto do texto base.";
+            break;
+
+          case "pontuacao":
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Emprego dos Sinais de Pontuação e Colocação dos Pronomes Átonos (próclise, mesóclise e ênclise).";
             break;
             
           case "reescrita":
-            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Reescrita de Frases e Substituição de Conectivos.";
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Reescrita de Frases e Substituição de Conectivos, incluindo significação e substituição de palavras ou trechos do texto.";
             break;
             
           case "semantica":
-            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Relações Semânticas e Coesão Textual.";
+            instrucaoDetalhada = "O foco da prova deve ser 100% EXCLUSIVO em Relações Semânticas e Coesão Textual (referenciação, substituição, repetição e conectores).";
             break;
             
           case "hardcore":
@@ -257,7 +273,7 @@ export default function GabariteCespe() {
             break;
             
           default:
-            instrucaoDetalhada = "Gere uma prova mista, distribuindo os itens de forma equilibrada entre interpretação de texto, sintaxe, morfologia, coesão referencial e propostas de reescrita de frases.";
+            instrucaoDetalhada = "Gere uma prova mista, distribuindo os itens de forma equilibrada entre: compreensão e interpretação textual, tipos e gêneros textuais, ortografia oficial, coesão textual, tempos e modos verbais, morfossintaxe (classes de palavras, concordância, regência, crase, pontuação, colocação pronominal) e reescrita de frases e parágrafos.";
         }
 
         // Comando linear e ultra-imperativo para blindar o escopo da IA
@@ -469,7 +485,11 @@ export default function GabariteCespe() {
                 <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)}>
                   <option value="completo">Misto (Interpretação e Gramática)</option>
                   <option value="interpretacao">Compreensão e Inferência Textual</option>
+                  <option value="generos">Tipos e Gêneros Textuais</option>
+                  <option value="ortografia">Ortografia Oficial</option>
                   <option value="gramatica">Morfosintaxe, Regência e Crase</option>
+                  <option value="verbos">Tempos e Modos Verbais</option>
+                  <option value="pontuacao">Pontuação e Colocação Pronominal</option>
                   <option value="reescrita">Reescrita de Frases e Substituição de Conectivos</option>
                   <option value="semantica">Relações Semânticas e Coesão Textual</option>
                   <option value="hardcore">Nível Hardcore (Extrapolação e Pegadinhas de Linha)</option>
