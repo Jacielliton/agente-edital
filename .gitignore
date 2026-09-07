@@ -18,3 +18,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Banco de dados local (nunca versionar: contem e-mails, hashes e chaves)
+*.db
+*.sqlite3
+
+# Backups locais do redesign
+frontend/_backup-ui/

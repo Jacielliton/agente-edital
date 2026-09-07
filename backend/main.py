@@ -171,7 +171,15 @@ class CommissionHistoryResponse(BaseModel):
 # 3. SEGURANÇA (JWT & HASH)
 # ============================================================================
 
-SECRET_KEY = os.getenv("SECRET_KEY", "uma_chave_super_secreta_e_aleatoria_123")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    # Falhar aqui e melhor do que subir assinando tokens com uma chave conhecida:
+    # com ela, qualquer pessoa forjaria um JWT de qualquer usuario, admin inclusive.
+    raise RuntimeError(
+        "SECRET_KEY nao definida. Gere uma com "
+        "python -c \"import secrets; print(secrets.token_urlsafe(64))\" "
+        "e coloque no .env antes de iniciar a aplicacao."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 1 dia
 
@@ -289,9 +297,10 @@ class Token(BaseModel):
     can_manage_lessons: bool
 
 class UserCreate(BaseModel):
+    # O papel NAO entra aqui de proposito: o cadastro publico so cria conta comum.
+    # Promover alguem a admin e feito pelas rotas administrativas autenticadas.
     email: str
     password: str
-    role: str = "user"
     referral_code: Optional[str] = None
 
 # ADICIONADO: Schema para validação e criação do cupom
@@ -577,7 +586,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     new_user = User(
         email=user.email, 
         hashed_password=hashed_pw, 
-        role=user.role, 
+        role="user",  # fixo: nunca vem da requisicao
         plan_expires_at=datetime.utcnow(),
         referral_code=new_referral_code, # Salva o código dele
         referred_by_id=referrer_id,      # Salva quem o indicou
@@ -665,7 +674,8 @@ async def get_config():
     return {"default_model": default_model, "available_models": models, "has_token": has_token}
 
 @app.post("/config")
-async def set_config(cfg: ConfigRequest):
+async def set_config(cfg: ConfigRequest, current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
     updates = {}
     if cfg.default_model: updates["DEFAULT_MODEL"] = cfg.default_model.strip()
     if cfg.available_models:
@@ -2080,7 +2090,7 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
     return leaderboard
 
 @app.post("/analyze")
-async def analyze_syllabus_deep(request: SyllabusRequest):
+async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = Depends(get_current_user)):
     if not request.text or not request.text.strip():
         raise HTTPException(status_code=400, detail="Texto vazio")
 
@@ -2340,12 +2350,14 @@ async def validate_coupon(
     }
     
 @app.get("/users", response_model=List[UserResponse])
-async def list_users(db: AsyncSession = Depends(get_db)):
+async def list_users(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
     result = await db.execute(select(User).order_by(User.id))
     return result.scalars().all()
 
 @app.post("/users", response_model=UserResponse)
-async def create_user(payload: UserCreateAdmin, db: AsyncSession = Depends(get_db)):
+async def create_user(payload: UserCreateAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
     result = await db.execute(select(User).filter(User.email == payload.email))
     if result.scalars().first(): 
         raise HTTPException(status_code=400, detail="Email já cadastrado")
@@ -2363,7 +2375,8 @@ async def create_user(payload: UserCreateAdmin, db: AsyncSession = Depends(get_d
     return new_user
 
 @app.put("/users/{user_id}", response_model=UserResponse)
-async def update_user_admin(user_id: int, payload: UserUpdateAdmin, db: AsyncSession = Depends(get_db)):
+async def update_user_admin(user_id: int, payload: UserUpdateAdmin, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
     result = await db.execute(select(User).filter(User.id == user_id))
     user = result.scalars().first()
     if not user: raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -2466,7 +2479,7 @@ async def get_my_commission_history(
     return result.scalars().all()
     
 @app.post("/chat")
-async def chat_tutor(req: ChatMessageRequest):
+async def chat_tutor(req: ChatMessageRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2495,7 +2508,7 @@ async def chat_tutor(req: ChatMessageRequest):
 
 
 @app.post("/generate-simulado-topic")
-async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
+async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2558,7 +2571,7 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest):
 
 
 @app.post("/correct-essay")
-async def correct_essay(req: EssayCorrectionRequest):
+async def correct_essay(req: EssayCorrectionRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2607,7 +2620,7 @@ async def correct_essay(req: EssayCorrectionRequest):
 
 
 @app.post("/generate-essay")
-async def generate_essay_endpoint(req: GenerateEssayRequest):
+async def generate_essay_endpoint(req: GenerateEssayRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2642,7 +2655,7 @@ async def generate_essay_endpoint(req: GenerateEssayRequest):
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.3, api_key=req.api_key), media_type="text/plain")
 
 @app.post("/generate-treino-discursiva")
-async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest):
+async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2738,7 +2751,7 @@ async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest):
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.6, api_key=req.api_key), media_type="text/plain")
 
 @app.post("/extract-topics")
-async def extract_topics_endpoint(req: ExtractTopicsRequest):
+async def extract_topics_endpoint(req: ExtractTopicsRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2758,7 +2771,7 @@ async def extract_topics_endpoint(req: ExtractTopicsRequest):
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.1, api_key=req.api_key), media_type="text/plain")
 
 @app.post("/generate-global-essay")
-async def generate_global_essay_endpoint(req: GlobalEssayRequest):
+async def generate_global_essay_endpoint(req: GlobalEssayRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2821,7 +2834,7 @@ async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: Use
         raise HTTPException(status_code=500, detail="Erro ao comunicar com o OpenRouter.")
     
 @app.post("/generate-simulado-cespe")
-async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest):
+async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(
             status_code=403, 
@@ -2953,7 +2966,7 @@ INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
     )
 
 @app.post("/generate-lesson-cespe")
-async def generate_lesson_cespe_endpoint(req: LessonCespeRequest):
+async def generate_lesson_cespe_endpoint(req: LessonCespeRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
@@ -2978,7 +2991,7 @@ async def generate_lesson_cespe_endpoint(req: LessonCespeRequest):
     return StreamingResponse(stream_json_response(prompt, req.model, temp=0.7, api_key=req.api_key), media_type="text/plain")
 
 @app.post("/api/translate")
-async def translate_word_endpoint(req: TranslateWordRequest):
+async def translate_word_endpoint(req: TranslateWordRequest, current_user: User = Depends(get_current_user)):
     if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
     

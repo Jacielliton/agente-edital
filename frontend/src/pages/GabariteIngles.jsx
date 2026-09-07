@@ -537,10 +537,12 @@ export default function GabariteIngles() {
 
     try {
       // APONTANDO PARA O SEU BACKEND FASTAPI
+      const token = getAuthToken();
       const res = await fetch(API_URL + "/api/translate", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Authorization": token ? `Bearer ${token}` : ""
         },
         body: JSON.stringify({
           word: cleanWord,
