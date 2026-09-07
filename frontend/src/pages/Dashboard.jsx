@@ -1,269 +1,507 @@
-import React, { useEffect, useState, useMemo } from "react";
-import { Link } from "react-router-dom";
-import { 
-  BookOpen, Calendar, ArrowRight, Search, X, 
-  ChevronLeft, ChevronRight, TrendingUp, 
-  ChevronDown, ChevronUp, Folder, Target,
-  Globe, Lock, Star // <-- NOVOS ÍCONES ADICIONADOS
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  BookOpen, Calendar, ArrowRight, Search, X, ChevronLeft, ChevronRight,
+  TrendingUp, TrendingDown, ChevronDown, ChevronUp, Folder, Target, Globe,
+  Lock, Star, Sparkles, PenTool, AlertTriangle, Minus,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import {
+  Button, Card, CardHead, Badge, Input, ProgressBar, StatCard, EmptyState, Skeleton, PageHeader,
+} from "../components/ui";
+import "./Dashboard.css";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const LIMIT = 100;
+const RECENTES_KEY = "aulas_recentes";
+
+const getToken = () => localStorage.getItem("professor_ai_token") || "";
+
+/* Aulas abertas recentemente ficam no navegador: nao existe endpoint de
+   "ultima aula acessada" e nao vale criar um so para isso. */
+function lerRecentes() {
+  try {
+    const raw = localStorage.getItem(RECENTES_KEY);
+    const lista = raw ? JSON.parse(raw) : [];
+    return Array.isArray(lista) ? lista : [];
+  } catch {
+    return [];
+  }
+}
+
+const pct = (obtida, maxima) => (maxima > 0 ? (obtida / maxima) * 100 : 0);
+
+/* Agrega o historico de /performance/me nos numeros do topo. */
+function resumirDesempenho(historico) {
+  const simulados = historico.filter((h) => h.tipo === "simulado");
+  const discursivas = historico.filter((h) => h.tipo === "discursiva");
+
+  const questoes = simulados.reduce((s, r) => s + (r.nota_maxima || 0), 0);
+  const acertos = simulados.reduce((s, r) => s + (r.nota_obtida || 0), 0);
+  const taxa = pct(acertos, questoes);
+
+  // Tendencia: media dos 5 simulados mais recentes contra os 5 anteriores.
+  const ordenados = [...simulados].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const recentes = ordenados.slice(-5);
+  const anteriores = ordenados.slice(-10, -5);
+  const mediaDe = (lista) =>
+    lista.length ? lista.reduce((s, r) => s + pct(r.nota_obtida, r.nota_maxima), 0) / lista.length : null;
+  const mediaRec = mediaDe(recentes);
+  const mediaAnt = mediaDe(anteriores);
+  const tendencia = mediaRec !== null && mediaAnt !== null ? mediaRec - mediaAnt : null;
+
+  // Desempenho por tema, do pior para o melhor (so temas com base suficiente).
+  const porTema = {};
+  simulados.forEach((r) => {
+    const tema = (r.tema || "Sem tema").trim();
+    if (!porTema[tema]) porTema[tema] = { tema, obtida: 0, maxima: 0, registros: 0 };
+    porTema[tema].obtida += r.nota_obtida || 0;
+    porTema[tema].maxima += r.nota_maxima || 0;
+    porTema[tema].registros += 1;
+  });
+  const temas = Object.values(porTema)
+    .map((t) => ({ ...t, taxa: pct(t.obtida, t.maxima) }))
+    .filter((t) => t.maxima >= 5)
+    .sort((a, b) => a.taxa - b.taxa);
+
+  return {
+    simulados,
+    discursivas,
+    questoes,
+    taxa,
+    tendencia,
+    temas,
+    spark: ordenados.slice(-8).map((r) => pct(r.nota_obtida, r.nota_maxima)),
+    pontoFraco: temas[0] || null,
+    mediaDiscursivas: discursivas.length
+      ? discursivas.reduce((s, r) => s + pct(r.nota_obtida, r.nota_maxima), 0) / discursivas.length
+      : null,
+  };
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const buscaUrl = searchParams.get("busca") || "";
+
   const [plans, setPlans] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [historico, setHistorico] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Estados dos filtros
   const [filterAno, setFilterAno] = useState("");
   const [filterBanca, setFilterBanca] = useState("");
-  const [filterConcurso, setFilterConcurso] = useState("");
+  const [filterConcurso, setFilterConcurso] = useState(buscaUrl);
 
-  // Estados da Paginação e Accordion
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [expandedConcurso, setExpandedConcurso] = useState(null); 
-  
-  const limitPerPage = 100; 
+  const [expandido, setExpandido] = useState(null);
 
-  // Função para ler exatamente a chave salva pelo AuthContext
-  const getAuthToken = () => {
-    return localStorage.getItem("professor_ai_token") || "";
-  };
-
-  const fetchPlans = (anoBusca = "", bancaBusca = "", concursoBusca = "", page = 1) => {
+  const fetchPlans = useCallback((ano = "", banca = "", concurso = "", page = 1) => {
     setLoading(true);
-    
     const params = new URLSearchParams();
-    if (anoBusca.trim()) params.append("ano", anoBusca.trim());
-    if (bancaBusca.trim()) params.append("banca", bancaBusca.trim());
-    if (concursoBusca.trim()) params.append("concurso", concursoBusca.trim());
-    
+    if (ano.trim()) params.append("ano", ano.trim());
+    if (banca.trim()) params.append("banca", banca.trim());
+    if (concurso.trim()) params.append("concurso", concurso.trim());
     params.append("page", page);
-    params.append("limit", limitPerPage);
+    params.append("limit", LIMIT);
 
-    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-    
-    // Captura o token de forma segura
-    const token = getAuthToken();
-
-    fetch(`${apiUrl}/plans?${params.toString()}`, {
-      headers: {
-        "Authorization": token ? `Bearer ${token}` : ""
-      }
+    const token = getToken();
+    fetch(`${API_URL}/plans?${params.toString()}`, {
+      headers: { Authorization: token ? `Bearer ${token}` : "" },
     })
       .then((res) => {
-        if (res.status === 401) throw new Error("Não autorizado. Sessão expirada.");
-        if (!res.ok) throw new Error("Erro ao buscar dados");
+        if (!res.ok) throw new Error("Erro ao buscar aulas");
         return res.json();
       })
       .then((data) => {
         setPlans(data.items || []);
-        const calculatedPages = Math.ceil((data.total || 0) / limitPerPage);
-        setTotalPages(calculatedPages > 0 ? calculatedPages : 1);
-        
-        // Garante que todas as pastas fiquem fechadas (ChevronDown) por padrão
-        setExpandedConcurso(null);
+        setTotal(data.total || 0);
+        const paginas = Math.ceil((data.total || 0) / LIMIT);
+        setTotalPages(paginas > 0 ? paginas : 1);
+        setExpandido(null);
       })
       .catch((err) => {
         console.error("Erro ao carregar aulas:", err);
-        setPlans([]); 
+        setPlans([]);
       })
       .finally(() => setLoading(false));
-  };
+  }, []);
 
+  // Historico so precisa ser buscado uma vez por sessao da tela.
   useEffect(() => {
-    fetchPlans(filterAno, filterBanca, filterConcurso, currentPage);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const token = getToken();
+    if (!token) return;
+    fetch(`${API_URL}/performance/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setHistorico(Array.isArray(data) ? data : []))
+      .catch(() => setHistorico([]));
+  }, []);
 
-  const handleApplyFilters = () => {
+  // A busca da barra superior chega pela URL (?busca=).
+  useEffect(() => {
+    setFilterConcurso(buscaUrl);
     setCurrentPage(1);
+    fetchPlans(filterAno, filterBanca, buscaUrl, 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaUrl]);
+
+  const aplicarFiltros = () => {
+    setCurrentPage(1);
+    setSearchParams(filterConcurso.trim() ? { busca: filterConcurso.trim() } : {});
     fetchPlans(filterAno, filterBanca, filterConcurso, 1);
   };
 
-  const handleClearFilters = () => {
+  const limparFiltros = () => {
     setFilterAno("");
     setFilterBanca("");
     setFilterConcurso("");
     setCurrentPage(1);
-    fetchPlans("", "", "", 1); 
+    setSearchParams({});
+    fetchPlans("", "", "", 1);
   };
 
-  const goToPage = (pageNumber) => {
-    if (pageNumber >= 1 && pageNumber <= totalPages) {
-      setCurrentPage(pageNumber);
-      fetchPlans(filterAno, filterBanca, filterConcurso, pageNumber);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+  const irParaPagina = (n) => {
+    if (n < 1 || n > totalPages) return;
+    setCurrentPage(n);
+    fetchPlans(filterAno, filterBanca, filterConcurso, n);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const groupedPlans = useMemo(() => {
-    const groups = {};
-    plans.forEach(plan => {
-      // Adicionando o toUpperCase() para padronizar tudo em maiúsculo no momento de agrupar
-      const concursoName = plan.concurso?.trim().toUpperCase() || "SEM CONCURSO VINCULADO";
-      const areaName = plan.area?.trim().toUpperCase() || "ASSUNTOS GERAIS";
-      
-      if (!groups[concursoName]) groups[concursoName] = {};
-      if (!groups[concursoName][areaName]) groups[concursoName][areaName] = [];
-      groups[concursoName][areaName].push(plan);
-    });
-    return groups;
+  const desempenho = useMemo(() => resumirDesempenho(historico), [historico]);
+
+  const minhasAulas = useMemo(
+    () => (user ? plans.filter((p) => p.owner_email === user.email).length : 0),
+    [plans, user]
+  );
+
+  // "Continuar de onde parou": aulas abertas recentemente que ainda existem
+  // na lista atual; se nao houver nenhuma, mostra as mais novas.
+  const continuar = useMemo(() => {
+    const recentes = lerRecentes();
+    const porId = new Map(plans.map((p) => [String(p.id), p]));
+    const vistas = recentes.map((r) => porId.get(String(r.id))).filter(Boolean).slice(0, 4);
+    if (vistas.length > 0) return { itens: vistas, novas: false };
+    const novas = [...plans]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 4);
+    return { itens: novas, novas: true };
   }, [plans]);
 
-  return (
-    <div className="container">
-      {/* NOVO: Estilos CSS para a animação do Skeleton */}      
-      <header className="header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", flexWrap: 'wrap', gap: '15px' }}>
-        <h1 style={{ margin: 0 }}>Minhas Aulas</h1>
-        <Link to="/performance" className="btn" style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-main)', fontWeight: 'bold' }}>
-          <TrendingUp size={18} color="var(--primary)" /> Meu Desempenho
-        </Link>        
-      </header>
+  const agrupado = useMemo(() => {
+    const grupos = {};
+    plans.forEach((plan) => {
+      const concurso = plan.concurso?.trim().toUpperCase() || "SEM CONCURSO VINCULADO";
+      const area = plan.area?.trim().toUpperCase() || "ASSUNTOS GERAIS";
+      if (!grupos[concurso]) grupos[concurso] = {};
+      if (!grupos[concurso][area]) grupos[concurso][area] = [];
+      grupos[concurso][area].push(plan);
+    });
+    return grupos;
+  }, [plans]);
 
-      {/* Barra de Filtros */}
-      <div className="panel" style={{ marginBottom: "2rem", padding: "1.25rem" }}>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input className="input" placeholder="Ano (ex: 2024)" value={filterAno} onChange={e => setFilterAno(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleApplyFilters()} style={{ flex: 1, minWidth: '120px' }} />
-          <input className="input" placeholder="Banca (ex: CESPE)" value={filterBanca} onChange={e => setFilterBanca(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleApplyFilters()} style={{ flex: 1, minWidth: '150px' }} />
-          <input className="input" placeholder="Concurso (ex: Polícia Federal)" value={filterConcurso} onChange={e => setFilterConcurso(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleApplyFilters()} style={{ flex: 2, minWidth: '200px' }} />
-          <button className="btn primary" onClick={handleApplyFilters} title="Buscar"><Search size={18} /> Filtrar</button>
-          {(filterAno || filterBanca || filterConcurso) && (
-             <button className="btn" onClick={handleClearFilters} title="Limpar Filtros" style={{ color: 'var(--error-text)', borderColor: 'var(--error-text)' }}><X size={18} /></button>
-          )}
-        </div>
+  const temFiltro = Boolean(filterAno || filterBanca || filterConcurso);
+  const primeiroNome = user?.email ? user.email.split("@")[0] : "";
+
+  const tendenciaTexto =
+    desempenho.tendencia === null
+      ? `${desempenho.simulados.length} simulado(s) registrados`
+      : `${desempenho.tendencia >= 0 ? "+" : ""}${desempenho.tendencia.toFixed(1)} pts vs. anteriores`;
+  const tendenciaTone =
+    desempenho.tendencia === null ? "flat" : desempenho.tendencia >= 0 ? "up" : "down";
+  const TendenciaIcon =
+    desempenho.tendencia === null ? Minus : desempenho.tendencia >= 0 ? TrendingUp : TrendingDown;
+
+  return (
+    <div className="dash">
+      <PageHeader
+        eyebrow="Estudo"
+        title={primeiroNome ? `Bom te ver, ${primeiroNome}` : "Minhas Aulas"}
+        description="Seus números de desempenho, o que ficou pela metade e a biblioteca completa de aulas."
+        actions={
+          <>
+            <Button to="/performance" icon={<TrendingUp size={15} />}>Meu Desempenho</Button>
+            <Button to="/ferramentas" variant="primary" icon={<Sparkles size={15} />}>Ferramentas de IA</Button>
+          </>
+        }
+      />
+
+      {/* ------------------------------ KPIs ------------------------------ */}
+      <div className="dash__kpis">
+        <StatCard
+          label="Aulas disponíveis"
+          value={loading ? "—" : total}
+          delta={minhasAulas > 0 ? `${minhasAulas} criadas por você` : "biblioteca compartilhada"}
+          icon={<BookOpen size={13} />}
+        />
+        <StatCard
+          label="Questões resolvidas"
+          value={desempenho.questoes ? Math.round(desempenho.questoes).toLocaleString("pt-BR") : "0"}
+          spark={desempenho.spark.length > 1 ? desempenho.spark : null}
+          delta={desempenho.spark.length > 1 ? "últimos 8 simulados" : undefined}
+        />
+        <StatCard
+          label="Taxa de acerto"
+          value={desempenho.questoes ? `${desempenho.taxa.toFixed(0)}%` : "—"}
+          delta={tendenciaTexto}
+          deltaTone={tendenciaTone}
+          icon={<TendenciaIcon size={13} />}
+        />
+        <StatCard
+          label="Ponto fraco"
+          textValue
+          value={desempenho.pontoFraco ? desempenho.pontoFraco.tema : "Sem dados ainda"}
+          delta={
+            desempenho.pontoFraco
+              ? `${desempenho.pontoFraco.taxa.toFixed(0)}% de acerto · treinar`
+              : "resolva um simulado para medir"
+          }
+          deltaTone={desempenho.pontoFraco ? "warn" : "flat"}
+          icon={desempenho.pontoFraco ? <AlertTriangle size={13} /> : null}
+        />
       </div>
 
-      {loading ? (
-        // NOVO: SKELETON LOADING
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {[1, 2, 3].map(i => (
-            <div key={i} style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--card-bg)', padding: '20px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <div className="skeleton-box" style={{ width: '50px', height: '50px', borderRadius: '10px' }}></div>
-              <div style={{ flex: 1 }}>
-                <div className="skeleton-box" style={{ height: '24px', width: '30%', marginBottom: '8px' }}></div>
-                <div className="skeleton-box" style={{ height: '16px', width: '20%' }}></div>
-              </div>
-              <div className="skeleton-box" style={{ width: '30px', height: '30px', borderRadius: '6px' }}></div>
+      {/* --------------------- Continuar + por tema ----------------------- */}
+      <div className="dash__cols">
+        <Card>
+          <CardHead
+            title={continuar.novas ? "Aulas mais recentes" : "Continuar de onde parou"}
+            action={<Link to="/gerenciar" style={{ fontSize: "var(--text-xs)", fontWeight: 700 }}>Ver todas</Link>}
+          />
+          {loading ? (
+            <div style={{ padding: "var(--space-4) var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {[0, 1, 2].map((i) => <Skeleton key={i} height={44} />)}
             </div>
-          ))}
-        </div>
-      ) : plans.length === 0 ? (
-        // STATE VAZIO
-        <div className="panel" style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-          <BookOpen size={48} color="var(--text-muted)" style={{ margin: '0 auto 1rem auto' }} />
-          <h3 style={{ margin: '0 0 0.5rem 0' }}>Nenhuma aula encontrada.</h3>
-          {(filterAno || filterBanca || filterConcurso) ? (
-            <button onClick={handleClearFilters} className="btn primary">Limpar Filtros</button>
+          ) : continuar.itens.length === 0 ? (
+            <div style={{ padding: "var(--space-5)" }}>
+              <EmptyState
+                icon={<BookOpen size={22} />}
+                title="Nenhuma aula por aqui ainda"
+                description="Gere a primeira aula a partir do seu edital e ela aparece nesta lista."
+                action={<Button variant="primary" to="/generator" icon={<Sparkles size={15} />}>Criar aula com IA</Button>}
+              />
+            </div>
           ) : (
-            <Link to="/generator" className="btn primary">Criar Nova Aula com IA</Link>
+            continuar.itens.map((plan) => (
+              <Link key={plan.id} to={`/aula/${plan.id}`} className="dash__row">
+                <span className="dash__row-icon"><BookOpen size={17} /></span>
+                <span className="dash__row-body">
+                  <span className="dash__row-title">{plan.title}</span>
+                  <span className="dash__row-meta">
+                    {plan.concurso && <Badge>{plan.concurso}</Badge>}
+                    {plan.banca && <Badge>{plan.banca}</Badge>}
+                    <span>{new Date(plan.created_at).toLocaleDateString("pt-BR")}</span>
+                  </span>
+                </span>
+                <ArrowRight size={16} color="var(--fg-3)" />
+              </Link>
+            ))
+          )}
+        </Card>
+
+        <Card>
+          <CardHead
+            title="Onde você erra mais"
+            action={<Link to="/performance" style={{ fontSize: "var(--text-xs)", fontWeight: 700 }}>Detalhes</Link>}
+          />
+          {desempenho.temas.length === 0 ? (
+            <div style={{ padding: "var(--space-5)", color: "var(--fg-2)", fontSize: "var(--text-sm)" }}>
+              Resolva simulados nas ferramentas de IA para que os temas mais fracos apareçam aqui, ordenados do pior para o melhor.
+              <div style={{ marginTop: "var(--space-4)" }}>
+                <Button to="/ferramentas" icon={<Target size={15} />} block>Ir para as ferramentas</Button>
+              </div>
+            </div>
+          ) : (
+            desempenho.temas.slice(0, 6).map((t) => (
+              <div className="dash__topic" key={t.tema}>
+                <div className="dash__topic-line">
+                  <span className="dash__topic-name" title={t.tema}>{t.tema}</span>
+                  <span className="dash__topic-val">{t.taxa.toFixed(0)}%</span>
+                </div>
+                <ProgressBar
+                  value={t.taxa}
+                  color={t.taxa < 60 ? "var(--warn)" : t.taxa < 80 ? "var(--accent)" : "var(--ok)"}
+                  aria-label={`Acerto em ${t.tema}`}
+                />
+              </div>
+            ))
+          )}
+          {desempenho.mediaDiscursivas !== null && (
+            <div className="dash__topic" style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+              <span className="dash__row-icon"><PenTool size={16} /></span>
+              <span style={{ fontSize: "var(--text-sm)", color: "var(--fg-2)" }}>
+                <b style={{ color: "var(--fg)" }}>{desempenho.discursivas.length} discursiva(s)</b> corrigidas ·
+                média {desempenho.mediaDiscursivas.toFixed(0)}%
+              </span>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* ---------------------------- Biblioteca -------------------------- */}
+      <div>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "var(--space-3)", marginBottom: "var(--space-3)", flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0, fontSize: "var(--text-xl)", fontWeight: 800, letterSpacing: "-.02em" }}>
+            Biblioteca de aulas
+          </h2>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--fg-3)" }}>
+            {loading ? "carregando…" : `${total} aula(s) em ${Object.keys(agrupado).length} concurso(s)`}
+          </span>
+        </div>
+
+        <div className="dash__filters">
+          <Input
+            placeholder="Ano"
+            value={filterAno}
+            onChange={(e) => setFilterAno(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && aplicarFiltros()}
+            aria-label="Filtrar por ano"
+          />
+          <Input
+            placeholder="Banca (ex: FGV)"
+            value={filterBanca}
+            onChange={(e) => setFilterBanca(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && aplicarFiltros()}
+            aria-label="Filtrar por banca"
+          />
+          <span className="dash__filter-grow">
+            <Input
+              icon={<Search size={15} />}
+              placeholder="Concurso (ex: DATAPREV)"
+              value={filterConcurso}
+              onChange={(e) => setFilterConcurso(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && aplicarFiltros()}
+              aria-label="Filtrar por concurso"
+            />
+          </span>
+          <Button variant="primary" onClick={aplicarFiltros} icon={<Search size={15} />}>Filtrar</Button>
+          {temFiltro && (
+            <Button variant="danger" onClick={limparFiltros} icon={<X size={15} />} aria-label="Limpar filtros">
+              Limpar
+            </Button>
           )}
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {Object.entries(groupedPlans).map(([concursoName, areas]) => {
-            const todasAulas = Object.values(areas).flat();
-            const totalAulasConcurso = todasAulas.length;
-            const emailCriador = todasAulas[0]?.owner_email || todasAulas[0]?.email || "";
-            const nomeUsuario = emailCriador ? emailCriador.split('@')[0] : "";
-            const isExpanded = expandedConcurso === concursoName;
-            
-            return (
-              <div key={concursoName} style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--card-bg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
-                <div onClick={() => setExpandedConcurso(isExpanded ? null : concursoName)} style={{ padding: '20px', background: isExpanded ? 'var(--hover-bg)' : 'var(--card-bg)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <div style={{ background: isExpanded ? 'var(--primary-hover)' : 'var(--primary)', padding: '12px', borderRadius: '10px', color: '#fff', display: 'flex' }}><Folder size={26} /></div>
-                    <div>
-                      <h2 style={{ margin: 0, color: 'var(--heading-color)', fontSize: '1.4rem' }}>{concursoName}</h2>
-                      <span style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', display: 'block' }}>{totalAulasConcurso} aula(s) neste concurso</span>
-                      {nomeUsuario && (
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px', fontWeight: '500' }}>
-                          👤 Criado por: {nomeUsuario}
+
+        <div style={{ marginTop: "var(--space-4)" }}>
+          {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+              {[0, 1, 2].map((i) => <Skeleton key={i} height={74} radius="var(--radius-md)" />)}
+            </div>
+          ) : plans.length === 0 ? (
+            <EmptyState
+              icon={<BookOpen size={22} />}
+              title="Nenhuma aula encontrada"
+              description={
+                temFiltro
+                  ? "Nenhum resultado para esses filtros. Tente outra banca, ano ou concurso."
+                  : "Sua biblioteca está vazia. Gere a primeira aula a partir de um edital."
+              }
+              action={
+                temFiltro ? (
+                  <Button variant="primary" onClick={limparFiltros}>Limpar filtros</Button>
+                ) : (
+                  <Button variant="primary" to="/generator" icon={<Sparkles size={15} />}>Criar aula com IA</Button>
+                )
+              }
+            />
+          ) : (
+            Object.entries(agrupado).map(([concurso, areas]) => {
+              const todas = Object.values(areas).flat();
+              const criador = todas[0]?.owner_email || todas[0]?.email || "";
+              const aberto = expandido === concurso;
+
+              return (
+                <div className="dash__folder" key={concurso}>
+                  <button
+                    className={`dash__folder-head${aberto ? " is-open" : ""}`}
+                    onClick={() => setExpandido(aberto ? null : concurso)}
+                    aria-expanded={aberto}
+                  >
+                    <span className="dash__folder-id">
+                      <span className="dash__folder-icon"><Folder size={20} /></span>
+                      <span style={{ minWidth: 0 }}>
+                        <span className="dash__folder-name">{concurso}</span>
+                        <span className="dash__folder-meta">
+                          {todas.length} aula(s) · {Object.keys(areas).length} área(s)
+                          {criador ? ` · por ${criador.split("@")[0]}` : ""}
                         </span>
-                      )}
-                    </div>
-                  </div>
-                  <div>{isExpanded ? <ChevronUp size={28} color="var(--text-secondary)" /> : <ChevronDown size={28} color="var(--text-secondary)" />}</div>
-                </div>
+                      </span>
+                    </span>
+                    {aberto ? <ChevronUp size={20} color="var(--fg-3)" /> : <ChevronDown size={20} color="var(--fg-3)" />}
+                  </button>
 
-                {isExpanded && (
-                  <div style={{ padding: '25px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
-                    {Object.entries(areas).map(([areaName, aulasDaArea]) => (
-                      <div key={areaName} style={{ marginBottom: '35px' }}>
-                        <h3 style={{ margin: '0 0 15px 0', paddingBottom: '10px', color: 'var(--heading-color)', borderBottom: '2px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.2rem' }}>
-                          <Target size={22} color="var(--success-text)" /> {areaName}
-                        </h3>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {aulasDaArea.map((plan) => {
-                            // NOVAS VARIÁVEIS DE LÓGICA DE UI
-                            const isMinhaAula = user && plan.owner_email === user.email;
-                            const isPublic = plan.visibility === 'public';
-
+                  {aberto && (
+                    <div className="dash__folder-body">
+                      {Object.entries(areas).map(([area, aulas]) => (
+                        <div className="dash__area" key={area}>
+                          <div className="dash__area-title">
+                            <Target size={14} color="var(--ok)" /> {area}
+                          </div>
+                          {aulas.map((plan) => {
+                            const minha = user && plan.owner_email === user.email;
+                            const publica = plan.visibility === "public";
                             return (
-                              <div key={plan.id} style={{ 
-                                // DESTAQUE VISUAL SE FOR AULA DO PRÓPRIO UTILIZADOR
-                                background: isMinhaAula ? 'linear-gradient(to right, var(--card-bg), var(--hover-bg))' : 'var(--card-bg)', 
-                                border: isMinhaAula ? '1px solid var(--primary)' : '1px solid var(--border)', 
-                                borderLeft: isMinhaAula ? '4px solid var(--primary)' : '1px solid var(--border)',
-                                borderRadius: '10px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px',
-                                boxShadow: isMinhaAula ? '0 2px 8px rgba(37, 99, 235, 0.1)' : 'none'
-                              }}>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.75rem', background: 'var(--hover-bg)', color: 'var(--text-main)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', fontWeight: 'bold' }}>{plan.banca}</span>
-                                    {plan.ano && <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>{plan.ano}</span>}
-                                    
-                                    {/* BADGE DE VISIBILIDADE */}
-                                    <span style={{ fontSize: '0.75rem', color: isPublic ? 'var(--success-text)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                                      {isPublic ? <Globe size={12} /> : <Lock size={12} />} {isPublic ? 'Público' : 'Privado'}
-                                    </span>
-                                    
-                                    {/* BADGE DE DESTAQUE: MINHA AULA */}
-                                    {isMinhaAula && (
-                                      <span style={{ fontSize: '0.75rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--primary)', fontWeight: 'bold' }}>
-                                        <Star size={12} fill="currentColor" /> Criado por mim
-                                      </span>
-                                    )}
-                                    
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={12} /> {new Date(plan.created_at).toLocaleDateString()}</span>
+                              <div className={`dash__lesson${minha ? " is-mine" : ""}`} key={plan.id}>
+                                <div className="dash__lesson-body">
+                                  <div className="dash__lesson-tags">
+                                    {plan.banca && <Badge>{plan.banca}</Badge>}
+                                    {plan.ano && <Badge outline>{plan.ano}</Badge>}
+                                    <Badge tone={publica ? "ok" : "default"} icon={publica ? <Globe size={11} /> : <Lock size={11} />}>
+                                      {publica ? "Público" : "Privado"}
+                                    </Badge>
+                                    {minha && <Badge tone="accent" icon={<Star size={11} />}>Minha</Badge>}
+                                    <Badge outline icon={<Calendar size={11} />}>
+                                      {new Date(plan.created_at).toLocaleDateString("pt-BR")}
+                                    </Badge>
                                   </div>
-                                  <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)' }}>{plan.title}</h4>
+                                  <div className="dash__lesson-title">{plan.title}</div>
                                 </div>
-                                <Link to={`/aula/${plan.id}`} className="btn small primary" style={{ whiteSpace: 'nowrap' }}>Acessar <ArrowRight size={14} /></Link>
+                                <Button variant="primary" size="sm" to={`/aula/${plan.id}`} icon={<ArrowRight size={14} />}>
+                                  Acessar
+                                </Button>
                               </div>
                             );
                           })}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
-      )}
 
-      {/* Paginação */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '2.5rem', padding: '1rem', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          <button className="btn" onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}><ChevronLeft size={18} /> Anterior</button>
-          <div style={{ display: 'flex', gap: '5px' }}>
+        {totalPages > 1 && (
+          <div className="dash__pager" style={{ marginTop: "var(--space-5)" }}>
+            <Button onClick={() => irParaPagina(currentPage - 1)} disabled={currentPage === 1} icon={<ChevronLeft size={15} />}>
+              Anterior
+            </Button>
             {[...Array(totalPages)].map((_, i) => {
-              const pageNum = i + 1;
-              if (pageNum === 1 || pageNum === totalPages || (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)) {
+              const n = i + 1;
+              if (n === 1 || n === totalPages || (n >= currentPage - 1 && n <= currentPage + 1)) {
                 return (
-                  <button key={pageNum} onClick={() => goToPage(pageNum)} style={{ width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px solid', backgroundColor: currentPage === pageNum ? 'var(--primary)' : 'var(--card-bg)', color: currentPage === pageNum ? '#fff' : 'var(--text-main)', borderColor: currentPage === pageNum ? 'var(--primary)' : 'var(--border)' }}>{pageNum}</button>
+                  <button
+                    key={n}
+                    className={`dash__page-num${currentPage === n ? " is-current" : ""}`}
+                    onClick={() => irParaPagina(n)}
+                    aria-current={currentPage === n ? "page" : undefined}
+                  >
+                    {n}
+                  </button>
                 );
-              } else if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
-                return <span key={pageNum} style={{ alignSelf: 'center', color: 'var(--text-muted)' }}>...</span>;
+              }
+              if (n === currentPage - 2 || n === currentPage + 2) {
+                return <span key={n} style={{ color: "var(--fg-3)" }}>…</span>;
               }
               return null;
             })}
+            <Button onClick={() => irParaPagina(currentPage + 1)} disabled={currentPage === totalPages}>
+              Próxima <ChevronRight size={15} />
+            </Button>
           </div>
-          <button className="btn" onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}>Próxima <ChevronRight size={18} /></button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

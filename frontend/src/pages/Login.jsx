@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { UserPlus, LogIn, AlertCircle, CheckCircle, Brain, FileText, MessageSquare, Sparkles, Zap, Ticket, ArrowRight, ArrowLeft } from 'lucide-react';
+import {
+  UserPlus, LogIn, AlertCircle, CheckCircle, Brain, FileText, MessageSquare,
+  Sparkles, Zap, Ticket, ArrowRight, ArrowLeft, Check, Moon, Sun, PenTool,
+  Calculator, Scale, Type, Coffee, GitBranch, Trophy, ShieldCheck, Smartphone,
+  CreditCard, Target,
+} from 'lucide-react';
+import { Button, Input, Badge } from '../components/ui';
+import './Login.css';
 
-// 1. Dicionário de preços base para cálculo dinâmico
+// Precos base para o calculo dinamico com cupom.
 const PLAN_PRICES = {
   diario_teste: 1.90,
   mensal_simples: 49.90,
@@ -16,24 +23,96 @@ const PLAN_PRICES = {
   semestral_pro: 269.90,
 };
 
+const brl = (v) => `R$ ${v.toFixed(2).replace('.', ',')}`;
+
+// Estrutura dos planos exibida no cadastro (etapa 2).
+const PLAN_GROUPS = [
+  {
+    title: 'Plano Simples · usa a sua chave pessoal',
+    icon: null,
+    options: [
+      { key: 'diario_teste', name: 'Teste Diário', days: '1 dia de acesso' },
+      { key: 'mensal_simples', name: 'Simples Mensal', days: '30 dias de acesso' },
+      { key: 'trimestral_simples', name: 'Simples Trimestral', days: '90 dias de acesso' },
+      { key: 'semestral_simples', name: 'Simples Semestral', days: '180 dias de acesso' },
+    ],
+  },
+  {
+    title: 'Plano Plus · IA inclusa, 3M de tokens/mês',
+    icon: <Sparkles size={13} />,
+    options: [
+      { key: 'mensal_plus', name: 'Plus Mensal', days: '30 dias de acesso' },
+      { key: 'trimestral_plus', name: 'Plus Trimestral', days: '90 dias de acesso' },
+      { key: 'semestral_plus', name: 'Plus Semestral', days: '180 dias de acesso' },
+    ],
+  },
+  {
+    title: 'Plano Pro · IA inclusa, 6M de tokens/mês',
+    icon: <Zap size={13} />,
+    options: [
+      { key: 'trimestral_pro', name: 'Pro Trimestral', days: '90 dias de acesso' },
+      { key: 'semestral_pro', name: 'Pro Semestral', days: '180 dias de acesso' },
+    ],
+  },
+];
+
+// Ferramentas que a assinatura libera. Cada uma corresponde a uma tela real.
+const TOOLS = [
+  { icon: FileText, title: 'Gerador de aulas por edital', text: 'Cole o conteúdo programático e receba a aula pronta: teoria, analogias, resumo e bateria de questões inéditas.' },
+  { icon: PenTool, title: 'Simulador de discursivas', text: 'Cenários inéditos por banca e cargo, com correção automática apontando o que custaria pontos na prova.' },
+  { icon: Brain, title: 'Gabarite Português CESPE', text: 'Texto-base e assertivas no padrão certo/errado do CEBRASPE, com análise item a item.' },
+  { icon: Calculator, title: 'Raciocínio lógico', text: 'Tabelas-verdade, negações e equivalências com resolução passo a passo.' },
+  { icon: Type, title: 'Sintaxe e inglês', text: 'Teoria gramatical com simulados de múltipla escolha e treino de compreensão textual, vocabulário e coesão.' },
+  { icon: Scale, title: 'Noções de direito', text: 'Casos hipotéticos de Constitucional, Penal, Processual Penal e Administrativo com base na lei seca e no entendimento do STF e do STJ.' },
+  { icon: Coffee, title: 'Java para editais de TI', text: 'POO, Streams, Coleções e JPA com trechos de código e cenários no formato das provas de tecnologia.' },
+  { icon: MessageSquare, title: 'Tutor de IA dentro da aula', text: 'Travou num ponto? Pergunte ali mesmo, sem sair do conteúdo que você está estudando.' },
+  { icon: GitBranch, title: 'Mapas mentais automáticos', text: 'Cada aula gera um diagrama da matéria para revisão rápida na véspera.' },
+  { icon: Trophy, title: 'Desempenho e ranking', text: 'Acompanhe acertos por tema, veja onde você mais erra e compare seu XP com o de outros candidatos.' },
+];
+
+const FAQ = [
+  {
+    q: 'Existe período gratuito?',
+    a: 'Não há plano gratuito, mas existe o Teste Diário por R$ 1,90, com 24 horas de acesso completo à plataforma. É a forma mais barata de conhecer as ferramentas antes de assinar um período maior.',
+  },
+  {
+    q: 'Qual a diferença entre Simples, Plus e Pro?',
+    a: 'No plano Simples você conecta a sua própria chave da OpenRouter e usa os modelos que quiser, inclusive os gratuitos — a plataforma não cobra pelo consumo de IA. Nos planos Plus e Pro a inteligência artificial já vem inclusa: 3 milhões de tokens por mês no Plus e 6 milhões no Pro, sem precisar configurar nada.',
+  },
+  {
+    q: 'O que é a chave pessoal e como eu consigo uma?',
+    a: 'É uma chave de acesso da OpenRouter, o serviço que dá acesso a vários modelos de IA. Criar a conta é gratuito e a conexão com a plataforma é feita em um clique, dentro da página de Perfil. Existem modelos gratuitos disponíveis, então dá para estudar sem custo adicional de IA.',
+  },
+  {
+    q: 'Funciona no celular?',
+    a: 'Sim. A plataforma é um aplicativo web instalável: pelo navegador do celular você adiciona à tela de início e ela abre como um app, em tela cheia. As aulas, os simulados e o histórico ficam sincronizados com o que você usa no computador.',
+  },
+  {
+    q: 'As aulas e questões são confiáveis?',
+    a: 'O conteúdo é gerado por inteligência artificial a partir do que você informa do edital, e a IA pode errar. Trate o material como um treino intensivo e um guia de estudo, não como fonte oficial: na dúvida, confirme sempre no edital, na lei seca e na jurisprudência.',
+  },
+  {
+    q: 'Como funciona o pagamento e o cupom de desconto?',
+    a: 'O pagamento é processado pelo Mercado Pago e o acesso é liberado assim que o pagamento é compensado. Se você tiver um cupom, aplique-o na etapa de escolha do plano e o desconto aparece no preço antes de finalizar. Toda conta também recebe um código de indicação com comissão sobre quem assinar por ele.',
+  },
+];
+
 export default function Login() {
   const location = useLocation();
-  const [isRegistering, setIsRegistering] = useState(false); 
-  const [registrationStep, setRegistrationStep] = useState(1); // Nova variável para controle de etapas
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [registrationStep, setRegistrationStep] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState('mensal_simples');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); 
-  
+  const [confirmPassword, setConfirmPassword] = useState('');
+
   const refCodeUrl = new URLSearchParams(location.search).get('ref');
   const [referralCode, setReferralCode] = useState(refCodeUrl || '');
-  
+
   const [couponCode, setCouponCode] = useState('');
-  
-  // 2. Novos estados para gerenciar o desconto na interface
-  const [discount, setDiscount] = useState(0); 
-  const [discountType, setDiscountType] = useState('fixed'); 
+  const [discount, setDiscount] = useState(0);
+  const [discountType, setDiscountType] = useState('fixed');
   const [couponMessage, setCouponMessage] = useState({ text: '', type: '' });
   const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
@@ -41,25 +120,30 @@ export default function Login() {
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
+
   const { login } = useAuth();
   const navigate = useNavigate();
-  
+
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   useEffect(() => {
-    const queryParams = new URLSearchParams(location.search);
-    const status = queryParams.get('status');
-    
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
+
+  useEffect(() => {
+    const status = new URLSearchParams(location.search).get('status');
     if (status === 'approved') {
-      setSuccessMsg('🎉 Seu pagamento foi aprovado com sucesso! O sistema está a processar a sua liberação. Tente fazer login em instantes.');
+      setSuccessMsg('Pagamento aprovado. Estamos liberando o seu acesso — tente entrar em instantes.');
     } else if (status === 'pending') {
-      setSuccessMsg('⏳ Seu pagamento está pendente (Aguardando compensação). Assim que compensado, seu acesso será liberado.');
+      setSuccessMsg('Pagamento pendente de compensação. Assim que ele for confirmado, o acesso é liberado automaticamente.');
     }
   }, [location]);
 
   const toggleMode = () => {
     setIsRegistering(!isRegistering);
-    setRegistrationStep(1); // Reseta a etapa ao alternar modo
+    setRegistrationStep(1);
     setError('');
     setSuccessMsg('');
     setEmail('');
@@ -70,10 +154,17 @@ export default function Login() {
     setCouponMessage({ text: '', type: '' });
   };
 
+  const irParaCadastro = (plano) => {
+    setIsRegistering(true);
+    setRegistrationStep(1);
+    setError('');
+    if (plano) setSelectedPlan(plano);
+    document.getElementById('acesso')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const handleNextStep = () => {
-    // Validações antes de passar para a etapa do plano
     if (!email || !password || !confirmPassword) {
-      setError("Por favor, preencha todos os campos antes de continuar.");
+      setError("Preencha e-mail, senha e confirmação antes de continuar.");
       return;
     }
     if (password !== confirmPassword) {
@@ -81,35 +172,27 @@ export default function Login() {
       return;
     }
     if (password.length < 6) {
-      setError("A senha deve ter pelo menos 6 caracteres.");
+      setError("A senha precisa ter pelo menos 6 caracteres.");
       return;
     }
     setError('');
     setRegistrationStep(2);
   };
 
-  // 3. Função para validar o cupom no backend
   const handleApplyCoupon = async () => {
     if (!couponCode) {
       setCouponMessage({ text: 'Digite um código de cupom.', type: 'error' });
       return;
     }
-    
     setIsApplyingCoupon(true);
     setCouponMessage({ text: '', type: '' });
-    
     try {
       const res = await fetch(`${API_URL}/coupons/validate/${couponCode}`);
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.detail || 'Cupom inválido ou expirado.');
-      }
-
+      if (!res.ok) throw new Error(data.detail || 'Cupom inválido ou expirado.');
       setDiscount(data.discount_value);
       setDiscountType(data.discount_type || 'fixed');
-      setCouponMessage({ text: 'Cupom aplicado com sucesso!', type: 'success' });
-      
+      setCouponMessage({ text: 'Cupom aplicado. O novo preço já aparece na lista.', type: 'success' });
     } catch (err) {
       setDiscount(0);
       setCouponMessage({ text: err.message, type: 'error' });
@@ -118,33 +201,13 @@ export default function Login() {
     }
   };
 
-  // 4. Função auxiliar para renderizar o preço com ou sem desconto
-  const renderPrice = (planKey, defaultColor) => {
-    const basePrice = PLAN_PRICES[planKey];
-    let finalPrice = basePrice;
-    
-    if (discount > 0) {
-      if (discountType === 'percent') {
-        finalPrice = basePrice - (basePrice * (discount / 100));
-      } else {
-        finalPrice = Math.max(0, basePrice - discount);
-      }
-    }
-
-    const hasDiscount = discount > 0 && finalPrice < basePrice;
-
-    return (
-      <div style={{ textAlign: 'right', minWidth: '80px' }}>
-        {hasDiscount && (
-          <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>
-            R$ {basePrice.toFixed(2).replace('.', ',')}
-          </span>
-        )}
-        <strong style={{ color: hasDiscount ? '#10b981' : defaultColor, fontSize: '0.95rem' }}>
-          R$ {finalPrice.toFixed(2).replace('.', ',')}
-        </strong>
-      </div>
-    );
+  const precoFinal = (planKey) => {
+    const base = PLAN_PRICES[planKey];
+    if (discount <= 0) return { base, final: base, off: false };
+    const final = discountType === 'percent'
+      ? base - (base * (discount / 100))
+      : Math.max(0, base - discount);
+    return { base, final, off: final < base };
   };
 
   const handleSubmit = async (e) => {
@@ -155,499 +218,462 @@ export default function Login() {
 
     try {
       if (isRegistering) {
-        if (password !== confirmPassword) {
-          throw new Error("As senhas não coincidem.");
-        }
+        if (password !== confirmPassword) throw new Error("As senhas não coincidem.");
 
         const res = await fetch(`${API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            email, 
-            password,
-            role: "user",
-            referral_code: referralCode
-          }),
+          body: JSON.stringify({ email, password, role: "user", referral_code: referralCode }),
         });
-
         const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.detail || "Erro ao criar conta.");
-        }
+        if (!res.ok) throw new Error(data.detail || "Erro ao criar conta.");
 
         const payRes = await fetch(`${API_URL}/payments/create-preference`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            email, 
+          body: JSON.stringify({
+            email,
             plano: selectedPlan,
-            coupon_code: discount > 0 ? couponCode : null 
-          })
+            coupon_code: discount > 0 ? couponCode : null,
+          }),
         });
-        
         const payData = await payRes.json();
-        if (!payRes.ok) throw new Error(payData.detail || "Conta criada, mas falhou ao gerar cobrança.");
+        if (!payRes.ok) throw new Error(payData.detail || "Conta criada, mas falhou ao gerar a cobrança.");
 
         window.location.href = payData.init_point;
         return;
+      }
 
-      } else {
-        await login(email, password);
-        navigate('/');
-      }
+      await login(email, password);
+      navigate('/');
     } catch (err) {
-      if (err.message === "CONTA_EXPIRADA") {
-        setError("CONTA_EXPIRADA");
-      } else {
-        setError(err.message || "Erro ao fazer login.");
-      }
+      setError(err.message === "CONTA_EXPIRADA" ? "CONTA_EXPIRADA" : (err.message || "Erro ao fazer login."));
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh', padding: '2rem 1rem' }}>
-      
-      <style>
-        {`
-          @keyframes fadeSlideUp {
-            0% { opacity: 0; transform: translateY(30px); }
-            100% { opacity: 1; transform: translateY(0); }
-          }
-          @keyframes fadeSlideRight {
-            0% { opacity: 0; transform: translateX(-30px); }
-            100% { opacity: 1; transform: translateX(0); }
-          }
-          @keyframes floatIcon {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-5px); }
-            100% { transform: translateY(0px); }
-          }
-          .login-wrapper {
-            display: flex;
-            width: 100%;
-            max-width: 1050px;
-            gap: 3rem;
-            align-items: flex-start;
-            justify-content: space-between;
-            flex-wrap: wrap;
-          }
-          .login-info {
-            flex: 1;
-            min-width: 300px;
-            animation: fadeSlideRight 0.8s ease-out;
-          }
-          .login-form-container {
-            flex: 1;
-            min-width: 320px;
-            max-width: 480px;
-            animation: fadeSlideUp 0.8s ease-out 0.2s backwards;
-          }
-          .feature-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 15px;
-            margin-bottom: 1.5rem;
-            padding: 15px;
-            border-radius: 12px;
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            box-shadow: var(--shadow-sm);
-            transition: transform 0.3s ease;
-          }
-          .feature-item:hover {
-            transform: translateY(-3px);
-            border-color: var(--primary);
-          }
-          .feature-icon {
-            background: var(--primary-light);
-            color: var(--primary);
-            padding: 10px;
-            border-radius: 10px;
-            animation: floatIcon 4s ease-in-out infinite;
-          }
-          .plan-group-title {
-            font-size: 0.8rem;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-            margin: 12px 0 6px 0;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-          }
-          .plan-option-card {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            background: var(--input-bg);
-            transition: all 0.2s ease;
-          }
-        `}
-      </style>
+  const tituloCard = isRegistering
+    ? (registrationStep === 1 ? 'Criar sua conta' : 'Escolha o seu plano')
+    : 'Entrar na plataforma';
+  const subtituloCard = isRegistering
+    ? (registrationStep === 1 ? 'Etapa 1 de 2 — seus dados de acesso.' : 'Etapa 2 de 2 — assinatura e pagamento.')
+    : 'Bem-vindo de volta. Use o e-mail e a senha da sua conta.';
 
-      <div className="login-wrapper">
-        
-        {/* LADO ESQUERDO: Informações e Recursos */}
-        <div className="login-info">
-          <h1 style={{ color: 'var(--heading-color)', fontSize: '2.5rem', marginBottom: '1rem', lineHeight: '1.2' }}>
-            Domine o seu edital com Inteligência Artificial.
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', marginBottom: '2rem' }}>
-            Transforme qualquer edital num plano de estudos completo, com aulas aprofundadas, simulados e correções automáticas padrão CEBRASPE.
+  return (
+    <div className="auth">
+      {/* ------------------------------ Topo ------------------------------ */}
+      <nav className="auth__nav">
+        <span className="auth__brand">
+          <span className="auth__brand-mark"><Sparkles size={17} /></span>
+          AgenteIA Edital
+        </span>
+        <span className="auth__nav-links">
+          <a href="#ferramentas">Ferramentas</a>
+          <a href="#como-funciona">Como funciona</a>
+          <a href="#planos">Planos</a>
+          <a href="#duvidas">Dúvidas</a>
+        </span>
+        <span className="auth__nav-actions">
+          <button
+            className="ui-btn ui-btn--ghost"
+            onClick={() => setIsDark(!isDark)}
+            title={isDark ? 'Usar tema claro' : 'Usar tema escuro'}
+            aria-label="Alternar tema"
+          >
+            {isDark ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
+          <Button variant="primary" onClick={() => irParaCadastro()}>Criar conta</Button>
+        </span>
+      </nav>
+
+      {/* ------------------------------ Hero ------------------------------ */}
+      <section className="auth__hero" id="acesso">
+        <div>
+          <span className="auth__eyebrow"><Target size={14} /> Feito para concurso público</span>
+
+          <h1>Transforme o edital em <em>aula, simulado e correção</em> no mesmo dia.</h1>
+
+          <p className="auth__lead">
+            Você cola o conteúdo programático do seu concurso. A plataforma devolve a aula
+            explicada, a bateria de questões no padrão da banca e a correção da sua discursiva —
+            sem esperar cronograma de curso nem procurar material espalhado.
           </p>
 
-          <div className="feature-item">
-            <div className="feature-icon"><FileText size={24} /></div>
-            <div>
-              <h3 style={{ margin: '0 0 5px 0', color: 'var(--text-main)' }}>Aulas e Simulados Inéditos</h3>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Geração de teoria, analogias e baterias de questões voltadas para o seu concurso.</p>
+          <div className="auth__points">
+            <div className="auth__point">
+              <span className="auth__point-icon"><FileText size={19} /></span>
+              <span>
+                <b>Aulas e questões inéditas do seu edital</b>
+                <span>Teoria, analogias, resumo e simulado gerados a partir do conteúdo programático que você informar.</span>
+              </span>
+            </div>
+            <div className="auth__point">
+              <span className="auth__point-icon"><PenTool size={19} /></span>
+              <span>
+                <b>Discursiva corrigida na hora</b>
+                <span>Cenários inéditos por banca e cargo, com uma correção que aponta onde a sua resposta perderia pontos.</span>
+              </span>
+            </div>
+            <div className="auth__point">
+              <span className="auth__point-icon"><Trophy size={19} /></span>
+              <span>
+                <b>Você vê onde está errando</b>
+                <span>Cada simulado alimenta o painel de desempenho por tema — o ponto fraco aparece antes da prova, não depois.</span>
+              </span>
             </div>
           </div>
 
-          <div className="feature-item" style={{ animationDelay: '0.2s' }}>
-            <div className="feature-icon"><MessageSquare size={24} /></div>
-            <div>
-              <h3 style={{ margin: '0 0 5px 0', color: 'var(--text-main)' }}>Tutor IA e Correção de Discursivas</h3>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Um professor particular 24h e um corretor implacável para avaliar as suas redações.</p>
-            </div>
-          </div>
-
-          <div className="feature-item" style={{ animationDelay: '0.4s' }}>
-            <div className="feature-icon"><Brain size={24} /></div>
-            <div>
-              <h3 style={{ margin: '0 0 5px 0', color: 'var(--text-main)' }}>Mapas Mentais Dinâmicos</h3>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Geração automática de estruturas Mermaid para visualização rápida da matéria.</p>
-            </div>
+          <div className="auth__trust">
+            <span><ShieldCheck size={14} /> Pagamento pelo Mercado Pago</span>
+            <span><Smartphone size={14} /> Instala no celular como aplicativo</span>
+            <span><CreditCard size={14} /> Teste de 1 dia por {brl(PLAN_PRICES.diario_teste)}</span>
           </div>
         </div>
 
-        {/* LADO DIREITO: Formulário de Login/Cadastro */}
-        <div className="login-form-container">
-          <div className="card" style={{ padding: '2.5rem 2rem', background: 'var(--card-bg)', borderColor: 'var(--border)' }}>
-            
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ color: 'var(--heading-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', margin: '0 0 10px 0' }}>
-                {isRegistering ? <UserPlus size={28} color="var(--primary)" /> : <LogIn size={28} color="var(--primary)" />}
-                {isRegistering 
-                  ? (registrationStep === 1 ? 'Criar Nova Conta (1/2)' : 'Escolha o Plano (2/2)') 
-                  : 'Acesso ao Sistema'}
-              </h2>
-              <p className="muted" style={{ margin: 0 }}>
-                {isRegistering 
-                  ? (registrationStep === 1 ? 'Preencha os dados abaixo para iniciar.' : 'Selecione a sua assinatura para concluir.')
-                  : 'Bem-vindo de volta! Insira as suas credenciais.'}
-              </p>
-            </div>
-
-            {successMsg && (
-              <div className="status" style={{ background: 'var(--success-bg)', color: 'var(--success-text)', borderColor: 'var(--success-text)', marginBottom: '1.5rem' }}>
-                <CheckCircle size={18} /> {successMsg}
+        {/* ------------------------ Cartão de acesso ---------------------- */}
+        <div className="auth__card">
+          <div className="auth__card-head">
+            {isRegistering && (
+              <div className="auth__steps" aria-hidden="true">
+                <i className="is-on" />
+                <i className={registrationStep === 2 ? 'is-on' : undefined} />
               </div>
             )}
-            
-            {error && error === "CONTA_EXPIRADA" ? (
-              <div className="error" style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', background: 'rgba(255, 193, 7, 0.1)', color: '#d39e00', borderColor: '#ffeeba', padding: '15px', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <AlertCircle size={18} /> 
-                  <strong>Conta Inativa ou Expirada!</strong>
+            <h2>{tituloCard}</h2>
+            <p>{subtituloCard}</p>
+          </div>
+
+          {successMsg && (
+            <div className="auth__alert auth__alert--ok">
+              <CheckCircle size={17} /> <span>{successMsg}</span>
+            </div>
+          )}
+
+          {error === "CONTA_EXPIRADA" ? (
+            <div className="auth__alert auth__alert--warn">
+              <span style={{ display: 'flex', gap: 10, alignItems: 'center', fontWeight: 700 }}>
+                <AlertCircle size={17} /> Conta inativa ou expirada
+              </span>
+              <span style={{ marginTop: 6 }}>O seu período de acesso terminou. Renove para voltar a usar a plataforma.</span>
+              <Button variant="primary" onClick={() => navigate('/planos')} style={{ marginTop: 12 }}>
+                Renovar acesso
+              </Button>
+            </div>
+          ) : error ? (
+            <div className="auth__alert auth__alert--err">
+              <AlertCircle size={17} /> <span>{error}</span>
+            </div>
+          ) : null}
+
+          <form className="auth__form" onSubmit={handleSubmit}>
+            {(!isRegistering || registrationStep === 1) && (
+              <>
+                <Input
+                  label="E-mail"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="voce@exemplo.com"
+                  autoComplete="email"
+                  required
+                />
+                <Input
+                  label="Senha"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete={isRegistering ? 'new-password' : 'current-password'}
+                  required
+                />
+                {isRegistering && (
+                  <>
+                    <Input
+                      label="Confirmar senha"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repita a senha"
+                      autoComplete="new-password"
+                      required
+                    />
+                    <Input
+                      label="Código de indicação (opcional)"
+                      type="text"
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                      placeholder="Quem te indicou?"
+                    />
+                  </>
+                )}
+              </>
+            )}
+
+            {isRegistering && registrationStep === 2 && (
+              <>
+                <div className="auth__plans">
+                  {PLAN_GROUPS.map((grupo) => (
+                    <React.Fragment key={grupo.title}>
+                      <span className="auth__plan-group">{grupo.icon}{grupo.title}</span>
+                      {grupo.options.map((op) => {
+                        const { base, final, off } = precoFinal(op.key);
+                        const escolhido = selectedPlan === op.key;
+                        return (
+                          <label className={`auth__plan${escolhido ? ' is-on' : ''}`} key={op.key}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                              <input
+                                type="radio"
+                                name="plano"
+                                value={op.key}
+                                checked={escolhido}
+                                onChange={(e) => setSelectedPlan(e.target.value)}
+                                style={{ margin: 0, cursor: 'pointer', accentColor: 'var(--accent)' }}
+                              />
+                              <span style={{ minWidth: 0 }}>
+                                <span className="auth__plan-name">{op.name}</span>
+                                <span className="auth__plan-days">{op.days}</span>
+                              </span>
+                            </span>
+                            <span className="auth__plan-price">
+                              {off && <s>{brl(base)}</s>}
+                              <b className={off ? 'is-off' : undefined}>{brl(final)}</b>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
                 </div>
-                <p style={{ margin: 0, fontSize: '0.9rem', textAlign: 'center' }}>O seu período de acesso terminou.</p>
-                <button onClick={() => navigate('/planos')} className="btn primary" style={{ marginTop: '10px', padding: '8px 16px', background: '#28a745', borderColor: '#28a745', color: '#fff' }}>
-                  Ativar Conta (Renovar)
-                </button>
-              </div>
-            ) : error ? (
-              <div className="error" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--error-bg)', color: 'var(--error-text)', borderColor: 'var(--error-text)' }}>
-                <AlertCircle size={18} /> {error}
-              </div>
-            ) : null}
 
-            <form onSubmit={handleSubmit}>
-              
-              {/* === ETAPA 1: LOGIN OU DADOS DA CONTA === */}
-              {(!isRegistering || (isRegistering && registrationStep === 1)) && (
-                <div style={{ animation: 'fadeSlideRight 0.3s ease-out' }}>
-                  <div className="row">
-                    <label className="label">E-mail de Acesso</label>
-                    <input 
-                      className="input" 
-                      type="email" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)} 
-                      placeholder="aluno@exemplo.com"
-                      required={!isRegistering || registrationStep === 1}
+                <div className="auth__coupon">
+                  <span className="ui-field__label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Ticket size={14} /> Cupom de desconto (opcional)
+                  </span>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <Input
+                      type="text"
+                      value={couponCode}
+                      onChange={(e) => {
+                        setCouponCode(e.target.value.toUpperCase());
+                        if (discount > 0) {
+                          setDiscount(0);
+                          setCouponMessage({ text: '', type: '' });
+                        }
+                      }}
+                      placeholder="Ex: APROVADO20"
+                      style={{ textTransform: 'uppercase' }}
                     />
+                    <Button type="button" onClick={handleApplyCoupon} disabled={!couponCode || isApplyingCoupon}>
+                      {isApplyingCoupon ? 'Validando…' : 'Aplicar'}
+                    </Button>
                   </div>
-
-                  <div className="row">
-                    <label className="label">Senha</label>
-                    <input 
-                      className="input" 
-                      type="password" 
-                      value={password} 
-                      onChange={(e) => setPassword(e.target.value)} 
-                      placeholder="••••••••"
-                      required={!isRegistering || registrationStep === 1}
-                    />
-                  </div>
-
-                  {isRegistering && (
-                    <div className="row">
-                      <label className="label">Confirmar Senha</label>
-                      <input 
-                        className="input" 
-                        type="password" 
-                        value={confirmPassword} 
-                        onChange={(e) => setConfirmPassword(e.target.value)} 
-                        placeholder="Repita a sua senha"
-                        required={registrationStep === 1}
-                      />
-                    </div>
+                  {couponMessage.text && (
+                    <span style={{
+                      display: 'block',
+                      marginTop: 8,
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 600,
+                      color: couponMessage.type === 'success' ? 'var(--ok)' : 'var(--danger)',
+                    }}>
+                      {couponMessage.text}
+                    </span>
                   )}
                 </div>
-              )}
+              </>
+            )}
 
-              {/* === ETAPA 2: ESCOLHER PLANO E CUPOM === */}
-              {isRegistering && registrationStep === 2 && (
-                <div style={{ animation: 'fadeSlideUp 0.3s ease-out' }}>
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
-                      
-                      {/* CATEGORIA 1: PLANO SIMPLES */}
-                      <span className="plan-group-title">Plano Simples (Usa Chave Pessoal)</span>
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'diario_teste' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="diario_teste" checked={selectedPlan === 'diario_teste'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Teste Diário Plus</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>1 Dia de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('diario_teste', '#0284c7')}
-                      </label>
-                      
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'mensal_simples' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="mensal_simples" checked={selectedPlan === 'mensal_simples'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Simples Mensal</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>30 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('mensal_simples', 'var(--heading-color)')}
-                      </label>
-
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'trimestral_simples' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="trimestral_simples" checked={selectedPlan === 'trimestral_simples'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Simples Trimestral</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>90 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('trimestral_simples', 'var(--heading-color)')}
-                      </label>
-
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'semestral_simples' ? '2px solid var(--primary)' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="semestral_simples" checked={selectedPlan === 'semestral_simples'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Simples Semestral</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>180 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('semestral_simples', 'var(--heading-color)')}
-                      </label>
-
-                      {/* CATEGORIA 2: PLANO PLUS */}
-                      <span className="plan-group-title" style={{ color: '#0284c7' }}>
-                        <Sparkles size={14} /> Plano Plus (IA Global - 3M Tokens/mês)
-                      </span>
-
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'mensal_plus' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="mensal_plus" checked={selectedPlan === 'mensal_plus'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Plus Mensal</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>30 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('mensal_plus', '#0284c7')}
-                      </label>
-
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'trimestral_plus' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="trimestral_plus" checked={selectedPlan === 'trimestral_plus'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Plus Trimestral</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>90 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('trimestral_plus', '#0284c7')}
-                      </label>
-
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'semestral_plus' ? '2px solid #0284c7' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="semestral_plus" checked={selectedPlan === 'semestral_plus'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Plus Semestral</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>180 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('semestral_plus', '#0284c7')}
-                      </label>
-
-                      {/* CATEGORIA 3: PLANO PRO */}
-                      <span className="plan-group-title" style={{ color: '#7c3aed' }}>
-                        <Zap size={14} /> Plano Pro (IA Global - 6M Tokens/mês)
-                      </span>
-
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'trimestral_pro' ? '2px solid #7c3aed' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="trimestral_pro" checked={selectedPlan === 'trimestral_pro'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Pro Trimestral</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>90 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('trimestral_pro', '#7c3aed')}
-                      </label>
-
-                      <label className="plan-option-card" style={{ border: selectedPlan === 'semestral_pro' ? '2px solid #7c3aed' : '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                          <input type="radio" name="plano" value="semestral_pro" checked={selectedPlan === 'semestral_pro'} onChange={(e) => setSelectedPlan(e.target.value)} style={{ margin: '0 8px 0 0', cursor: 'pointer' }} />
-                          <div>
-                            <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', display: 'block' }}>Pro Semestral</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>180 Dias de acesso</span>
-                          </div>
-                        </div>
-                        {renderPrice('semestral_pro', '#7c3aed')}
-                      </label>
-
-                    </div>
-                  </div>
-
-                  {/* CAMPO DE CUPOM COM BOTÃO DE APLICAR */}
-                  <div style={{ padding: '12px', borderRadius: '8px', border: '1px dashed var(--border)', background: 'var(--bg)' }}>
-                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-main)', fontWeight: 'bold' }}>
-                      <Ticket size={16} /> Cupom de Desconto (Opcional)
-                    </label>
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-                      <input 
-                        className="input" 
-                        type="text" 
-                        value={couponCode} 
-                        onChange={(e) => {
-                          setCouponCode(e.target.value.toUpperCase());
-                          if (discount > 0) {
-                            setDiscount(0); 
-                            setCouponMessage({ text: '', type: '' });
-                          }
-                        }} 
-                        placeholder="Ex: APROVADO20"
-                        style={{ flex: 1, textTransform: 'uppercase' }}
-                      />
-                      <button 
-                        type="button" 
-                        onClick={handleApplyCoupon}
-                        disabled={!couponCode || isApplyingCoupon}
-                        style={{
-                          padding: '0 16px',
-                          background: 'var(--primary)',
-                          color: '#fff',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: (!couponCode || isApplyingCoupon) ? 'not-allowed' : 'pointer',
-                          fontWeight: 'bold',
-                          opacity: (!couponCode || isApplyingCoupon) ? 0.7 : 1
-                        }}
-                      >
-                        {isApplyingCoupon ? 'Aguarde...' : 'Aplicar'}
-                      </button>
-                    </div>
-                    {couponMessage.text && (
-                      <span style={{ display: 'block', marginTop: '8px', fontSize: '0.85rem', color: couponMessage.type === 'success' ? '#10b981' : '#ef4444' }}>
-                        {couponMessage.text}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* === BOTÕES DE AÇÃO PRINCIPAIS === */}
-              <div className="actions" style={{ flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
-                
-                {isRegistering && registrationStep === 1 ? (
-                  <button 
-                    className="btn primary" 
-                    type="button" 
-                    onClick={handleNextStep}
-                    style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '1.05rem', boxShadow: '0 4px 12px var(--primary-light)' }}
-                  >
-                    Continuar <ArrowRight size={18} />
-                  </button>
-                ) : (
-                  <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-                    {isRegistering && registrationStep === 2 && (
-                      <button 
-                        className="btn" 
-                        type="button" 
-                        onClick={() => setRegistrationStep(1)}
-                        style={{ flex: '1', justifyContent: 'center', padding: '12px', background: 'var(--bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }}
-                      >
-                        <ArrowLeft size={18} /> Voltar
-                      </button>
-                    )}
-                    <button 
-                      className="btn primary" 
-                      type="submit" 
-                      style={{ flex: isRegistering && registrationStep === 2 ? '2' : '1', width: '100%', justifyContent: 'center', padding: '12px', fontSize: '1.05rem', boxShadow: '0 4px 12px var(--primary-light)' }}
-                      disabled={loading}
-                    >
-                      {loading ? 'A processar...' : (isRegistering ? 'Finalizar Cadastro' : 'Entrar no Painel')}
-                    </button>
-                  </div>
+            {isRegistering && registrationStep === 1 ? (
+              <Button variant="primary" size="lg" block type="button" onClick={handleNextStep}>
+                Continuar <ArrowRight size={17} />
+              </Button>
+            ) : (
+              <div style={{ display: 'flex', gap: 10 }}>
+                {isRegistering && registrationStep === 2 && (
+                  <Button type="button" size="lg" onClick={() => setRegistrationStep(1)} icon={<ArrowLeft size={17} />}>
+                    Voltar
+                  </Button>
                 )}
-                
-                <div style={{ position: 'relative', width: '100%', textAlign: 'center', margin: '5px 0' }}>
-                  <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '0' }} />
-                  <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: 'var(--card-bg)', padding: '0 10px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>OU</span>
-                </div>
-
-                <button 
-                  type="button"
-                  className="btn"
-                  onClick={toggleMode}
-                  style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)' }}
-                >
-                  {isRegistering 
-                    ? 'Já tem uma conta? Fazer Login' 
-                    : 'Não tem conta? Cadastre-se agora'}
-                </button>
-                
-                {!isRegistering && (
-                  <button 
-                    type="button"
-                    className="btn"
-                    onClick={() => navigate('/planos')}
-                    style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--primary)', background: 'transparent', color: 'var(--primary)', marginTop: '-5px' }}
-                  >
-                    Ativar ou Renovar Conta
-                  </button>
-                )}
+                <Button variant="primary" size="lg" block type="submit" disabled={loading}>
+                  {loading
+                    ? 'Processando…'
+                    : isRegistering
+                      ? `Ir para o pagamento · ${brl(precoFinal(selectedPlan).final)}`
+                      : 'Entrar'}
+                </Button>
               </div>
-            </form>
+            )}
+
+            <div className="auth__divider">OU</div>
+
+            <Button type="button" block onClick={toggleMode}>
+              {isRegistering ? 'Já tenho conta — fazer login' : 'Ainda não tenho conta — criar agora'}
+            </Button>
+
+            {!isRegistering && (
+              <Button type="button" block onClick={() => navigate('/planos')}>
+                Renovar uma conta expirada
+              </Button>
+            )}
+
+            {isRegistering && registrationStep === 2 && (
+              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--fg-3)', textAlign: 'center', lineHeight: 1.5 }}>
+                Você será levado ao Mercado Pago para concluir. O acesso é liberado assim que o pagamento é compensado.
+              </p>
+            )}
+          </form>
+        </div>
+      </section>
+
+      {/* --------------------------- Ferramentas -------------------------- */}
+      <section className="auth__section auth__section--alt" id="ferramentas">
+        <div className="auth__inner">
+          <div className="auth__section-head">
+            <span>O que a assinatura libera</span>
+            <h2>Dez ferramentas, um edital só</h2>
+            <p>
+              Não é um banco de questões antigas: cada item abaixo gera conteúdo novo a partir do
+              que o seu concurso cobra, no formato que a sua banca usa.
+            </p>
+          </div>
+
+          <div className="auth__tools">
+            {TOOLS.map(({ icon: Icon, title, text }) => (
+              <article className="auth__tool" key={title}>
+                <span className="auth__tool-icon"><Icon size={19} /></span>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
           </div>
         </div>
+      </section>
 
+      {/* -------------------------- Como funciona ------------------------- */}
+      <section className="auth__section" id="como-funciona">
+        <div className="auth__section-head">
+          <span>Como funciona</span>
+          <h2>Do edital ao primeiro simulado em três passos</h2>
+        </div>
+
+        <div className="auth__steps-grid">
+          <div className="auth__step">
+            <span className="auth__step-n">PASSO 01</span>
+            <h3>Informe o seu edital</h3>
+            <p>
+              Concurso, banca, ano e o conteúdo programático da matéria que você vai estudar.
+              É o que a IA usa para calibrar profundidade, estilo de questão e nível de exigência.
+            </p>
+          </div>
+          <div className="auth__step">
+            <span className="auth__step-n">PASSO 02</span>
+            <h3>Estude a aula gerada</h3>
+            <p>
+              Teoria explicada, analogias, mapa mental e questões comentadas. Se travar em algum
+              ponto, o tutor de IA responde dentro da própria aula.
+            </p>
+          </div>
+          <div className="auth__step">
+            <span className="auth__step-n">PASSO 03</span>
+            <h3>Treine e acompanhe</h3>
+            <p>
+              Resolva simulados e discursivas. Cada resultado entra no seu painel de desempenho e
+              revela o tema em que você mais erra — o que deve ser revisado primeiro.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------ Planos ---------------------------- */}
+      <section className="auth__section auth__section--alt" id="planos">
+        <div className="auth__inner">
+          <div className="auth__section-head">
+            <span>Planos</span>
+            <h2>Você escolhe quem paga a inteligência artificial</h2>
+            <p>
+              No plano Simples, você conecta a sua própria chave e usa os modelos que quiser,
+              inclusive os gratuitos. Nos planos Plus e Pro, a IA já vem inclusa e não há nada a configurar.
+            </p>
+          </div>
+
+          <div className="auth__tiers">
+            <div className="auth__tier">
+              <div className="auth__tier-top">
+                <h3>Simples</h3>
+                <Badge outline>chave própria</Badge>
+              </div>
+              <div className="auth__tier-price">{brl(PLAN_PRICES.mensal_simples)} <small>/mês</small></div>
+              <ul>
+                <li><Check size={15} /> Acesso a todas as ferramentas da plataforma</li>
+                <li><Check size={15} /> Você conecta a sua chave da OpenRouter em um clique</li>
+                <li><Check size={15} /> Modelos gratuitos disponíveis — sem custo de IA</li>
+                <li><Check size={15} /> Trimestral {brl(PLAN_PRICES.trimestral_simples)} · semestral {brl(PLAN_PRICES.semestral_simples)}</li>
+              </ul>
+              <Button block onClick={() => irParaCadastro('mensal_simples')}>Assinar o Simples</Button>
+              <p className="auth__tier-note">Prefere experimentar antes? O Teste Diário custa {brl(PLAN_PRICES.diario_teste)}.</p>
+            </div>
+
+            <div className="auth__tier is-featured">
+              <div className="auth__tier-top">
+                <h3>Plus</h3>
+                <Badge tone="accent" icon={<Sparkles size={11} />}>recomendado</Badge>
+              </div>
+              <div className="auth__tier-price">{brl(PLAN_PRICES.mensal_plus)} <small>/mês</small></div>
+              <ul>
+                <li><Check size={15} /> Tudo do plano Simples</li>
+                <li><Check size={15} /> IA inclusa: 3 milhões de tokens por mês</li>
+                <li><Check size={15} /> Nada para configurar — funciona desde o primeiro acesso</li>
+                <li><Check size={15} /> Trimestral {brl(PLAN_PRICES.trimestral_plus)} · semestral {brl(PLAN_PRICES.semestral_plus)}</li>
+              </ul>
+              <Button variant="primary" block onClick={() => irParaCadastro('mensal_plus')}>Assinar o Plus</Button>
+              <p className="auth__tier-note">Indicado para quem estuda todos os dias e gera muito conteúdo.</p>
+            </div>
+
+            <div className="auth__tier">
+              <div className="auth__tier-top">
+                <h3>Pro</h3>
+                <Badge outline icon={<Zap size={11} />}>volume alto</Badge>
+              </div>
+              <div className="auth__tier-price">{brl(PLAN_PRICES.trimestral_pro)} <small>/trimestre</small></div>
+              <ul>
+                <li><Check size={15} /> Tudo do plano Plus</li>
+                <li><Check size={15} /> IA inclusa: 6 milhões de tokens por mês</li>
+                <li><Check size={15} /> Folga para simulados longos e turmas de estudo</li>
+                <li><Check size={15} /> Semestral {brl(PLAN_PRICES.semestral_pro)}</li>
+              </ul>
+              <Button block onClick={() => irParaCadastro('trimestral_pro')}>Assinar o Pro</Button>
+              <p className="auth__tier-note">Disponível nos períodos trimestral e semestral.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------ Dúvidas --------------------------- */}
+      <section className="auth__section" id="duvidas">
+        <div className="auth__section-head">
+          <span>Dúvidas frequentes</span>
+          <h2>Antes de assinar</h2>
+        </div>
+
+        <div className="auth__faq">
+          {FAQ.map(({ q, a }) => (
+            <details key={q}>
+              <summary>{q}</summary>
+              <p>{a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      {/* ---------------------------- Chamada ----------------------------- */}
+      <div className="auth__cta">
+        <div>
+          <h2>Comece pelo edital que você já tem</h2>
+          <p>Crie a conta, informe o conteúdo programático e gere a primeira aula ainda hoje.</p>
+        </div>
+        <Button variant="primary" size="lg" onClick={() => irParaCadastro()} icon={<ArrowRight size={17} />}>
+          Criar minha conta
+        </Button>
       </div>
     </div>
   );

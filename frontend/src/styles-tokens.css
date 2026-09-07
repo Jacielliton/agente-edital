@@ -1,0 +1,146 @@
+/* =========================================================================
+   AgenteIA Edital — Design Tokens
+   Fonte única de verdade para cor, espaco, raio, sombra e tipografia.
+   Os nomes "legados" (--primary, --card-bg, --text-main...) sao mantidos
+   como alias para que as telas antigas continuem funcionando sem alteracao.
+   ========================================================================= */
+
+:root {
+  /* ---------- Tipografia ---------- */
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-xs:   0.75rem;   /* 12 */
+  --text-sm:   0.8125rem; /* 13 */
+  --text-base: 0.9375rem; /* 15 */
+  --text-md:   1rem;      /* 16 */
+  --text-lg:   1.125rem;  /* 18 */
+  --text-xl:   1.375rem;  /* 22 */
+  --text-2xl:  1.625rem;  /* 26 */
+  --text-3xl:  2rem;      /* 32 */
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-normal: 1.6;
+
+  /* ---------- Espacamento (escala 4/8) ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* ---------- Raio ---------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* ---------- Layout ---------- */
+  --sidebar-w: 232px;
+  --topbar-h: 60px;
+  --content-max: 1280px;
+
+  /* ---------- Paleta base (tema claro) ---------- */
+  --accent: #1D5BFF;
+  --accent-strong: #164BD8;
+  --accent-soft: #EBF1FF;
+  --accent-fg: #FFFFFF;
+
+  --ok: #12855F;
+  --ok-soft: #E4F5EE;
+  --warn: #B4720B;
+  --warn-soft: #FDF3E2;
+  --danger: #C2373A;
+  --danger-soft: #FDEDED;
+
+  --surface: #F4F6F9;   /* fundo da pagina */
+  --surface-2: #FFFFFF; /* cards e paineis */
+  --surface-3: #EDF1F7; /* trilhos, barras, hover suave */
+
+  --sidebar: #101B33;
+  --sidebar-fg: #8FA0BF;
+  --sidebar-fg-strong: #FFFFFF;
+  --sidebar-label: #5C6C8C;
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-active: rgba(29, 91, 255, 0.18);
+  --sidebar-line: rgba(255, 255, 255, 0.09);
+
+  --fg: #0C1220;      /* texto principal */
+  --fg-2: #525E72;    /* texto secundario */
+  --fg-3: #8E99AB;    /* texto de apoio */
+  --line: #E5E9F0;    /* bordas */
+  --line-strong: #D3DAE5;
+
+  --shadow-1: 0 1px 2px rgba(12, 18, 32, .05);
+  --shadow-2: 0 1px 3px rgba(12, 18, 32, .06), 0 8px 20px -12px rgba(12, 18, 32, .22);
+  --shadow-3: 0 2px 6px rgba(12, 18, 32, .08), 0 20px 40px -20px rgba(12, 18, 32, .30);
+
+  --ring: 0 0 0 3px rgba(29, 91, 255, .18);
+
+  /* ---------- Alias legados (nao remover) ---------- */
+  --primary: var(--accent);
+  --primary-hover: var(--accent-strong);
+  --primary-light: var(--accent-soft);
+  --bg: var(--surface);
+  --card-bg: var(--surface-2);
+  --header-bg: var(--surface-2);
+  --input-bg: var(--surface-2);
+  --hover-bg: var(--surface-3);
+  --text-main: var(--fg);
+  --text-secondary: var(--fg-2);
+  --text-muted: var(--fg-3);
+  --heading-color: var(--fg);
+  --border: var(--line);
+  --success-bg: var(--ok-soft);
+  --success-text: var(--ok);
+  --error-bg: var(--danger-soft);
+  --error-text: var(--danger);
+  --radius: var(--radius-md);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+}
+
+/* ---------- Tema escuro ---------- */
+html.dark {
+  --accent: #4C82FF;
+  --accent-strong: #6E9CFF;
+  --accent-soft: rgba(76, 130, 255, .16);
+  --accent-fg: #06122B;
+
+  --ok: #3FCF8E;
+  --ok-soft: rgba(63, 207, 142, .14);
+  --warn: #E9A13B;
+  --warn-soft: rgba(233, 161, 59, .14);
+  --danger: #F0666A;
+  --danger-soft: rgba(240, 102, 106, .14);
+
+  --surface: #0B111C;
+  --surface-2: #131C2B;
+  --surface-3: #1B2637;
+
+  --sidebar: #080D16;
+  --sidebar-fg: #8494AF;
+  --sidebar-fg-strong: #FFFFFF;
+  --sidebar-label: #55637C;
+  --sidebar-hover: rgba(255, 255, 255, .05);
+  --sidebar-active: rgba(76, 130, 255, .20);
+  --sidebar-line: rgba(255, 255, 255, .07);
+
+  --fg: #E9EDF4;
+  --fg-2: #A3AFC2;
+  --fg-3: #6F7C91;
+  --line: #222E42;
+  --line-strong: #31405A;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+  --shadow-2: 0 1px 3px rgba(0, 0, 0, .45), 0 10px 24px -14px rgba(0, 0, 0, .80);
+  --shadow-3: 0 2px 8px rgba(0, 0, 0, .50), 0 24px 48px -24px rgba(0, 0, 0, .90);
+
+  --ring: 0 0 0 3px rgba(76, 130, 255, .28);
+
+  --heading-color: var(--fg);
+}

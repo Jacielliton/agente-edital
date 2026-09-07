@@ -3,6 +3,31 @@ import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 import LessonContent from "../components/LessonContent";
 
+const RECENTES_KEY = "aulas_recentes";
+const MAX_RECENTES = 8;
+
+// Guarda no navegador as ultimas aulas abertas para alimentar o
+// "Continuar de onde parou" do Dashboard. Falhas aqui sao silenciosas:
+// e uma conveniencia, nunca deve derrubar a tela da aula.
+function registrarAcesso(plan, id) {
+  try {
+    const raw = localStorage.getItem(RECENTES_KEY);
+    const atual = raw ? JSON.parse(raw) : [];
+    const lista = Array.isArray(atual) ? atual : [];
+    const entrada = {
+      id: String(plan?.id ?? id),
+      title: plan?.title || "",
+      concurso: plan?.concurso || "",
+      banca: plan?.banca || "",
+      ts: Date.now(),
+    };
+    const proxima = [entrada, ...lista.filter((r) => String(r.id) !== entrada.id)].slice(0, MAX_RECENTES);
+    localStorage.setItem(RECENTES_KEY, JSON.stringify(proxima));
+  } catch {
+    /* localStorage indisponivel (aba anonima, cota cheia): segue sem historico */
+  }
+}
+
 export default function SingleLesson() {
   const { id } = useParams();
   const [data, setData] = useState(null);
@@ -27,7 +52,10 @@ export default function SingleLesson() {
         if (!res.ok) throw new Error("Erro ao carregar");
         return res.json();
       })
-      .then((json) => setData(json))
+      .then((json) => {
+        setData(json);
+        registrarAcesso(json, id);
+      })
       .catch((e) => setError("Aula não encontrada ou erro de conexão."));
   }, [id]);
 
@@ -37,7 +65,7 @@ export default function SingleLesson() {
         <div className="error" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '15px', borderRadius: '8px', marginTop: '20px' }}>
           <AlertCircle size={20} /> {error}
         </div>
-        <Link to="/dashboard" className="btn primary" style={{ marginTop: '20px' }}>Voltar ao Início</Link>
+        <Link to="/dashboard" className="ui-btn ui-btn--primary" style={{ marginTop: '20px' }}>Voltar ao Início</Link>
       </div>
     );
   }
@@ -55,8 +83,8 @@ export default function SingleLesson() {
   return (
     <div className="container">
       <div style={{ marginBottom: "1.5rem", display: 'flex', alignItems: 'center' }}>
-        <Link to="/dashboard" className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'var(--card-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', fontWeight: 'bold' }}>
-          <ArrowLeft size={16} /> Voltar para Dashboard
+        <Link to="/dashboard" className="ui-btn">
+          <ArrowLeft size={16} /> Voltar para Minhas Aulas
         </Link>
       </div>
       

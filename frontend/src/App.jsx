@@ -1,234 +1,150 @@
-import React, { useState, useEffect, Suspense, lazy } from "react";
+import React, { Suspense, lazy } from "react";
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
-import { LayoutDashboard, PlusCircle, Settings, BookOpen, LogOut, LogIn, Moon, Sun, Menu, X, UserCircle, Wrench, Instagram, Youtube } from "lucide-react";
+import { Instagram, Youtube, SearchX } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import AppShell from "./components/AppShell";
+import { Button, EmptyState, Skeleton } from "./components/ui";
 import "./App.css";
 
 // 1. LAZY LOADING (Code Splitting)
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
-const GerenciarAulas = lazy(() => import("./pages/GerenciarAulas")); 
+const GerenciarAulas = lazy(() => import("./pages/GerenciarAulas"));
 const SingleLesson = lazy(() => import("./pages/SingleLesson"));
 const Generator = lazy(() => import("./pages/Generator"));
 const Login = lazy(() => import("./pages/Login"));
-const Performance = lazy(() => import('./components/Performance'));
+const Performance = lazy(() => import("./components/Performance"));
 const OpenRouterCallback = lazy(() => import("./pages/OpenRouterCallback"));
 const Profile = lazy(() => import("./pages/Profile"));
 const TreinoDiscursiva = lazy(() => import("./pages/TreinoDiscursiva"));
 const Ferramentas = lazy(() => import("./pages/Ferramentas"));
-const Planos = lazy(() => import("./pages/Planos")); 
+const Planos = lazy(() => import("./pages/Planos"));
 const GabariteCespe = lazy(() => import("./pages/GabariteCespe"));
 const GabariteLogica = lazy(() => import("./pages/GabariteLogica"));
-const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe")); 
+const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe"));
 const GabariteDireito = lazy(() => import("./pages/GabariteDireito"));
 const GabariteIngles = lazy(() => import("./pages/GabariteIngles"));
 const GabariteJava = lazy(() => import("./pages/GabariteJava"));
 
-// Componente de Carregamento para o Suspense
+// Esqueleto de carregamento: mesma silhueta da pagina que vai entrar,
+// para a troca de rota nao "piscar" um vazio.
 const LoadingFallback = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh', color: 'var(--text-secondary)' }}>
-    <div className="spinner"></div> Carregando...
+  <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+    <Skeleton width="240px" height={30} />
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--space-3)" }}>
+      {[0, 1, 2, 3].map((i) => <Skeleton key={i} height={94} radius="var(--radius-md)" />)}
+    </div>
+    <Skeleton height={280} radius="var(--radius-md)" />
   </div>
 );
 
-// Rota 404 (Página Não Encontrada)
 const NotFound = () => (
-  <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-main)' }}>
-    <h2>404 - Página Não Encontrada</h2>
-    <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>O caminho que tentou acessar não existe.</p>
-    <Link to="/" className="btn primary">Voltar ao Início</Link>
-  </div>
+  <EmptyState
+    icon={<SearchX size={22} />}
+    title="Página não encontrada"
+    description="O caminho que você tentou acessar não existe ou foi movido."
+    action={<Button variant="primary" to="/">Voltar para Minhas Aulas</Button>}
+  />
 );
 
-// Componente PrivateRoute
 const PrivateRoute = ({ children, adminOnly = false, requireManageLessons = false }) => {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" />;
-  
-  if (user.role === 'admin') return children;
-  if (adminOnly && user.role !== 'admin') return <Navigate to="/" />;
+
+  if (user.role === "admin") return children;
+  if (adminOnly && user.role !== "admin") return <Navigate to="/" />;
   if (requireManageLessons && !user.can_manage_lessons) return <Navigate to="/" />;
 
   return children;
 };
 
-// Componente NavBar
-function NavBar() {
-  const { user, logout } = useAuth();
-  const podeGerenciar = user?.role === 'admin' || user?.can_manage_lessons === true;
-  const location = useLocation();
-
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
-
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDark]);
-
-  // Fecha o menu mobile automaticamente ao mudar de rota
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [location]);
-
+// Rodape simples das paginas publicas (login e planos), que nao usam o AppShell.
+function PublicFooter() {
   return (
-    <nav className="navbar">
-      <div className="nav-container">
-        <Link to="/" className="nav-logo">AgenteIA Edital</Link>
-        
-        {/* Botão Hambúrguer (Mobile) */}
-        <button 
-          className="mobile-menu-btn" 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', display: 'none' }}
-        >
-          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-
-        <div className={`nav-links ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
-          {/* Botão de Modo Noturno */}
-          <button 
-            onClick={() => setIsDark(!isDark)} 
-            className="nav-item" 
-            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-            title="Alternar Tema"
-          >
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            <span className="mobile-only-text" style={{ display: 'none' }}>Alternar Tema</span>
-          </button>
-          
-          {user ? (
-            <>
-              <Link to="/" className="nav-item"><LayoutDashboard size={18}/> Dashboard</Link>
-              
-              {/* NOVA OPÇÃO NO MENU: HUB DE FERRAMENTAS */}
-              <Link to="/ferramentas" className="nav-item"><Wrench size={18}/> Utilitários</Link>
-
-              {podeGerenciar && (
-                <>
-                  <Link to="/generator" className="nav-item"><PlusCircle size={18}/> Nova Aula</Link>
-                  <Link to="/gerenciar" className="nav-item"><BookOpen size={18}/> Gerenciar Aulas</Link>
-                </>
-              )}
-
-              {user.role === 'admin' && (
-                <Link to="/admin" className="nav-item"><Settings size={18}/> Painel Admin</Link>
-              )}
-
-              {/* Link para a página de perfil */}
-              <Link to="/profile" className="nav-item user-info" style={{ cursor: 'pointer', transition: 'color 0.2s' }} title="Acessar Perfil">
-                <UserCircle size={18}/> <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{user.email.split('@')[0]}</span>
-              </Link>
-
-              <button onClick={logout} className="nav-item" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--error-text)' }}>
-                <LogOut size={18}/> Sair
-              </button>
-            </>
-          ) : (
-            <Link to="/" className="nav-item"><LogIn size={18}/> Entrar</Link>
-          )}
-        </div>
-      </div>
-    </nav>
+    <footer
+      style={{
+        borderTop: "1px solid var(--line)",
+        background: "var(--surface-2)",
+        padding: "var(--space-5)",
+        textAlign: "center",
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-3)",
+        alignItems: "center",
+        color: "var(--fg-3)",
+        fontSize: "var(--text-xs)",
+      }}
+    >
+      <span style={{ color: "var(--fg-2)" }}>
+        A IA pode cometer erros. Na dúvida, consulte sempre o material oficial do edital.
+      </span>
+      <span style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
+        <a href="https://www.instagram.com/tecnopriv.top/" target="_blank" rel="noopener noreferrer" title="Instagram" style={{ color: "var(--fg-3)", display: "flex" }}>
+          <Instagram size={20} />
+        </a>
+        <a href="https://www.youtube.com/@tecnopriv.top1" target="_blank" rel="noopener noreferrer" title="YouTube" style={{ color: "var(--fg-3)", display: "flex" }}>
+          <Youtube size={22} />
+        </a>
+      </span>
+      <span>© {new Date().getFullYear()} AgenteIA Edital. Todos os direitos reservados.</span>
+    </footer>
   );
 }
 
-// Componente Footer (Rodapé)
-function Footer() {
-  return (
-    <footer style={{
-      borderTop: '1px solid var(--border)',
-      backgroundColor: 'var(--header-bg)',
-      padding: '2rem 1.5rem',
-      textAlign: 'center',
-      marginTop: 'auto' // Garante que fique no final da página
-    }}>
-      <div style={{ marginBottom: '1rem', color: 'var(--text-secondary)', fontWeight: '400' }}>
-        A IA pode cometer erros, na dúvida, consulte sempre o material oficial do edital.
+// Decide o "chrome" da pagina: quem esta logado navega dentro do AppShell;
+// login e planos continuam como paginas de largura total.
+function Chrome({ children }) {
+  const { user } = useAuth();
+  const { pathname } = useLocation();
+  const isPublicPage = pathname === "/login" || pathname === "/planos";
+
+  if (!user || isPublicPage) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--surface)" }}>
+        <div style={{ flex: 1 }}>{children}</div>
+        <PublicFooter />
       </div>
-      
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        <a 
-          href="https://www.instagram.com/tecnopriv.top/" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          style={{ color: 'var(--text-secondary)', transition: 'color 0.2s' }}
-          onMouseOver={(e) => e.currentTarget.style.color = '#e1306c'}
-          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-          title="Instagram Tecnopriv"
-        >
-          <Instagram size={28} />
-        </a>
-        <a 
-          href="https://www.youtube.com/@tecnopriv.top1" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          style={{ color: 'var(--text-secondary)', transition: 'color 0.2s' }}
-          onMouseOver={(e) => e.currentTarget.style.color = '#ff0000'}
-          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-          title="YouTube Tecnopriv"
-        >
-          <Youtube size={32} />
-        </a>
-      </div>
-      
-      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-        &copy; {new Date().getFullYear()} AgenteIA Edital. Todos os direitos reservados.
-      </div>
-    </footer>
-  );
+    );
+  }
+
+  return <AppShell>{children}</AppShell>;
 }
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        {/* Container flex para garantir que o rodapé fique no fim (Sticky Footer) */}
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-          
-          <NavBar />
-          
-          {/* flex: 1 faz o conteúdo principal empurrar o rodapé para baixo */}
-          <div className="main-content" style={{ flex: 1, paddingBottom: '3rem' }}>
-            <Suspense fallback={<LoadingFallback />}>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/planos" element={<Planos />} />
-                <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-                <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-                <Route path="/aula/:id" element={<PrivateRoute><SingleLesson /></PrivateRoute>} />
-                <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
-                <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
-                <Route path="/callback" element={<PrivateRoute><OpenRouterCallback /></PrivateRoute>} />
-                
-                {/* ROTAS DAS FERRAMENTAS */}
-                <Route path="/ferramentas" element={<PrivateRoute><Ferramentas /></PrivateRoute>} />
-                <Route path="/treino" element={<PrivateRoute><TreinoDiscursiva /></PrivateRoute>} />
-                <Route path="/gabarite-cespe" element={<PrivateRoute><GabariteCespe /></PrivateRoute>} />
-                <Route path="/gabarite-logica" element={<PrivateRoute><GabariteLogica /></PrivateRoute>} />
-                <Route path="/gabarite-sintaxe" element={<PrivateRoute><GabariteSintaxe /></PrivateRoute>} />
-                <Route path="/gabarite-direito" element={<PrivateRoute><GabariteDireito /></PrivateRoute>} />
-                <Route path="/gabarite-ingles" element={<PrivateRoute><GabariteIngles /></PrivateRoute>} />
-                <Route path="/gabarite-java" element={<PrivateRoute><GabariteJava /></PrivateRoute>} /> 
-                <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
-                <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
-                
-                <Route path="/admin" element={<PrivateRoute adminOnly={true}><AdminPanel /></PrivateRoute>} />
+        <Chrome>
+          <Suspense fallback={<LoadingFallback />}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/planos" element={<Planos />} />
+              <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+              <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+              <Route path="/aula/:id" element={<PrivateRoute><SingleLesson /></PrivateRoute>} />
+              <Route path="/performance" element={<PrivateRoute><Performance /></PrivateRoute>} />
+              <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+              <Route path="/callback" element={<PrivateRoute><OpenRouterCallback /></PrivateRoute>} />
 
-                {/* ROTA 404 (Catch-all) */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </div>
+              {/* ROTAS DAS FERRAMENTAS */}
+              <Route path="/ferramentas" element={<PrivateRoute><Ferramentas /></PrivateRoute>} />
+              <Route path="/treino" element={<PrivateRoute><TreinoDiscursiva /></PrivateRoute>} />
+              <Route path="/gabarite-cespe" element={<PrivateRoute><GabariteCespe /></PrivateRoute>} />
+              <Route path="/gabarite-logica" element={<PrivateRoute><GabariteLogica /></PrivateRoute>} />
+              <Route path="/gabarite-sintaxe" element={<PrivateRoute><GabariteSintaxe /></PrivateRoute>} />
+              <Route path="/gabarite-direito" element={<PrivateRoute><GabariteDireito /></PrivateRoute>} />
+              <Route path="/gabarite-ingles" element={<PrivateRoute><GabariteIngles /></PrivateRoute>} />
+              <Route path="/gabarite-java" element={<PrivateRoute><GabariteJava /></PrivateRoute>} />
+              <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
+              <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
 
-          <Footer />
+              <Route path="/admin" element={<PrivateRoute adminOnly={true}><AdminPanel /></PrivateRoute>} />
 
-        </div>
+              {/* ROTA 404 (Catch-all) */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </Chrome>
       </BrowserRouter>
     </AuthProvider>
   );

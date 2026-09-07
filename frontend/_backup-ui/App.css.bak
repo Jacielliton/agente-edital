@@ -1,22 +1,89 @@
-/* =========================================================================
-   AgenteIA Edital — estilos de aplicacao.
-   Cor, espaco, raio e tipografia vivem em styles-tokens.css (importado por
-   index.css). Este arquivo so define componentes e telas.
-   ========================================================================= */
+:root {
+  /* Paleta de Cores Light (Slate & Blue) */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+
+  --bg: #f8fafc;
+  --card-bg: #ffffff;
+  --header-bg: #ffffff;
+  --input-bg: #ffffff;
+  --hover-bg: #f1f5f9;
+
+  --text-main: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --heading-color: #1e3a8a;
+
+  --border: #e2e8f0;
+  --success-bg: #f0fdf4;
+  --success-text: #15803d;
+  --error-bg: #fef2f2;
+  --error-text: #b91c1c;
+
+  --radius: 12px;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* PALETA MODO ESCURO */
+html.dark {
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-light: rgba(59, 130, 246, 0.15);
+
+  --bg: #0f172a;          /* Fundo Slate escuro */
+  --card-bg: #1e293b;     /* Cartões um tom mais claros */
+  --header-bg: #1e293b;
+  --input-bg: #020617;    /* Inputs quase pretos */
+  --hover-bg: #334155;
+
+  --text-main: #f8fafc;   /* Texto branco/gelo */
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --heading-color: #60a5fa; /* Títulos em azul claro */
+
+  --border: #334155;      /* Bordas discretas */
+  --success-bg: rgba(21, 128, 61, 0.2);
+  --success-text: #4ade80;
+  --error-bg: rgba(185, 28, 28, 0.2);
+  --error-text: #f87171;
+}
+
+/* Transição suave ao mudar de tema */
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+  min-height: 100%;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
 
 #root {
   width: 100%;
-  min-height: 100vh;
+  min-height: 100vh;  
+  justify-content: center;
+  align-items: flex-start;
+  padding: 3rem 1.5rem;
 }
 
-/* Container padrao das paginas internas. O AppShell ja aplica o respiro
-   externo, entao aqui so limitamos a largura de leitura. */
 /* --- Layout Principal --- */
 .container {
-  width: 100%;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 0;
+  width: 100%; 
+  max-width: 1000px;
+  margin: 0 auto; 
+  padding: 0 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 2rem;

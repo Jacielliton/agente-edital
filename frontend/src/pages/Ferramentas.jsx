@@ -4,7 +4,7 @@ import { PenTool, Wrench, Lock, Brain, Calculator, FileText, Scale, Type, Coffee
 
 export default function Ferramentas() {
   return (
-    <div className="container" style={{ padding: '2rem', maxWidth: '1000px', margin: '0 auto' }}>
+    <div className="container">
       <header style={{ marginBottom: '2rem' }}>
         <h1 style={{ color: 'var(--heading-color)', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Wrench size={32} color="var(--primary)" /> Central de Ferramentas
