@@ -74,12 +74,20 @@ export default function Generator() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
-  // Histórico e Salvamento
+  // Contexto da prova: pedido ANTES de gerar, porque a banca muda o estilo da
+  // aula e das questoes. Os mesmos valores sao reaproveitados ao salvar.
   const [saveTitle, setSaveTitle] = useState("");
-  const [saveAno, setSaveAno] = useState("");          
-  const [saveBanca, setSaveBanca] = useState("");       
-  const [saveConcurso, setSaveConcurso] = useState(""); 
+  const [saveAno, setSaveAno] = useState("");
+  const [saveBanca, setSaveBanca] = useState("");
+  const [saveConcurso, setSaveConcurso] = useState("");
+  const [saveCargo, setSaveCargo] = useState("");
+  const [qtdQuestoes, setQtdQuestoes] = useState(10);
   const [saveVisibility, setSaveVisibility] = useState("public");
+
+  // Geracao modulo a modulo
+  const [estrutura, setEstrutura] = useState(null);   // { modulos, instrucoes, area... }
+  const [falhas, setFalhas] = useState([]);           // modulos que nao geraram
+  const [refazendo, setRefazendo] = useState(null);   // indice em regeneracao
 
   const timeoutsRef = useRef([]);
 
@@ -167,9 +175,6 @@ export default function Generator() {
       if (resp.ok) {
         setStatus("Salvo no banco com sucesso! ✅");
         setSaveTitle("");
-        setSaveAno("");       
-        setSaveBanca("");     
-        setSaveConcurso("");  
       } else {
         const errData = await resp.json().catch(() => ({}));
         setError(errData.detail || "Erro ao salvar no banco.");
@@ -180,58 +185,138 @@ export default function Generator() {
     }
   };
 
+  // Chamada autenticada, usada por todas as etapas da geracao.
+  const postJson = async (rota, corpo) => {
+    const token = getAuthToken();
+    const resp = await fetch(`${API_URL}${rota}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": token ? `Bearer ${token}` : "",
+      },
+      body: JSON.stringify(corpo),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data?.detail || "Falha na comunicação com o servidor.");
+    return data;
+  };
+
+  // Dados da prova que acompanham todas as etapas.
+  const contextoDaProva = () => ({
+    model: userModel || model || null,
+    api_key: userApiKey || null,
+    banca: saveBanca.trim() || null,
+    concurso: saveConcurso.trim() || null,
+    cargo: saveCargo.trim() || null,
+    ano: saveAno.trim() || null,
+  });
+
+  const gerarUmModulo = (est, indice) =>
+    postJson("/analyze/modulo", {
+      ...contextoDaProva(),
+      modulo: est.modulos[indice],
+      area: est.area_identificada,
+      instrucoes: est.instrucoes,
+      texto_edital: text,
+      question_format: questionFormat,
+      question_level: questionLevel,
+      qtd_questoes: Number(qtdQuestoes) || 10,
+    });
+
+  // A geracao acontece em etapas: primeiro o edital vira uma lista de modulos,
+  // depois cada modulo e gerado numa chamada propria. Assim o progresso e real,
+  // uma falha custa um modulo em vez do edital inteiro, e da para refazer so ele.
   const run = async () => {
     if (text.trim().length < 50) {
       setError("⚠️ O texto do edital é muito curto. Cole pelo menos um parágrafo válido.");
       return;
     }
+    if (!saveBanca.trim() || !saveConcurso.trim() || !saveAno.trim()) {
+      setError("⚠️ Informe banca, concurso e ano antes de gerar — é o que faz a IA escrever no padrão certo.");
+      return;
+    }
 
     setError("");
     setResult(null);
+    setEstrutura(null);
+    setFalhas([]);
     setLoading(true);
-    setProgress(5); // Inicia progresso
-    setStatus("Iniciando análise do edital...");
-
-    timeoutsRef.current.forEach((id) => clearTimeout(id));
-    timeoutsRef.current = [];
-
-    // <-- NOVO: Progressões de status com preenchimento de barra simulada
-    timeoutsRef.current.push(setTimeout(() => { setStatus("Arquiteto IA: mapeando módulos e estrutura..."); setProgress(25); }, 1500));
-    timeoutsRef.current.push(setTimeout(() => { setStatus("Pesquisador IA: aprofundando conteúdo teórico..."); setProgress(55); }, 5000));
-    timeoutsRef.current.push(setTimeout(() => { setStatus("Professor IA: criando exemplos e analogias..."); setProgress(75); }, 10000));
-    timeoutsRef.current.push(setTimeout(() => { setStatus("Banca IA: elaborando questões e revisando..."); setProgress(90); }, 15000));
+    setProgress(0);
+    setStatus("Lendo o edital e separando os módulos...");
 
     try {
-      const token = getAuthToken();
-      const resp = await fetch(`${API_URL}/analyze`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : ""
-        },
-        body: JSON.stringify({ 
-          text, 
-          model: userModel || model || null, 
-          question_format: questionFormat,
-          question_level: questionLevel,
-          api_key: userApiKey || null 
-        }),
+      // ---------- Etapa 1: estrutura ----------
+      const est = await postJson("/analyze/estrutura", { ...contextoDaProva(), text });
+      const modulos = safeArray(est?.modulos);
+      if (modulos.length === 0) throw new Error("Não foi possível identificar módulos neste texto.");
+
+      setEstrutura(est);
+      if (est.truncado) {
+        setError(`O edital tem mais de ${est.limite_modulos} tópicos. Serão gerados os ${est.limite_modulos} primeiros — gere o restante numa segunda aula.`);
+      }
+
+      // ---------- Etapa 2: um módulo por vez ----------
+      const aulas = [];
+      const naoGerados = [];
+
+      for (let i = 0; i < modulos.length; i++) {
+        const titulo = safeString(modulos[i]?.titulo) || `Módulo ${i + 1}`;
+        setStatus(`Módulo ${i + 1} de ${modulos.length}: ${titulo}`);
+        setProgress(Math.round((i / modulos.length) * 95));
+
+        try {
+          const aula = await gerarUmModulo(est, i);
+          aulas.push(aula);
+        } catch (e) {
+          console.error(`Falha no módulo ${i + 1}`, e);
+          naoGerados.push({ indice: i, titulo, mensagem: e.message });
+        }
+
+        // Mostra o que já ficou pronto, mesmo antes de terminar tudo.
+        setResult({
+          schema_version: 1,
+          resumo_cargo: est.resumo_cargo,
+          area_identificada: est.area_identificada,
+          aulas: [...aulas],
+          plano_estudo: "",
+        });
+      }
+
+      setFalhas(naoGerados);
+
+      if (aulas.length === 0) {
+        throw new Error("Nenhum módulo pôde ser gerado. Verifique a sua chave de IA e tente novamente.");
+      }
+
+      // ---------- Etapa 3: plano de estudo ----------
+      setStatus("Montando o plano de estudo...");
+      setProgress(97);
+      const plano = await postJson("/analyze/plano", {
+        aulas,
+        area: est.area_identificada,
+        model: userModel || model || null,
+        api_key: userApiKey || null,
+      }).catch(() => ({ plano_estudo: "" }));
+
+      setResult({
+        schema_version: 1,
+        resumo_cargo: est.resumo_cargo,
+        area_identificada: est.area_identificada,
+        aulas,
+        plano_estudo: plano?.plano_estudo || "",
       });
 
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data?.detail || "Erro ao chamar API.");
-
       setProgress(100);
-      setResult(data);
-      setStatus("Conteúdo gerado com sucesso! ✅");
-      
-      // Limpa o rascunho após sucesso
-      localStorage.removeItem("generator_draft_text");
-      
-      setTimeout(() => {
-        document.getElementById('gerador-resultado')?.scrollIntoView({ behavior: 'smooth' });
-      }, 500);
+      setStatus(
+        naoGerados.length > 0
+          ? `Gerado com ${naoGerados.length} módulo(s) com falha — dá para refazer só eles abaixo.`
+          : "Conteúdo gerado com sucesso!"
+      );
 
+      localStorage.removeItem("generator_draft_text");
+      setTimeout(() => {
+        document.getElementById("gerador-resultado")?.scrollIntoView({ behavior: "smooth" });
+      }, 400);
     } catch (e) {
       console.error(e);
       setError(e.message || "Erro inesperado ao gerar a aula.");
@@ -239,8 +324,31 @@ export default function Generator() {
       setProgress(0);
     } finally {
       setLoading(false);
-      timeoutsRef.current.forEach((id) => clearTimeout(id));
-      timeoutsRef.current = [];
+    }
+  };
+
+  // Refaz um módulo isolado, sem regerar (nem pagar) o edital inteiro.
+  const refazerModulo = async (indice) => {
+    if (!estrutura) return;
+    setRefazendo(indice);
+    setError("");
+    try {
+      const aula = await gerarUmModulo(estrutura, indice);
+
+      setResult((anterior) => {
+        const aulas = safeArray(anterior?.aulas).slice();
+        const posicao = aulas.findIndex((a) => a?.meta_modulo?.titulo === estrutura.modulos[indice]?.titulo);
+        if (posicao >= 0) aulas[posicao] = aula;
+        else aulas.push(aula);
+        return { ...(anterior || {}), aulas };
+      });
+
+      setFalhas((anterior) => anterior.filter((f) => f.indice !== indice));
+      setStatus("Módulo refeito com sucesso.");
+    } catch (e) {
+      setError(`Não foi possível refazer o módulo: ${e.message}`);
+    } finally {
+      setRefazendo(null);
     }
   };
 
@@ -250,10 +358,30 @@ export default function Generator() {
     setError("");
     try {
       const data = await readJsonFile(file);
+
+      // Sem validacao, um arquivo em outro formato derruba a tela de aula.
+      const aulas = safeArray(data?.aulas);
+      if (aulas.length === 0) {
+        throw new Error("O arquivo não tem a lista de aulas no formato esperado.");
+      }
+      const incompletos = aulas
+        .map((a, i) => (safeString(a?.titulo).trim() ? null : i + 1))
+        .filter((x) => x !== null);
+      if (incompletos.length === aulas.length) {
+        throw new Error("Nenhum módulo do arquivo tem título — o formato não confere.");
+      }
+
       setResult(data);
+      setEstrutura(null);
+      setFalhas([]);
+      setStatus(
+        incompletos.length > 0
+          ? `Arquivo carregado. Atenção: ${incompletos.length} módulo(s) estão incompletos.`
+          : "Arquivo carregado."
+      );
     } catch (e) {
       console.error(e);
-      setError("Arquivo JSON inválido ou corrompido.");
+      setError(e.message || "Arquivo JSON inválido ou corrompido.");
     } finally {
       ev.target.value = "";
     }
@@ -347,7 +475,28 @@ export default function Generator() {
           />
         </div>
 
-        <div className="row" style={{ display: 'flex', gap: '15px', marginTop: '15px' }}>
+        {/* A banca precisa ser conhecida ANTES da geração: é ela que define o
+            estilo do enunciado, das alternativas e da pegadinha. */}
+        <div className="row" style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 150px' }}>
+            <label className="label">Banca *</label>
+            <input className="input" placeholder="Ex: CEBRASPE, FGV, FCC" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} disabled={loading} />
+          </div>
+          <div style={{ flex: '2 1 200px' }}>
+            <label className="label">Concurso *</label>
+            <input className="input" placeholder="Ex: DATAPREV, Polícia Federal" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} disabled={loading} />
+          </div>
+          <div style={{ flex: '1 1 150px' }}>
+            <label className="label">Cargo</label>
+            <input className="input" placeholder="Ex: Analista de TI" value={saveCargo} onChange={e => setSaveCargo(e.target.value)} disabled={loading} />
+          </div>
+          <div style={{ flex: '0 1 110px' }}>
+            <label className="label">Ano *</label>
+            <input className="input" placeholder="2026" value={saveAno} onChange={e => setSaveAno(e.target.value)} disabled={loading} />
+          </div>
+        </div>
+
+        <div className="row" style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
           <div style={{ flex: 1 }}>
             <label className="label">Nível das Questões</label>
             <select 
@@ -374,18 +523,35 @@ export default function Generator() {
               <option value="Certo/Errado">Certo / Errado</option>
             </select>
           </div>
+          <div style={{ flex: '0 1 160px' }}>
+            <label className="label">Questões por módulo</label>
+            <input
+              className="input"
+              type="number"
+              min="3"
+              max="20"
+              value={qtdQuestoes}
+              onChange={(e) => setQtdQuestoes(e.target.value)}
+              disabled={loading}
+            />
+          </div>
         </div>
 
         {/* FEEDBACK VISUAL DE CARREGAMENTO */}
         {loading && (
           <div style={{ marginTop: '20px', background: 'var(--bg)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-              <span>{status}</span>
-              <span>{progress}%</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--primary)', gap: '15px' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status}</span>
+              <span style={{ flex: 'none' }}>{progress}%</span>
             </div>
             <div style={{ width: '100%', backgroundColor: 'var(--border)', height: '10px', borderRadius: '5px', overflow: 'hidden' }}>
               <div style={{ width: `${progress}%`, backgroundColor: 'var(--primary)', height: '100%', transition: 'width 0.5s ease-out' }}></div>
             </div>
+            {estrutura && (
+              <p style={{ margin: '10px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Cada módulo é gerado numa chamada própria. Você pode acompanhar o resultado aparecendo abaixo conforme fica pronto.
+              </p>
+            )}
           </div>
         )}
 
@@ -404,6 +570,33 @@ export default function Generator() {
           </label>
         </div>
 
+        {/* Módulos que falharam: refazer só eles, sem regerar o edital todo. */}
+        {falhas.length > 0 && !loading && (
+          <div style={{ marginTop: '20px', padding: '15px', borderRadius: '8px', border: '1px solid var(--warn, #B4720B)', background: 'var(--warn-soft, #FDF3E2)' }}>
+            <strong style={{ display: 'block', marginBottom: '10px', color: 'var(--warn, #B4720B)' }}>
+              {falhas.length} módulo(s) não foram gerados
+            </strong>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {falhas.map((f) => (
+                <div key={f.indice} style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                    {f.titulo}
+                    <span style={{ color: 'var(--text-muted)', marginLeft: '8px', fontSize: '0.85rem' }}>{f.mensagem}</span>
+                  </span>
+                  <button
+                    className="btn"
+                    onClick={() => refazerModulo(f.indice)}
+                    disabled={refazendo !== null}
+                    style={{ flex: 'none' }}
+                  >
+                    {refazendo === f.indice ? "Refazendo..." : "Refazer este módulo"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {!!error && <div className="error" style={{ marginTop: '15px', padding: '10px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', borderRadius: '6px' }}>{error}</div>}
         {!!status && !loading && !error && <div className="status" style={{ marginTop: '15px', color: 'var(--success-text)', fontWeight: 'bold' }}>{status}</div>}
 
@@ -411,19 +604,13 @@ export default function Generator() {
         {result && !loading && (
           <div className="save-container" style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '25px', padding: '20px', backgroundColor: 'var(--hover-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
             <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>💾 Salvar Aula no Banco de Dados</h3>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              Gerada para <strong style={{ color: 'var(--text-main)' }}>{saveBanca || "—"}</strong>
+              {saveConcurso ? <> · {saveConcurso}</> : null}
+              {saveCargo ? <> · {saveCargo}</> : null}
+              {saveAno ? <> · {saveAno}</> : null}
+            </div>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '80px' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Ano</label>
-                <input className="input" placeholder="Ex: 2024" value={saveAno} onChange={e => setSaveAno(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
-              </div>
-              <div style={{ flex: 1, minWidth: '120px' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Banca</label>
-                <input className="input" placeholder="Ex: CESPE" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
-              </div>
-              <div style={{ flex: 2, minWidth: '150px' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Concurso</label>
-                <input className="input" placeholder="Ex: Polícia Federal" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
-              </div>
               <div style={{ flex: 1, minWidth: '120px' }}>
                 <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Visibilidade</label>
                 <select className="select" value={saveVisibility} onChange={e => setSaveVisibility(e.target.value)} style={{ width: '100%', marginTop: '5px' }}>

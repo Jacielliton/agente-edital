@@ -379,6 +379,49 @@ class SyllabusRequest(BaseModel):
     question_format: str = "Múltipla Escolha"
     question_level: Literal["Iniciante", "Normal", "Avançado", "Expert"] = "Normal"
     api_key: Optional[str] = None
+    # Contexto da prova: chega ANTES da geracao para os agentes escreverem no
+    # padrao da banca certa, e nao so como rotulo no momento de salvar.
+    banca: Optional[str] = None
+    concurso: Optional[str] = None
+    cargo: Optional[str] = None
+    ano: Optional[str] = None
+    qtd_questoes: int = 10
+
+class EstruturaRequest(BaseModel):
+    """Etapa 1: so o arquiteto. Rapida, devolve a lista de modulos."""
+    text: str
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    banca: Optional[str] = None
+    concurso: Optional[str] = None
+    cargo: Optional[str] = None
+    ano: Optional[str] = None
+
+
+class ModuloRequest(BaseModel):
+    """Etapa 2: gera UM modulo completo. O frontend chama uma vez por modulo."""
+    modulo: Dict[str, Any]
+    area: str
+    instrucoes: Dict[str, Any] = {}
+    texto_edital: str = ""
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    question_format: str = "Múltipla Escolha"
+    question_level: Literal["Iniciante", "Normal", "Avançado", "Expert"] = "Normal"
+    qtd_questoes: int = 10
+    banca: Optional[str] = None
+    concurso: Optional[str] = None
+    cargo: Optional[str] = None
+    ano: Optional[str] = None
+
+
+class PlanoEstudoRequest(BaseModel):
+    """Etapa 3: o estrategista, com as aulas ja prontas."""
+    aulas: List[Dict[str, Any]]
+    area: str
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
 
 class SavePlanRequest(BaseModel):
     title: str
@@ -1567,7 +1610,79 @@ RETORNE APENAS ESTE JSON EXATO:
 """
     return await get_json_response(prompt, req.model, temp=0.4, api_key=req.api_key)
 
-async def agent_instruction_designer(text: str, area: str, model: str) -> Dict[str, Any]:
+# =========================================================================
+# CONTEXTO DA PROVA: como cada banca cobra
+# =========================================================================
+# O nome da banca sozinho diz pouco ao modelo. O que muda a qualidade da
+# questao e a REGRA de elaboracao que cada uma segue.
+BANCA_ESTILOS: Dict[str, str] = {
+    "CEBRASPE": (
+        "Itens de CERTO/ERRADO. O erro costuma estar em uma unica palavra trocada, "
+        "em uma generalizacao indevida ('sempre', 'nunca') ou na inversao de um conceito. "
+        "Enunciados curtos e densos, sem alternativas longas. Cobra literalidade da lei "
+        "e jurisprudencia consolidada."
+    ),
+    "CESPE": (
+        "Itens de CERTO/ERRADO no padrao CEBRASPE. O erro e sutil: uma palavra trocada, "
+        "uma generalizacao indevida ou a inversao de um conceito. Cobra literalidade."
+    ),
+    "FGV": (
+        "Multipla escolha com cinco alternativas. Enunciado longo, quase sempre um caso "
+        "concreto que o candidato precisa interpretar antes de aplicar a regra. "
+        "Distratores plausiveis, construidos sobre erros de raciocinio comuns. "
+        "Valoriza atualidade e aplicacao pratica sobre decoreba."
+    ),
+    "FCC": (
+        "Multipla escolha com cinco alternativas. Enunciado objetivo e tecnico, "
+        "muito proximo da letra da lei. Alternativas curtas e parecidas entre si; "
+        "a diferenca costuma estar em um detalhe de redacao."
+    ),
+    "VUNESP": (
+        "Multipla escolha com cinco alternativas. Enunciado direto, cobranca de "
+        "conhecimento aplicado e interpretacao de texto. Distratores moderados."
+    ),
+    "IBFC": (
+        "Multipla escolha objetiva, cobranca conceitual direta, poucas pegadinhas."
+    ),
+    "INSTITUTO AOCP": (
+        "Multipla escolha com enunciado contextualizado e cobranca tecnica de nivel medio."
+    ),
+}
+
+
+def estilo_da_banca(banca: Optional[str]) -> str:
+    """Devolve a regra de elaboracao da banca, ou uma instrucao neutra."""
+    if not banca or not str(banca).strip():
+        return ""
+    chave = str(banca).strip().upper()
+    for nome, estilo in BANCA_ESTILOS.items():
+        if nome in chave or chave in nome:
+            return estilo
+    # Banca fora da lista: o nome ainda ajuda o modelo, so nao ha regra pronta.
+    return f"Siga o padrao historico de elaboracao da banca {banca}."
+
+
+def montar_contexto_prova(req: Any) -> str:
+    """Bloco de texto injetado nos prompts do pesquisador, professor e banca."""
+    partes = []
+    if req.banca and req.banca.strip():
+        partes.append(f"- Banca: {req.banca.strip()}")
+        estilo = estilo_da_banca(req.banca)
+        if estilo:
+            partes.append(f"- Como esta banca cobra: {estilo}")
+    if req.concurso and req.concurso.strip():
+        partes.append(f"- Concurso: {req.concurso.strip()}")
+    if req.cargo and req.cargo.strip():
+        partes.append(f"- Cargo pretendido: {req.cargo.strip()}")
+    if req.ano and req.ano.strip():
+        partes.append(f"- Ano do certame: {req.ano.strip()}")
+
+    if not partes:
+        return ""
+    return "CONTEXTO DA PROVA (obrigatorio respeitar):\n" + "\n".join(partes)
+
+
+async def agent_instruction_designer(text: str, area: str, model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     print(f"--- 🎨 Designer Instrucional: Definindo estratégia para '{area}'... ---")
     
     prompt = f"""
@@ -1587,9 +1702,9 @@ RETORNE APENAS ESTE JSON EXATO:
   "foco_aprofundamento": "Tema avançado (ex: 'Jurisprudência divergente' ou 'Otimização de memória')."
 }}
 """
-    return await get_json_response(prompt, model, temp=0.3)
+    return await get_json_response(prompt, model, temp=0.3, api_key=api_key)
 
-async def agent_architect(text: str, model: str) -> Dict[str, Any]:
+async def agent_architect(text: str, model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     print("--- 🏛️ Arquiteto: Lendo edital e extraindo disciplinas dinamicamente... ---")
 
     prompt = f"""
@@ -1743,7 +1858,7 @@ Se não conseguir extrair:
   ]
 }}
 """
-    return await get_json_response(prompt, model, temp=0.05)
+    return await get_json_response(prompt, model, temp=0.05, api_key=api_key)
 
 
 async def agent_researcher(
@@ -1751,7 +1866,9 @@ async def agent_researcher(
     area: str,
     full_text: str,
     context_instructions: Dict[str, Any],
-    model: str
+    model: str,
+    contexto_prova: str = "",
+    api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     
     titulo = modulo_obj.get("titulo", "Módulo")
@@ -1778,6 +1895,8 @@ DADOS DO EDITAL PARA ESTE TÓPICO:
 
 DIRETRIZES GERAIS: {guidelines}
 FOCO: {deep_focus}
+
+{contexto_prova}
 
 REGRAS CRÍTICAS DE PROFUNDIDADE E DOMÍNIO:
 1. Respeite a "Regra de Escopo" e a "Natureza do Tópico". 
@@ -1812,14 +1931,17 @@ RETORNE APENAS ESTE JSON EXATO:
   ]
 }}
 """
-    return await get_json_response(prompt, model, temp=0.25)
+    return await get_json_response(prompt, model, temp=0.25, api_key=api_key)
 
 async def agent_professor(
     modulo_obj: Dict[str, Any], 
     area: str, 
     research_data: Dict[str, Any], 
     context_instructions: Dict[str, Any],
-    model: str
+    model: str,
+    contexto_prova: str = "",
+    nivel_aluno: str = "Normal",
+    api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
 
     titulo = modulo_obj.get("titulo", "Módulo")
@@ -1837,6 +1959,13 @@ Sua missão é dar uma aula exaustiva sobre: "{titulo}".
 CONTEXTO ESTRATÉGICO DO EDITAL:
 - Tipo de Conteúdo: {tipo}
 - Peso para a prova: {peso} (Se for "alto", aprofunde rigorosamente em pegadinhas de bancas).
+
+{contexto_prova}
+
+NÍVEL DO ALUNO: {nivel_aluno}.
+Calibre a profundidade, o vocabulário técnico e a quantidade de exceções ao nível informado:
+"Iniciante" pede construção do conceito do zero; "Expert" pede direto as controvérsias,
+exceções e o que separa quem acerta de quem erra por pouco.
 
 PESQUISA BASE: {research_summary}
 
@@ -1858,11 +1987,11 @@ RETORNE APENAS ESTE JSON EXATO:
   "aplicacao_pratica_exemplos": "Exemplos detalhados de aplicação ou resolução de um caso prático típico de provas."
 }}
 """
-    return await get_json_response(prompt, model, temp=0.4)
+    return await get_json_response(prompt, model, temp=0.4, api_key=api_key)
 
 
-async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson: Dict[str, Any], model: str, question_format: str, question_level: str) -> Dict[str, Any]:
-    print(f"--- 📝 Banca: Criando 10 questões ({question_format} - Nível {question_level})... ---")
+async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson: Dict[str, Any], model: str, question_format: str, question_level: str, contexto_prova: str = "", qtd_questoes: int = 10, api_key: Optional[str] = None) -> Dict[str, Any]:
+    print(f"--- 📝 Banca: Criando {qtd_questoes} questões ({question_format} - Nível {question_level})... ---")
     lesson_context = json.dumps(professor_lesson, ensure_ascii=False)
 
     regras_formato = ""
@@ -1884,17 +2013,23 @@ async def agent_examiner(modulo_obj: Dict[str, Any], area: str, professor_lesson
         json_alternativas = '"alternativas": ["A) Certo", "B) Errado"],'
 
     prompt = f"""
-Atue como Banca Examinadora ({area}).
+Atue como a banca examinadora da prova de {area}.
+
+{contexto_prova}
+
+Escreva as questões no estilo EXATO da banca informada acima. Se nenhuma banca foi
+informada, use o padrão de múltipla escolha mais comum em concursos públicos federais.
+
 Nível de Dificuldade das Questões: {question_level} (Iniciante, Normal, Avançado ou Expert). 
 Ajuste rigorosamente o aprofundamento técnico, o vocabulário, a presença de pegadinhas e a complexidade da cobrança para refletir EXATAMENTE este nível de dificuldade.
 
-Com base SOMENTE no texto da aula abaixo, crie EXATAMENTE 10 QUESTÕES.
+Com base SOMENTE no texto da aula abaixo, crie EXATAMENTE {qtd_questoes} QUESTÕES.
 
 AULA:
 {lesson_context}
 
 REGRAS:
-1. Crie 10 questões inéditas. Mescle questões diretas de fixação com Estudos de Caso práticos.
+1. Crie {qtd_questoes} questões inéditas. Mescle questões diretas de fixação com Estudos de Caso práticos.
 {regras_formato}
 
 RETORNE APENAS ESTE JSON EXATO:
@@ -1913,9 +2048,9 @@ RETORNE APENAS ESTE JSON EXATO:
   ]
 }}
 """
-    return await get_json_response(prompt, model, temp=0.25)
+    return await get_json_response(prompt, model, temp=0.25, api_key=api_key)
 
-async def agent_mindmap(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str) -> Dict[str, Any]:
+async def agent_mindmap(modulo_obj: Dict[str, Any], area: str, lesson_content: Dict[str, Any], model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     print(f"--- 🧠 Mapa Mental: Gerando código Mermaid... ---")
     lesson_text = json.dumps(lesson_content, ensure_ascii=False)
 
@@ -1936,10 +2071,10 @@ RETORNE APENAS ESTE JSON EXATO:
   }}
 }}
 """
-    return await get_json_response(prompt, model, temp=0.2)
+    return await get_json_response(prompt, model, temp=0.2, api_key=api_key)
 
 
-async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model: str) -> Dict[str, Any]:
+async def agent_strategist(modulos_data: List[Dict[str, Any]], area: str, model: str, api_key: Optional[str] = None) -> Dict[str, Any]:
     print("--- 🎯 Estrategista: Criando plano de revisão com base nos pesos... ---")
     
     conteudo_real = []
@@ -1977,7 +2112,7 @@ RETORNE APENAS ESTE JSON EXATO:
   "plano_estudo": "Texto denso, motivador e altamente estratégico em Markdown detalhando o plano de ataque baseado na prioridade e nos pesos."
 }}
 """
-    return await get_json_response(prompt, model, temp=0.35)
+    return await get_json_response(prompt, model, temp=0.35, api_key=api_key)
 
 # ============================================================================
 # 8. ROTA PRINCIPAL (/analyze) E ROTAS DO USUÁRIO OMITIDAS PARA BREVIDADE
@@ -2089,6 +2224,10 @@ async def get_leaderboard(db: AsyncSession = Depends(get_db)):
         
     return leaderboard
 
+# Teto de modulos por geracao, valido para /analyze e /analyze/estrutura.
+MAX_MODULOS_POR_GERACAO = 40
+
+
 @app.post("/analyze")
 async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = Depends(get_current_user)):
     if not request.text or not request.text.strip():
@@ -2099,10 +2238,18 @@ async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = D
 
     try:
         # 1. Extraímos a estrutura usando o Arquiteto
-        structure = ensure_dict(await agent_architect(request.text, selected_model))
+        structure = ensure_dict(await agent_architect(request.text, selected_model, api_key=request.api_key))
         
         # 2. Normalizamos os módulos
         modules = normalize_modules(structure.get("modulos"), fallback_disciplina="Geral")
+
+        # Teto de seguranca: sem isso, um edital grande estoura o tempo do proxy
+        # e uma falha no fim joga fora tudo. Para editais assim, o frontend deve
+        # usar /analyze/estrutura + /analyze/modulo.
+        if len(modules) > MAX_MODULOS_POR_GERACAO:
+            modules = modules[:MAX_MODULOS_POR_GERACAO]
+
+        contexto_prova = montar_contexto_prova(request)
         
         # --- ATUALIZAÇÃO AQUI ---
         # 3. Pega todas as disciplinas únicas encontradas (antes do ":") e junta-as.
@@ -2110,7 +2257,7 @@ async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = D
         global_area = " / ".join(disciplinas_encontradas) if disciplinas_encontradas else "Edital Específico"
         # ------------------------
         
-        instructions = ensure_dict(await agent_instruction_designer(request.text, global_area, selected_model))
+        instructions = ensure_dict(await agent_instruction_designer(request.text, global_area, selected_model, api_key=request.api_key))
         
         final_aulas: List[Dict[str, Any]] = []
 
@@ -2123,10 +2270,16 @@ async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = D
             print(f"\n➡️ Processando Módulo {idx + 1}: [{area_do_modulo}] {titulo}")
 
             # 4. Passamos 'area_do_modulo' para TODAS as IAs, para que elas tenham o contexto da disciplina
-            research = ensure_dict(await agent_researcher(mod, area_do_modulo, request.text, instructions, selected_model))
+            research = ensure_dict(await agent_researcher(
+                mod, area_do_modulo, request.text, instructions, selected_model,
+                contexto_prova=contexto_prova, api_key=request.api_key,
+            ))
             await asyncio.sleep(1)
 
-            lesson = ensure_dict(await agent_professor(mod, area_do_modulo, research, instructions, selected_model))
+            lesson = ensure_dict(await agent_professor(
+                mod, area_do_modulo, research, instructions, selected_model,
+                contexto_prova=contexto_prova, nivel_aluno=request.question_level, api_key=request.api_key,
+            ))
             lesson = sanitize_lesson(lesson)
             
             # 5. Embutimos a disciplina na aula gerada
@@ -2134,13 +2287,17 @@ async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = D
             await asyncio.sleep(1)
 
             # Passando os novos parâmetros recebidos na rota para a IA da banca
-            exam = ensure_dict(await agent_examiner(mod, area_do_modulo, lesson, selected_model, request.question_format, request.question_level))
+            exam = ensure_dict(await agent_examiner(
+                mod, area_do_modulo, lesson, selected_model,
+                request.question_format, request.question_level,
+                contexto_prova=contexto_prova, qtd_questoes=request.qtd_questoes, api_key=request.api_key,
+            ))
             await asyncio.sleep(1)
 
-            mindmap_data = ensure_dict(await agent_mindmap(mod, area_do_modulo, lesson, selected_model))
+            mindmap_data = ensure_dict(await agent_mindmap(mod, area_do_modulo, lesson, selected_model, api_key=request.api_key))
             await asyncio.sleep(1)
 
-            essay_data = ensure_dict(await agent_essay_generator(mod, area_do_modulo, lesson, selected_model))
+            essay_data = ensure_dict(await agent_essay_generator(mod, area_do_modulo, lesson, selected_model, api_key=request.api_key))
             await asyncio.sleep(1)
             
             # Sanitização final
@@ -2164,7 +2321,7 @@ async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = D
             await asyncio.sleep(1)
 
         # Atualizamos o estrategista para ler a área global
-        strategy = ensure_dict(await agent_strategist(final_aulas, global_area, selected_model))
+        strategy = ensure_dict(await agent_strategist(final_aulas, global_area, selected_model, api_key=request.api_key))
 
         return {
             "resumo_cargo": structure.get("resumo_objetivo", "Resumo gerado com múltiplas disciplinas."),
@@ -2181,6 +2338,123 @@ async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = D
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+# =========================================================================
+# GERACAO POR ETAPAS
+# =========================================================================
+# A rota /analyze faz o edital inteiro numa requisicao so. Num edital grande
+# isso passa de 100 chamadas de IA em serie: o proxy corta antes do fim e uma
+# falha no ultimo modulo joga fora todo o trabalho.
+# As tres rotas abaixo quebram o mesmo pipeline em pedacos que o frontend
+# orquestra, com progresso real e a chance de repetir so o modulo que falhou.
+
+@app.post("/analyze/estrutura")
+async def analyze_estrutura(request: EstruturaRequest, current_user: User = Depends(get_current_user)):
+    """Etapa 1: le o edital e devolve os modulos, sem gerar conteudo ainda."""
+    if not request.text or not request.text.strip():
+        raise HTTPException(status_code=400, detail="Texto vazio")
+
+    try:
+        structure = ensure_dict(await agent_architect(request.text, request.model, api_key=request.api_key))
+        modules = normalize_modules(structure.get("modulos"), fallback_disciplina="Geral")
+
+        if not modules:
+            raise HTTPException(status_code=422, detail="Nao foi possivel identificar modulos neste texto.")
+
+        truncado = False
+        if len(modules) > MAX_MODULOS_POR_GERACAO:
+            modules = modules[:MAX_MODULOS_POR_GERACAO]
+            truncado = True
+
+        disciplinas = list(dict.fromkeys([m.get("disciplina") for m in modules if m.get("disciplina")]))
+        global_area = " / ".join(disciplinas) if disciplinas else "Edital Específico"
+
+        instructions = ensure_dict(
+            await agent_instruction_designer(request.text, global_area, request.model, api_key=request.api_key)
+        )
+
+        return {
+            "area_identificada": global_area,
+            "resumo_cargo": structure.get("resumo_objetivo", "Resumo gerado com múltiplas disciplinas."),
+            "modulos": modules,
+            "instrucoes": instructions,
+            "truncado": truncado,
+            "limite_modulos": MAX_MODULOS_POR_GERACAO,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"ERRO NA ETAPA DE ESTRUTURA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/analyze/modulo")
+async def analyze_modulo(request: ModuloRequest, current_user: User = Depends(get_current_user)):
+    """Etapa 2: gera um modulo completo (pesquisa, aula, questoes, mapa, discursiva)."""
+    mod = request.modulo or {}
+    area_do_modulo = mod.get("disciplina") or request.area or "Assunto Geral"
+    contexto = montar_contexto_prova(request)
+
+    try:
+        research = ensure_dict(await agent_researcher(
+            mod, area_do_modulo, request.texto_edital, request.instrucoes, request.model,
+            contexto_prova=contexto, api_key=request.api_key,
+        ))
+        await asyncio.sleep(1)
+
+        lesson = sanitize_lesson(ensure_dict(await agent_professor(
+            mod, area_do_modulo, research, request.instrucoes, request.model,
+            contexto_prova=contexto, nivel_aluno=request.question_level, api_key=request.api_key,
+        )))
+        lesson["disciplina"] = area_do_modulo
+        await asyncio.sleep(1)
+
+        exam = ensure_dict(await agent_examiner(
+            mod, area_do_modulo, lesson, request.model,
+            request.question_format, request.question_level,
+            contexto_prova=contexto, qtd_questoes=request.qtd_questoes, api_key=request.api_key,
+        ))
+        await asyncio.sleep(1)
+
+        mindmap_data = ensure_dict(await agent_mindmap(
+            mod, area_do_modulo, lesson, request.model, api_key=request.api_key,
+        ))
+        await asyncio.sleep(1)
+
+        essay_data = ensure_dict(await agent_essay_generator(
+            mod, area_do_modulo, lesson, request.model, api_key=request.api_key,
+        ))
+
+        quiz_list = [shuffle_question_options(q) for q in sanitize_quiz(exam.get("quiz"))]
+
+        return {
+            **lesson,
+            "quiz": quiz_list,
+            "mapa_mental": mindmap_data.get("mapa_mental") if isinstance(mindmap_data, dict) else {},
+            "discursiva": essay_data.get("discursiva") if isinstance(essay_data, dict) else {},
+            "meta_modulo": mod,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        titulo = mod.get("titulo", "modulo")
+        print(f"ERRO AO GERAR O MODULO '{titulo}': {e}")
+        raise HTTPException(status_code=500, detail=f"Falha ao gerar o módulo \"{titulo}\": {e}")
+
+
+@app.post("/analyze/plano")
+async def analyze_plano(request: PlanoEstudoRequest, current_user: User = Depends(get_current_user)):
+    """Etapa 3: com as aulas prontas, monta o plano de estudo."""
+    try:
+        strategy = ensure_dict(await agent_strategist(
+            request.aulas, request.area, request.model, api_key=request.api_key,
+        ))
+        return {"plano_estudo": strategy.get("plano_estudo", "") if isinstance(strategy, dict) else ""}
+    except Exception as e:
+        # O plano e um extra: se falhar, a aula gerada continua valendo.
+        print(f"ERRO NO PLANO DE ESTUDO: {e}")
+        return {"plano_estudo": ""}
 
 
 @app.get("/admin/ai-config")

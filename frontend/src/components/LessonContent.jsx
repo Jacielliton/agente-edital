@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -12,9 +12,15 @@ import {
   RefreshCw, Calendar,
 } from "lucide-react";
 import QuizCard from "../QuizCard";
-import Mermaid from "./Mermaid";
 import { Button, Badge, ProgressBar } from "./ui";
 import "./LessonContent.css";
+
+// O Mermaid arrasta cytoscape e treemap junto (~900 kB). Como so aparece quando
+// alguem abre o mapa mental, ele e carregado sob demanda: a aula abre sem esse peso.
+const Mermaid = lazy(() => import("./Mermaid"));
+
+// Aquece o modulo quando o mouse passa pelo botao, para o clique parecer instantaneo.
+const prefetchMermaid = () => { import("./Mermaid"); };
 
 const MD_PLUGINS = { remarkPlugins: [remarkGfm, remarkMath], rehypePlugins: [rehypeKatex] };
 
@@ -1144,6 +1150,8 @@ export default function LessonContent({ result }) {
                 {!!mapaMental.codigo_mermaid && (
                   <button
                     className="lc__map-btn"
+                    onMouseEnter={prefetchMermaid}
+                    onFocus={prefetchMermaid}
                     onClick={() => setSelectedMap({ titulo: mapaMental.titulo, codigo: mapaMental.codigo_mermaid })}
                   >
                     <Network size={17} /> Ver o mapa mental deste módulo
@@ -1372,7 +1380,9 @@ export default function LessonContent({ result }) {
             </div>
             <div className="lc__modal-body">
               <div className="lc__mermaid mermaid-wrapper">
-                <Mermaid chart={selectedMap.codigo} />
+                <Suspense fallback={<p className="lc__map-loading">Preparando o diagrama…</p>}>
+                  <Mermaid chart={selectedMap.codigo} />
+                </Suspense>
               </div>
             </div>
           </div>
