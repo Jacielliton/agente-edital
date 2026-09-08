@@ -4,6 +4,7 @@ import { Instagram, Youtube, SearchX } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AppShell from "./components/AppShell";
 import { Button, EmptyState, Skeleton } from "./components/ui";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 // 1. LAZY LOADING (Code Splitting)
@@ -110,12 +111,23 @@ function Chrome({ children }) {
   return <AppShell>{children}</AppShell>;
 }
 
+/**
+ * Contem falhas de renderizacao para que uma aula com JSON estranho nao deixe
+ * o site inteiro em branco. A rota atual serve de chave: ao navegar para outra
+ * pagina o limite se rearma sozinho.
+ */
+function LimiteDeErro({ children }) {
+  const { pathname } = useLocation();
+  return <ErrorBoundary chaveDeReset={pathname}>{children}</ErrorBoundary>;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Chrome>
-          <Suspense fallback={<LoadingFallback />}>
+          <LimiteDeErro>
+            <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/planos" element={<Planos />} />
@@ -143,7 +155,8 @@ export default function App() {
               {/* ROTA 404 (Catch-all) */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </Suspense>
+            </Suspense>
+          </LimiteDeErro>
         </Chrome>
       </BrowserRouter>
     </AuthProvider>

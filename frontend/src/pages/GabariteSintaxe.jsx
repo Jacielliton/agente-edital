@@ -5,26 +5,14 @@ import {
   BarChart2, PieChart, BookOpenCheck, SlidersHorizontal, X,
   GraduationCap, Wand2
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+// Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
+import Md from "../components/Markdown";
+import { Modal, ConfirmDialog, Notice } from "../components/ui";
+import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
 import { aulasData } from "../data/sintaxeData";
 
 // Helper para ler token unificado
-const getAuthToken = () => {
-  const storages = [localStorage, sessionStorage];
-  for (const storage of storages) {
-    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
-    if (t && t.startsWith("eyJ")) return t;
-    try {
-      const uStr = storage.getItem("user");
-      if (uStr && uStr.startsWith("{")) {
-        const uObj = JSON.parse(uStr);
-        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
-        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
-      }
-    } catch(e) {}
-  }
-  return null;
-};
+// getAuthToken vive em components/AiKeyConfig.jsx — uma cópia só para todas as telas.
 
 // ==========================================
 // FUNÇÃO ANTI-ERRO (Limpeza agressiva de IA)
@@ -95,12 +83,10 @@ export default function GabariteSintaxe() {
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
   const [showConfig, setShowConfig] = useState(false);
-  const [providerTab, setProviderTab] = useState("openrouter"); // Novo estado para abas
-  const [tempModel, setTempModel] = useState("");
-  const [tempApiKey, setTempApiKey] = useState(""); // Novo estado para chave manual
-  const [userApiKey, setUserApiKey] = useState("");
-  const [userModel, setUserModel] = useState("");
-  const [savingConfig, setSavingConfig] = useState(false);
+  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const [aviso, setAviso] = useState(null);
+  const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
+  const [confirmarEntrega, setConfirmarEntrega] = useState(false);
 
   // --- ESTADOS DA APLICAÇÃO ---
   const [viewState, setViewState] = useState("topics");
@@ -124,7 +110,6 @@ export default function GabariteSintaxe() {
   const [showStatsModal, setShowStatsModal] = useState(false);
 
   useEffect(() => {
-    fetchUserSettings();
     const savedStats = localStorage.getItem('cespe_sintaxe_stats');
     if (savedStats) {
       try { setStats(JSON.parse(savedStats)); } catch (e) { console.error(e); }
@@ -136,89 +121,9 @@ export default function GabariteSintaxe() {
     localStorage.setItem('cespe_sintaxe_stats', JSON.stringify(newStats));
   };
 
-  const fetchUserSettings = async () => {
-    try {
-      const token = getAuthToken();
-      if (!token) return;
-      const res = await fetch(`${API_URL}/users/me/settings`, { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.api_key) setUserApiKey(data.api_key);
-        if (data.preferred_model) setUserModel(data.preferred_model);
-      }
-    } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
-  };
-
   const handleConnectAI = () => {
     const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
     window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
-  };
-
-  const openConfigModal = () => {
-    // Agora verificamos se NÃO é OpenRouter
-    const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
-    setProviderTab(isAIStudio ? "aistudio" : "openrouter");
-    setTempApiKey(userApiKey || "");
-    setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash-lite" : "google/gemini-2.5-flash-lite"));
-    setShowConfig(true);
-  };
-
-  const saveConfigToDB = async () => {
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { 
-        alert("Sessão expirada. Faça login."); 
-        return; 
-      }
-
-      // Lógica da Opção 1: Se for AI Studio, captura o que o usuário digitou no input.
-      // Se for OpenRouter, mantém a chave que já veio do OAuth.
-      const keyToSave = providerTab === "aistudio" ? tempApiKey.trim() : userApiKey;
-
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { 
-          "Content-Type": "application/json", 
-          "Authorization": `Bearer ${token}` 
-        },
-        body: JSON.stringify({ 
-          api_key: keyToSave, 
-          preferred_model: tempModel.trim() 
-        })
-      });
-      
-      if (res.ok) {
-        setUserModel(tempModel.trim());
-        setUserApiKey(keyToSave);
-        setShowConfig(false);
-      } else { 
-        alert("Erro ao guardar no servidor."); 
-      }
-    } catch (err) { 
-      alert("Falha de conexão."); 
-    } finally { 
-      setSavingConfig(false); 
-    }
-  };
-
-  const handleDisconnectAI = async () => {
-    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta?")) return;
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
-      });
-      if (res.ok) {
-        setUserApiKey("");
-        setTempApiKey("");
-      }
-      else alert("Erro ao desvincular no servidor."); 
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
   const selectTopic = (topicId) => {
@@ -231,8 +136,8 @@ export default function GabariteSintaxe() {
   const generateQuiz = async () => {
     /* COMENTADO PARA UTILIZAÇÃO DA CHAVE GLOBAL DO USUÁRIO
     if (!userApiKey) {
-      alert("Por favor, configure sua Chave API do OpenRouter ou AI Studio nas configurações para gerar questões.");
-      openConfigModal();
+      setAviso({ tone: "err", texto: "Por favor, configure sua Chave API do OpenRouter ou AI Studio nas configurações para gerar questões." });
+      setShowConfig(true);
       return;
     }
       */
@@ -320,7 +225,7 @@ export default function GabariteSintaxe() {
 
     } catch (err) {
       console.error(err);
-      alert(err.message || "Falha ao comunicar com a IA. Tente novamente.");
+      setAviso({ tone: "err", texto: err.message || "Falha ao comunicar com a IA. Tente novamente." });
       setViewState("lesson");
     }
   };
@@ -358,11 +263,15 @@ export default function GabariteSintaxe() {
 
   const submitQuiz = () => {
     if (isExamFinished) return;
-    
     if (configExamMode && Object.keys(userAnswers).length < currentQuestions.length) {
-      if (!window.confirm("Ainda há questões em branco. Deseja entregar a prova mesmo assim?")) return;
+      setConfirmarEntrega(true);
+      return;
     }
+    finalizarProva();
+  };
 
+  const finalizarProva = () => {
+    setConfirmarEntrega(false);
     setIsExamFinished(true);
 
     if (configExamMode) {
@@ -429,7 +338,7 @@ export default function GabariteSintaxe() {
 
     } catch (err) {
       console.error(err);
-      alert(err.message || "Falha ao gerar a aula explicativa.");
+      setAviso({ tone: "err", texto: err.message || "Falha ao gerar a aula explicativa." });
       setViewState("exam");
     }
   };
@@ -452,15 +361,12 @@ export default function GabariteSintaxe() {
         </button>
       </header>
 
-      {/* BARRA DE CONFIGURAÇÃO DE IA */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-        <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-          <strong>IA Geradora:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Ativa ({userModel || "Padrão"})</span> : <span>Configure a sua IA gratuitamente para geração contínua.</span>}
-        </div>
-        <button onClick={openConfigModal} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s' }}>
-          ⚙️ Configurar a Minha IA
-        </button>
-      </div>
+      <AiKeyBar
+        userApiKey={userApiKey}
+        userModel={userModel}
+        onConfigurar={() => setShowConfig(true)}
+        label="IA da Sintaxe"
+      />
 
       {/* VIEW: GRID DE TÓPICOS */}
       {viewState === "topics" && (
@@ -499,19 +405,19 @@ export default function GabariteSintaxe() {
 
           <div style={{ marginBottom: '2rem' }}>
             <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>💡 1. O que é? (Definição Simples)</h3>
-            <div style={{ color: 'var(--text-main)', lineHeight: '1.6' }}><ReactMarkdown>{currentTopic.def}</ReactMarkdown></div>
+            <div style={{ color: 'var(--text-main)', lineHeight: '1.6' }}><Md>{currentTopic.def}</Md></div>
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
             <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>🔍 2. Análise Profunda</h3>
-            <div style={{ color: 'var(--text-main)', lineHeight: '1.6' }}><ReactMarkdown>{currentTopic.deep}</ReactMarkdown></div>
+            <div style={{ color: 'var(--text-main)', lineHeight: '1.6' }}><Md>{currentTopic.deep}</Md></div>
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
             <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📝 3. Exemplos Comentados</h3>
             {currentTopic.examples.map((ex, i) => (
               <div key={i} style={{ background: 'var(--hover-bg)', borderLeft: '4px solid var(--text-secondary)', padding: '1rem', marginBottom: '1rem', borderRadius: '0 8px 8px 0', color: 'var(--text-main)' }}>
-                <ReactMarkdown>{ex}</ReactMarkdown>
+                <Md>{ex}</Md>
               </div>
             ))}
           </div>
@@ -519,14 +425,14 @@ export default function GabariteSintaxe() {
           <div style={{ marginBottom: '2rem' }}>
             <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>🎯 4. Como cai no CESPE/Cebraspe</h3>
             <div style={{ background: 'var(--primary-light)', border: '1px solid var(--primary)', padding: '1.5rem', borderRadius: '8px', color: 'var(--text-main)' }}>
-              <strong>Dica de Prova:</strong> <ReactMarkdown>{currentTopic.cespeTip}</ReactMarkdown>
+              <strong>Dica de Prova:</strong> <Md>{currentTopic.cespeTip}</Md>
             </div>
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
             <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>⚠️ 5. Pegadinhas Comuns</h3>
             <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border, #fecaca)', padding: '1.5rem', borderRadius: '8px', color: 'var(--error-text)' }}>
-              <strong>Alerta:</strong> <ReactMarkdown>{currentTopic.trap}</ReactMarkdown>
+              <strong>Alerta:</strong> <Md>{currentTopic.trap}</Md>
             </div>
           </div>
 
@@ -689,7 +595,7 @@ export default function GabariteSintaxe() {
                           {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
                         </div>
                         <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                          <ReactMarkdown>{q.explicacao}</ReactMarkdown>
+                          <Md>{q.explicacao}</Md>
                         </div>
                       </div>
                     )}
@@ -734,7 +640,7 @@ export default function GabariteSintaxe() {
             </div>
             <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
               <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <ReactMarkdown>{lessonContent}</ReactMarkdown>
+                <Md>{lessonContent}</Md>
               </div>
             </div>
           </div>
@@ -742,102 +648,6 @@ export default function GabariteSintaxe() {
       )}
 
       {/* MODAL DE CONFIGURAÇÃO DE IA COM ABAS (OPENROUTER / AISTUDIO) */}
-      {showConfig && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
-            
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <button
-                onClick={() => {
-                  setProviderTab("openrouter");
-                  setTempModel("google/gemini-2.5-flash");
-                }}
-                className={`btn ${providerTab === "openrouter" ? "primary" : ""}`}
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              >
-                OpenRouter
-              </button>
-              <button
-                onClick={() => {
-                  setProviderTab("aistudio");
-                  setTempModel("gemini-2.5-flash");
-                }}
-                className={`btn ${providerTab === "aistudio" ? "primary" : ""}`}
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              >
-                Google AI Studio
-              </button>
-            </div>
-
-            {providerTab === "openrouter" && (
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                  Conecte sua conta OpenRouter para acesso a dezenas de modelos de IA. O login é automático.
-                </p>
-                {userApiKey && userApiKey.startsWith("sk-or-") ? (
-                  <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                    <span>✅ OpenRouter Conectado!</span>
-                    <button onClick={handleDisconnectAI} disabled={savingConfig} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Desvincular</button>
-                  </div>
-                ) : (
-                  <button onClick={handleConnectAI} className="btn primary" style={{ width: '100%' }}>🔗 Conectar OpenRouter</button>
-                )}
-              </div>
-            )}
-
-            {providerTab === "aistudio" && (
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px', lineHeight: '1.4' }}>
-                  O Google AI Studio exige a geração manual da chave de acesso utilizando o seu Gmail. Siga os passos:
-                </p>
-                
-                {/* PASSO 1: Link direto para a criação da chave no Google */}
-                <a 
-                  href="https://aistudio.google.com/app/apikey" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="btn" 
-                  style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', textDecoration: 'none', fontWeight: 'bold' }}
-                >
-                  1️⃣ Obter Chave no AI Studio (Grátis)
-                </a>
-                
-                <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>
-                  2️⃣ Cole a Chave Gerada:
-                </label>
-                
-                {/* PASSO 2: Input manual da chave */}
-                <input
-                  type="password"
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
-                  placeholder="AIzaSy..."
-                  style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
-                />
-                
-                {/* Feedback visual de sucesso */}
-                {userApiKey && !userApiKey.startsWith("sk-or-") && tempApiKey === userApiKey && (
-                  <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'var(--success-text)', fontWeight: 'bold' }}>
-                    ✅ Chave AI Studio salva no sistema!
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA:</label>
-              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-              <button onClick={() => setShowConfig(false)} className="btn">Fechar</button>
-              <button onClick={saveConfigToDB} className="btn primary">{savingConfig ? "⏳ Salvando..." : "Salvar Configurações"}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL DE ESTATÍSTICAS */}
       {showStatsModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -884,11 +694,7 @@ export default function GabariteSintaxe() {
                   })
                 )}
               </div>
-              <button onClick={() => {
-                if(window.confirm("Apagar todo o histórico de Sintaxe?")) {
-                  saveStats({ total: 0, correct: 0, wrong: 0, topics: {} });
-                }
-              }} style={{ width: '100%', marginTop: '20px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+              <button onClick={() => setConfirmarLimpeza(true)} style={{ width: '100%', marginTop: '20px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
                 Zerar Histórico
               </button>
             </div>
@@ -900,6 +706,47 @@ export default function GabariteSintaxe() {
       <div style={{ textAlign: 'center', marginTop: '3rem', paddingBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
         Foco na aprovação! Desenvolvido por TecnoPriv.Top
       </div>
+      {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
+      <Modal
+        open={showConfig}
+        onClose={() => setShowConfig(false)}
+        title="Conectar a sua inteligência artificial"
+        subtitle="A chave fica na sua conta e vale para todas as ferramentas da plataforma."
+      >
+        <AiKeyPanel
+          userApiKey={userApiKey}
+          userModel={userModel}
+          onChange={({ apiKey, model }) => { setUserApiKey(apiKey); setUserModel(model); }}
+          onFechar={() => setShowConfig(false)}
+        />
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmarLimpeza}
+        title="Limpar o histórico de Sintaxe"
+        message={`Apagar os ${stats.total} item(ns) já julgados e o desempenho por tópico?`}
+        detail="O histórico fica guardado apenas neste navegador e não pode ser recuperado depois."
+        confirmLabel="Limpar histórico"
+        onConfirm={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); setConfirmarLimpeza(false); }}
+        onCancel={() => setConfirmarLimpeza(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmarEntrega}
+        title="Entregar a prova com questões em branco"
+        message="Ainda há questões sem resposta neste caderno."
+        detail="Itens em branco contam como não respondidos e não entram no cálculo de acertos. Depois de entregar, não é possível voltar e responder."
+        confirmLabel="Entregar mesmo assim"
+        onConfirm={finalizarProva}
+        onCancel={() => setConfirmarEntrega(false)}
+      />
+
+      {aviso && (
+        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg, 0 12px 32px rgba(0,0,0,.18))', borderRadius: '10px' }}>
+          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
+        </div>
+      )}
+
     </div>
   );
 }

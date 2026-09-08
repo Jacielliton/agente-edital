@@ -199,44 +199,7 @@
 .lc__term b { color: var(--fg); font-weight: 700; }
 
 /* Codigo dentro do markdown */
-.lc-code {
-  margin: 1.4em 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: #0E1420;
-}
-.lc-code__bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 7px 13px;
-  background: #161F31;
-  color: #8FA3C0;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-}
-.lc-code pre {
-  margin: 0;
-  padding: var(--space-4);
-  overflow-x: auto;
-  white-space: pre;
-  color: #DCE3F0;
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  line-height: 1.65;
-  tab-size: 2;
-}
-.lc-code code { font-family: inherit; }
-.lc-inline {
-  font-family: var(--font-mono);
-  font-size: .88em;
-  background: var(--surface-3);
-  color: var(--accent);
-  padding: 2px 6px;
-  border-radius: 4px;
-  word-break: break-word;
-}
+/* Os estilos de código (.md-code, .md-inline) vivem em components/Markdown.css */
 
 /* Mapa mental */
 .lc__map-btn {

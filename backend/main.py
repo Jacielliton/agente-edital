@@ -6,12 +6,13 @@ import re
 import asyncio
 import random
 import contextvars
+import time
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict
 from dotenv import load_dotenv
@@ -583,12 +584,90 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ---------------------------------------------------------------- CORS
+# allow_origins=["*"] deixava qualquer site chamar esta API com as credenciais
+# do visitante. As origens reais vêm do ambiente (CORS_ORIGINS, separadas por
+# vírgula); sem a variável, valem os padrões abaixo.
+CORS_PADRAO = [
+    "https://agente-edital.tecnopriv.top",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+_cors_env = os.getenv("CORS_ORIGINS", "").strip()
+CORS_ORIGINS = [o.strip().rstrip("/") for o in _cors_env.split(",") if o.strip()] or CORS_PADRAO
+print(f"--- 🔒 CORS liberado para: {', '.join(CORS_ORIGINS)} ---")
+
+# ------------------------------------------------------- Limite de requisições
+# Sem isto, /auth/login aceita força bruta e /auth/register aceita criação de
+# contas em massa. Implementado sem dependência nova: janela deslizante em
+# memória, por IP. Com mais de um worker o limite passa a valer por worker —
+# ainda assim corta o abuso automatizado.
+RATE_LIMIT_ATIVO = os.getenv("RATE_LIMIT_ATIVO", "1").strip() not in ("0", "false", "False", "")
+
+# rota -> (máximo de chamadas, janela em segundos)
+LIMITES_POR_ROTA = {
+    "/auth/login": (10, 300),
+    "/auth/register": (5, 3600),
+    "/auth/openrouter/exchange": (10, 600),
+    "/payments/create-preference": (20, 3600),
+    "/coupons/validate": (30, 3600),
+}
+
+_historico_requisicoes: Dict[str, List[float]] = {}
+_ultima_limpeza = 0.0
+
+
+def _ip_do_cliente(request: Request) -> str:
+    # Atrás do nginx, request.client.host é sempre 127.0.0.1.
+    encaminhado = request.headers.get("x-forwarded-for", "")
+    if encaminhado:
+        return encaminhado.split(",")[0].strip()
+    return request.client.host if request.client else "desconhecido"
+
+
+def _limite_da_rota(caminho: str):
+    for prefixo, limite in LIMITES_POR_ROTA.items():
+        if caminho.startswith(prefixo):
+            return prefixo, limite
+    return None, None
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    global _ultima_limpeza
+
+    if not RATE_LIMIT_ATIVO or request.method == "OPTIONS":
+        return await call_next(request)
+
+    prefixo, limite = _limite_da_rota(request.url.path)
+    if not limite:
+        return await call_next(request)
+
+    maximo, janela = limite
+    agora = time.monotonic()
+    chave = f"{_ip_do_cliente(request)}|{prefixo}"
+
+    # Faxina periódica, para o dicionário não crescer sem parar.
+    if agora - _ultima_limpeza > 600:
+        _ultima_limpeza = agora
+        for k in [k for k, v in _historico_requisicoes.items() if not v or agora - v[-1] > 3600]:
+            _historico_requisicoes.pop(k, None)
+
+    marcas = [t for t in _historico_requisicoes.get(chave, []) if agora - t < janela]
+
+    if len(marcas) >= maximo:
+        espera = int(janela - (agora - marcas[0])) + 1
+        _historico_requisicoes[chave] = marcas
+        minutos = max(1, espera // 60)
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"Muitas tentativas. Tente de novo em cerca de {minutos} minuto(s)."},
+            headers={"Retry-After": str(espera)},
+        )
+
+    marcas.append(agora)
+    _historico_requisicoes[chave] = marcas
+    return await call_next(request)
 
 @app.middleware("http")
 async def context_user_middleware(request: Request, call_next):
@@ -607,6 +686,20 @@ async def context_user_middleware(request: Request, call_next):
             pass
     response = await call_next(request)
     return response
+
+
+# O CORS entra por último de propósito: no Starlette o middleware registrado
+# por último é o mais externo, e é isso que garante que até a resposta 429 do
+# limitador saia com os cabeçalhos de CORS. Registrado antes, o navegador
+# mostraria "erro de CORS" no lugar de "muitas tentativas".
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 
 @app.post("/auth/register")
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
@@ -1118,10 +1211,35 @@ async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25,
     except Exception as e:
         yield f'{{"error": "{str(e)}"}}'
         
+# Cerca markdown que envolve a RESPOSTA INTEIRA (```json { ... } ```).
+_CERCA_EXTERNA = re.compile(
+    r"^```[A-Za-z0-9_+-]*[ \t]*\r?\n(?P<corpo>.*?)\r?\n?```[ \t]*$",
+    re.DOTALL,
+)
+_SO_CERCA_DE_ABERTURA = re.compile(r"^```[A-Za-z0-9_+-]*[ \t]*$")
+
+
 def clean_response(text: str) -> str:
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    # Limpeza rigorosa de blocos markdown
-    text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.MULTILINE).strip()
+    """Remove o <think> e a cerca markdown que embrulha a resposta inteira.
+
+    ATENÇÃO: a versão anterior usava re.MULTILINE aqui, o que fazia o padrão
+    casar no início e no fim de TODA linha — e portanto apagava a cerca de cada
+    bloco de código dentro da aula. Um ```xml virava a palavra solta "xml" no
+    meio do parágrafo, e o código saía como texto corrido na tela do aluno.
+    Só a cerca externa pode ser removida.
+    """
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+    casou = _CERCA_EXTERNA.match(text)
+    if casou:
+        return casou.group("corpo").strip()
+
+    # cerca de abertura sem fechamento (resposta truncada)
+    if text.startswith("```"):
+        primeira, _, resto = text.partition("\n")
+        if _SO_CERCA_DE_ABERTURA.match(primeira.strip()):
+            return resto.strip()
+
     return text
 
 def try_parse_json_loose(text: str) -> Any:
@@ -2059,15 +2177,20 @@ Gere um fluxograma Mermaid.js (graph TD) resumindo a aula abaixo.
 {lesson_text}
 
 REGRA CRÍTICA DE SINTAXE MERMAID:
-- NUNCA use parênteses (), colchetes [], chaves {{}}, aspas "" ou vírgulas ,, dentro do texto dos nós.
-- Use apenas letras, números e espaços simples dentro dos colchetes dos nós.
-- Exemplo CORRETO: A[Conceito Principal] --> B[Sub Topico];
+- SEMPRE envolva o texto de cada nó em aspas duplas. É isso que permite usar
+  parênteses, vírgulas, barras e sinais de igual sem quebrar o diagrama.
+  CORRETO:  A["Constante k = N / (a + b + c)"] --> B["Aplicar a regra de tres"]
+  ERRADO:   A[Constante k = N / (a + b + c)] --> B[Aplicar a regra de tres]
+- O mesmo vale para o texto das setas: A -->|"caso (a) seja verdadeiro"| B
+- NUNCA use aspas duplas dentro do texto do nó. Se precisar de aspas, use #quot;.
+- Use identificadores curtos e sem acento para os nós: A, B, C1, D2.
+- Máximo de 12 nós, para o mapa caber na tela.
 
 RETORNE APENAS ESTE JSON EXATO:
 {{
   "mapa_mental": {{
     "titulo": "Título do Mapa",
-    "codigo_mermaid": "graph TD;\\n  A[Conceito Central] --> B[Sub Topico];"
+    "codigo_mermaid": "graph TD;\\n  A[\\"Conceito Central\\"] --> B[\\"Sub Topico\\"];"
   }}
 }}
 """

@@ -103,3 +103,7 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/* Ícone em rotação, usado nos botões que estão processando algo. */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin .9s linear infinite; }

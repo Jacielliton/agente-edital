@@ -6,7 +6,8 @@ import {
   Timer, ShieldAlert, Edit3, ArrowDown, RotateCcw
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import ReactMarkdown from "react-markdown";
+// Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
+import Md from "../components/Markdown";
 
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
@@ -597,11 +598,11 @@ export default function TreinoDiscursiva() {
               <div className="md" style={{ padding: '20px', overflowY: 'auto', maxHeight: 'calc(100vh - 250px)' }}>
                 <div style={{ marginBottom: '25px' }}>
                   <strong style={{ color: 'var(--text-main)', display: 'block', marginBottom: '10px' }}>Texto Motivador</strong>
-                  <ReactMarkdown>{safeString(prova.texto_motivador)}</ReactMarkdown>
+                  <Md>{safeString(prova.texto_motivador)}</Md>
                 </div>
                 <div style={{ background: 'var(--primary-light)', padding: '15px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', marginBottom: '25px' }}>
                   <strong style={{ color: 'var(--primary)', display: 'block', marginBottom: '5px' }}>Comando:</strong>
-                  <ReactMarkdown>{safeString(prova.comando)}</ReactMarkdown>
+                  <Md>{safeString(prova.comando)}</Md>
                 </div>
                 {safeArray(prova.aspectos).length > 0 && (
                   <div>
@@ -733,7 +734,7 @@ export default function TreinoDiscursiva() {
                   <h4 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <MessageSquare size={20} /> Parecer da Banca
                   </h4>
-                  <ReactMarkdown>{safeString(correcao.feedback_geral)}</ReactMarkdown>
+                  <Md>{safeString(correcao.feedback_geral)}</Md>
                 </div>
 
                 {correcao.dica_estudo && (
@@ -741,7 +742,7 @@ export default function TreinoDiscursiva() {
                     <h4 style={{ margin: '0 0 10px 0', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Target size={20} /> Plano de Ação / Dica de Estudo
                     </h4>
-                    <ReactMarkdown>{safeString(correcao.dica_estudo)}</ReactMarkdown>
+                    <Md>{safeString(correcao.dica_estudo)}</Md>
                   </div>
                 )}
               </div>
@@ -760,7 +761,7 @@ export default function TreinoDiscursiva() {
                     
                     <div style={{ marginBottom: '20px', color: 'var(--text-secondary)' }}>
                       <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', textTransform: 'uppercase' }}>Análise do seu texto:</strong>
-                      <div style={{ marginTop: '8px' }}><ReactMarkdown>{safeString(av.comentario)}</ReactMarkdown></div>
+                      <div style={{ marginTop: '8px' }}><Md>{safeString(av.comentario)}</Md></div>
                     </div>
 
                     {av.padrao_esperado && (
@@ -769,7 +770,7 @@ export default function TreinoDiscursiva() {
                           💡 O que era esperado (Espelho Ideal):
                         </strong>
                         <div style={{ color: 'var(--text-main)', fontSize: '0.95em' }}>
-                          <ReactMarkdown>{safeString(av.padrao_esperado)}</ReactMarkdown>
+                          <Md>{safeString(av.padrao_esperado)}</Md>
                         </div>
                       </div>
                     )}
@@ -789,7 +790,7 @@ export default function TreinoDiscursiva() {
                   {safeArray(correcao.analise_sintatica).length === 0 ? (
                      correcao.erros_gramaticais ? (
                         <div style={{ color: 'var(--text-main)' }}>
-                          <ReactMarkdown>{safeString(correcao.erros_gramaticais)}</ReactMarkdown>
+                          <Md>{safeString(correcao.erros_gramaticais)}</Md>
                         </div>
                      ) : (
                         <div style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>Nenhum erro gramatical grave encontrado. Parabéns!</div>

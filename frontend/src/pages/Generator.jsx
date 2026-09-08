@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import LessonContent from "../components/LessonContent"; 
+import LessonContent from "../components/LessonContent";
+import { Modal, Notice } from "../components/ui";
+import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"; 
 
@@ -32,22 +34,7 @@ function readJsonFile(file) {
 }
 
 // FUNÇÃO ROBUSTA DE TOKEN UNIFICADA
-const getAuthToken = () => {
-  const storages = [localStorage, sessionStorage];
-  for (const storage of storages) {
-    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
-    if (t && t.startsWith("eyJ")) return t;
-    try {
-      const uStr = storage.getItem("user");
-      if (uStr && uStr.startsWith("{")) {
-        const uObj = JSON.parse(uStr);
-        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
-        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
-      }
-    } catch(e) {}
-  }
-  return null;
-};
+// getAuthToken vive em ../components/AiKeyConfig.jsx — uma cópia só para todas as telas.
 
 export default function Generator() { 
   const [text, setText] = useState("");
@@ -62,10 +49,8 @@ export default function Generator() {
 
   // ESTADOS GLOBAIS DE CONFIGURAÇÃO DE IA INDIVIDUAL
   const [showConfig, setShowConfig] = useState(false);
-  const [tempModel, setTempModel] = useState("");
-  const [userApiKey, setUserApiKey] = useState("");
-  const [userModel, setUserModel] = useState("");
-  const [savingConfig, setSavingConfig] = useState(false);
+  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const [aviso, setAviso] = useState(null);
 
   // Execução e UX
   const [loading, setLoading] = useState(false);
@@ -118,24 +103,8 @@ export default function Generator() {
     }
   };
 
-  const fetchUserSettings = async () => {
-    try {
-      const token = getAuthToken();
-      if (!token) return;
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.api_key) setUserApiKey(data.api_key);
-        if (data.preferred_model) setUserModel(data.preferred_model);
-      }
-    } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
-  };
-
   useEffect(() => {
     fetchConfig();
-    fetchUserSettings();
     return () => {
       timeoutsRef.current.forEach((id) => clearTimeout(id));
       timeoutsRef.current = [];
@@ -387,59 +356,6 @@ export default function Generator() {
     }
   };
 
-  const handleConnectAI = () => {
-    const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
-    window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
-  };
-
-  const openConfigModal = () => {
-    setTempModel(userModel || "deepseek/deepseek-v4-flash");
-    setShowConfig(true);
-  };
-
-  const saveConfigToDB = async () => {
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: userApiKey, preferred_model: tempModel.trim() })
-      });
-      if (res.ok) {
-        setUserModel(tempModel.trim());
-        setShowConfig(false);
-      } else { alert("Erro ao guardar no servidor."); }
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
-  };
-
-  const handleDisconnectAI = async () => {
-    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta? Os recursos interativos de IA serão bloqueados.")) return;
-    
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
-      });
-      
-      if (res.ok) {
-        setUserApiKey("");
-      } else { 
-        alert("Erro ao desvincular no servidor."); 
-      }
-    } catch (err) { 
-      alert("Falha de conexão."); 
-    } finally { 
-      setSavingConfig(false); 
-    }
-  };
-
   return (
     <div className="container">
       <header className="header">
@@ -447,15 +363,12 @@ export default function Generator() {
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Transforme editais secos em conteúdos didáticos e simulados incríveis.</p>
       </header>
 
-      {/* BARRA SUPERIOR DE CONFIGURAÇÃO UNIFICADA */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-        <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-          <strong>IA Geradora:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Ativa ({userModel || "Padrão"})</span> : <span>Configure a sua IA gratuitamente para gerar aulas mais rápidas.</span>}
-        </div>
-        <button onClick={openConfigModal} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s' }}>
-          ⚙️ Configurar a Minha IA
-        </button>
-      </div>
+      <AiKeyBar
+        userApiKey={userApiKey}
+        userModel={userModel}
+        onConfigurar={() => setShowConfig(true)}
+        label="IA que gera as aulas"
+      />
 
       <section className="panel" style={{ padding: '25px' }}>
         <div className="row">
@@ -639,76 +552,26 @@ export default function Generator() {
       )}
 
       {/* MODAL DE CONFIGURAÇÃO GLOBAL (CHAVE DA IA INDIVIDUAL) */}
-      {showConfig && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
-            
-            <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5', background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              Vincule a sua conta do OpenRouter para desbloquear a geração rápida e os recursos avançados. <br/><br/>
-              ✨ É <strong style={{color: 'var(--text-main)'}}>100% gratuito</strong> e você pode conectar-se em 2 segundos usando a sua conta já existente do <strong style={{color: 'var(--text-main)'}}>Google, Discord ou GitHub</strong>.
-            </p>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Integração de Acesso:</label>
-              
-              {userApiKey ? (
-                <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>✅ Conta vinculada com sucesso!</span>
-                  <button 
-                    onClick={handleDisconnectAI} 
-                    disabled={savingConfig}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--success-text)', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', textDecoration: 'underline' }}
-                  >
-                    {savingConfig ? "Ags..." : "Desvincular"}
-                  </button>
-                </div>
-              ) : (
-                <button onClick={handleConnectAI} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--primary)', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-                  🔗 Conectar IA Gratuitamente
-                </button>
-              )}
-            </div>
+      {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
+      <Modal
+        open={showConfig}
+        onClose={() => setShowConfig(false)}
+        title="Conectar a sua inteligência artificial"
+        subtitle="É a chave que gera as aulas. Sem ela, a geração usa a cota do seu plano."
+      >
+        <AiKeyPanel
+          userApiKey={userApiKey}
+          userModel={userModel}
+          onChange={({ apiKey, model }) => { setUserApiKey(apiKey); setUserModel(model); }}
+          onFechar={() => setShowConfig(false)}
+        />
+      </Modal>
 
-            <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA (Opcional):</label>
-              <input 
-                type="text" 
-                value={tempModel} 
-                onChange={(e) => setTempModel(e.target.value)} 
-                placeholder="ex: deepseek/deepseek-v4-flash" 
-                disabled={!userApiKey}
-                style={{ 
-                  width: '100%', 
-                  padding: '12px', 
-                  borderRadius: '6px', 
-                  border: '1px solid var(--border)', 
-                  fontSize: '1rem', 
-                  backgroundColor: !userApiKey ? 'var(--bg)' : 'var(--input-bg)', 
-                  color: !userApiKey ? 'var(--text-muted)' : 'var(--text-main)',
-                  cursor: !userApiKey ? 'not-allowed' : 'text'
-                }} 
-              />
-              
-              {!userApiKey ? (
-                <span style={{ fontSize: '0.85rem', color: 'var(--error-text)', marginTop: '8px', display: 'block', fontWeight: 'bold' }}>
-                  🔒 Como você está usando a IA Compartilhada, o modelo é definido automaticamente pelo administrador da plataforma.
-                </span>
-              ) : (
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px', display: 'block', lineHeight: '1.4' }}>
-                  O sistema utiliza modelos gratuitos por padrão. <a href="https://openrouter.ai/models?max_price=0" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 'bold', textDecoration: 'underline' }}>Clique aqui para ver a lista de modelos 100% gratuitos</a>.
-                </span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '10px' }}>
-              <button onClick={() => setShowConfig(false)} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--hover-bg)', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>Fechar</button>
-              <button onClick={saveConfigToDB} disabled={savingConfig} style={{ padding: '12px 20px', borderRadius: '6px', border: 'none', background: 'var(--primary)', color: 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>{savingConfig ? "⏳ A guardar..." : "Salvar Modelo"}</button>
-            </div>
-          </div>
+      {aviso && (
+        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg)', borderRadius: '10px' }}>
+          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
         </div>
       )}
-
     </div>
   );
 }

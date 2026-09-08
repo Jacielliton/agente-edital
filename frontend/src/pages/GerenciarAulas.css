@@ -1,0 +1,143 @@
+/* ======================= Gerenciar Aulas ======================= */
+.ga { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.ga__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.ga__search { flex: 1 1 260px; min-width: 0; position: relative; display: flex; align-items: center; }
+.ga__search > svg:first-child { position: absolute; left: 11px; color: var(--fg-3); pointer-events: none; }
+.ga__search input {
+  width: 100%;
+  padding: 10px 36px 10px 36px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--text-sm);
+}
+.ga__search input:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); background: var(--surface-2); }
+.ga__search-clear {
+  position: absolute; right: 8px;
+  border: 0; background: none; color: var(--fg-3);
+  display: grid; place-items: center; padding: 4px;
+  border-radius: var(--radius-full);
+}
+.ga__search-clear:hover { color: var(--fg); background: var(--surface-3); }
+.ga__toolbar-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-left: auto; }
+
+.ga__count {
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------- Tabela ---------------------------- */
+.ga__table-wrap { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-2); overflow: hidden; }
+.ga__scroll { overflow-x: auto; }
+.ga__table { width: 100%; border-collapse: collapse; min-width: 780px; }
+.ga__table th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.ga__table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  font-size: var(--text-sm);
+  color: var(--fg-2);
+}
+.ga__table tr:last-child td { border-bottom: 0; }
+.ga__table tbody tr:hover { background: var(--surface); }
+
+.ga__id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-3); }
+.ga__title { color: var(--fg); font-weight: 700; font-size: var(--text-base); letter-spacing: -.01em; }
+.ga__title-sub { display: block; font-size: var(--text-xs); color: var(--fg-3); font-weight: 500; margin-top: 2px; }
+.ga__cell-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.ga__actions { display: flex; gap: 6px; justify-content: flex-end; }
+.ga__icon-btn {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  border-radius: var(--radius-sm);
+  transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.ga__icon-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--fg); }
+.ga__icon-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ga__icon-btn--danger:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+.ga__icon-btn--accent:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+/* ------------------------ Cartões (mobile) ---------------------- */
+.ga__cards { display: none; flex-direction: column; gap: var(--space-3); }
+.ga__card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ga__card-top { display: flex; justify-content: space-between; gap: var(--space-3); align-items: flex-start; }
+.ga__card .ga__actions { justify-content: flex-start; flex-wrap: wrap; }
+
+/* ---------------------------- Paginação ------------------------- */
+.ga__pager { display: flex; align-items: center; justify-content: center; gap: var(--space-2); flex-wrap: wrap; }
+.ga__page {
+  min-width: 36px; height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--fg-2);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.ga__page:hover { background: var(--surface-3); }
+.ga__page.is-current { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+/* ------------------------- Compartilhamento --------------------- */
+.ga__emails { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
+.ga__email {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: 10px var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--fg);
+  border-bottom: 1px solid var(--line);
+}
+.ga__email:last-child { border-bottom: 0; }
+.ga__email-empty { padding: var(--space-5); text-align: center; color: var(--fg-3); font-size: var(--text-sm); }
+
+/* --------------------------- Formulário ------------------------- */
+.ga__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
+.ga__file {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  background: var(--surface);
+}
+.ga__file input[type="file"] { font-size: var(--text-sm); color: var(--fg-2); }
+
+@media (max-width: 860px) {
+  .ga__table-wrap { display: none; }
+  .ga__cards { display: flex; }
+  .ga__toolbar-actions { margin-left: 0; width: 100%; }
+}

@@ -99,9 +99,13 @@
   --success-text: var(--ok);
   --error-bg: var(--danger-soft);
   --error-text: var(--danger);
+  --error-border: var(--danger);
+  --warning-bg: var(--warn-soft);
+  --warning-text: var(--warn);
   --radius: var(--radius-md);
   --shadow-sm: var(--shadow-1);
   --shadow-md: var(--shadow-2);
+  --shadow-lg: var(--shadow-3);
 }
 
 /* ---------- Tema escuro ---------- */

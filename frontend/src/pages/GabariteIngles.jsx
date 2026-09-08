@@ -4,7 +4,12 @@ import {
   Sparkles, Bot, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
   X, CheckCircle, AlertCircle, Binary, Type, Wrench
 } from "lucide-react";
+// Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import Md, { componentesMarkdown } from "../components/Markdown";
+import { Modal, ConfirmDialog, Notice } from "../components/ui";
+import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
 
 // Dados teóricos integrados para Língua Inglesa
 const conteudosTeoricosIngles = {
@@ -47,22 +52,7 @@ Um dos temas favoritos do CESPE.
 };
 
 // Helper para ler token unificado
-const getAuthToken = () => {
-  const storages = [localStorage, sessionStorage];
-  for (const storage of storages) {
-    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
-    if (t && t.startsWith("eyJ")) return t;
-    try {
-      const uStr = storage.getItem("user");
-      if (uStr && uStr.startsWith("{")) {
-        const uObj = JSON.parse(uStr);
-        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
-        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
-      }
-    } catch(e) {}
-  }
-  return null;
-};
+// getAuthToken vive em components/AiKeyConfig.jsx — uma cópia só para todas as telas.
 
 // ==========================================
 // NOVA FUNÇÃO ANTI-ERRO (Com limpeza agressiva)
@@ -134,12 +124,9 @@ export default function GabariteIngles() {
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
   const [showConfig, setShowConfig] = useState(false);
-  const [providerTab, setProviderTab] = useState("openrouter");
-  const [tempModel, setTempModel] = useState("");
-  const [tempApiKey, setTempApiKey] = useState("");
-  const [userApiKey, setUserApiKey] = useState("");
-  const [userModel, setUserModel] = useState("");
-  const [savingConfig, setSavingConfig] = useState(false);
+  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const [aviso, setAviso] = useState(null);
+  const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
   // --- ESTADOS DO SIMULADOR ---
   const [configFocus, setConfigFocus] = useState("completo");
@@ -177,7 +164,6 @@ export default function GabariteIngles() {
   };
 
   useEffect(() => {
-    fetchUserSettings();
     const savedStats = localStorage.getItem('cespe_ingles_stats');
     if (savedStats) {
       try { setStats(JSON.parse(savedStats)); } catch (e) { console.error(e); }
@@ -189,71 +175,9 @@ export default function GabariteIngles() {
     localStorage.setItem('cespe_ingles_stats', JSON.stringify(newStats));
   };
 
-  const fetchUserSettings = async () => {
-    try {
-      const token = getAuthToken();
-      if (!token) return;
-      const res = await fetch(`${API_URL}/users/me/settings`, { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.api_key) setUserApiKey(data.api_key);
-        if (data.preferred_model) setUserModel(data.preferred_model);
-      }
-    } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
-  };
-
   const handleConnectAI = () => {
     const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
     window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
-  };
-
-  const openConfigModal = () => {
-    const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
-    setProviderTab(isAIStudio ? "aistudio" : "openrouter");
-    setTempApiKey(userApiKey || "");
-    setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash-lite" : "google/gemini-2.5-flash-lite"));
-    setShowConfig(true);
-  };
-
-  const saveConfigToDB = async () => {
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-
-      const keyToSave = providerTab === "aistudio" ? tempApiKey.trim() : userApiKey;
-
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: keyToSave, preferred_model: tempModel.trim() })
-      });
-      
-      if (res.ok) {
-        setUserModel(tempModel.trim());
-        setUserApiKey(keyToSave);
-        setShowConfig(false);
-      } else { alert("Erro ao guardar no servidor."); }
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
-  };
-
-  const handleDisconnectAI = async () => {
-    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta?")) return;
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
-      });
-      if (res.ok) {
-        setUserApiKey("");
-        setTempApiKey("");
-      }
-      else alert("Erro ao desvincular no servidor."); 
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
   const generateExam = async () => {
@@ -377,7 +301,7 @@ export default function GabariteIngles() {
 
     } catch (err) {
       console.error(err);
-      alert(err.message || "Falha ao gerar a aula explicativa.");
+      setAviso({ tone: "err", texto: err.message || "Falha ao gerar a aula explicativa." });
       setViewState("exam");
     }
   };
@@ -452,7 +376,7 @@ export default function GabariteIngles() {
     });
 
     saveStats(newStats);
-    alert(`Simulado de Inglês finalizado! Pontuação líquida CESPE: ${right - wrong}`);
+    setAviso({ tone: "ok", texto: `Simulado de Inglês finalizado! Pontuação líquida CESPE: ${right - wrong}` });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -464,12 +388,7 @@ export default function GabariteIngles() {
     });
   };
 
-  const resetStats = () => {
-    if(window.confirm("Apagar todo o histórico de Língua Inglesa?")) {
-      saveStats({ total: 0, correct: 0, wrong: 0, topics: {} });
-      setShowStatsModal(false);
-    }
-  };
+  const resetStats = () => setConfirmarLimpeza(true);
 
   // Nova versão recursiva: lida com strings, arrays de texto e tags (como negrito e itálico)
   function InteractiveText({ children, onWordClick }) {
@@ -584,14 +503,12 @@ export default function GabariteIngles() {
         </button>
       </header>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-        <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-          Modelo Atual: <strong style={{ color: 'var(--primary)' }}>{userModel || "deepseek/deepseek-v4-flash"}</strong>
-        </div>
-        <button onClick={openConfigModal} className="btn outline" style={{ padding: '8px 12px', fontSize: '0.85rem' }}>
-          <SlidersHorizontal size={16} /> Configurar IA
-        </button>
-      </div>
+      <AiKeyBar
+        userApiKey={userApiKey}
+        userModel={userModel}
+        onConfigurar={() => setShowConfig(true)}
+        label="IA da Língua Inglesa"
+      />
 
       {viewState === "initial" && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
@@ -728,9 +645,12 @@ export default function GabariteIngles() {
                       <AlignLeft size={20} /> Texto Base <span style={{fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal'}}>(Clique em qualquer palavra para traduzir)</span>
                     </div>
                     <div className="markdown-format" style={{ fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.6' }}>
-                      <ReactMarkdown 
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
                         components={{
-                          // Agora interceptamos os Parágrafos e Listas (que são os contêineres reais do texto)
+                          ...componentesMarkdown,
+                          // Parágrafos e listas são os contêineres reais do texto: é neles
+                          // que cada palavra vira clicável para tradução.
                           p: ({node, ...props}) => (
                             <p style={{ marginBottom: "1em" }}>
                               <InteractiveText onWordClick={handleWordClick}>{props.children}</InteractiveText>
@@ -824,7 +744,7 @@ export default function GabariteIngles() {
                           {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
                         </div>
                         <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                          <ReactMarkdown>{q.explicacao}</ReactMarkdown>
+                          <Md>{q.explicacao}</Md>
                         </div>
                       </div>
                     )}
@@ -850,70 +770,6 @@ export default function GabariteIngles() {
                 <Wrench size={20} /> Professor IA: Explicar meus erros
               </button>
             )}
-          </div>
-        </div>
-      )}
-
-      {showConfig && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '500px', animation: 'fadeIn 0.2s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '10px' }}><SlidersHorizontal size={24} color="var(--primary)" /> Configurar IA</h2>
-              <button onClick={() => setShowConfig(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <button 
-                onClick={() => { setProviderTab("openrouter"); setTempModel("google/gemini-2.5-flash"); }} 
-                className={`btn ${providerTab === "openrouter" ? "primary" : ""}`} 
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              > OpenRouter </button>
-              <button 
-                onClick={() => { setProviderTab("aistudio"); setTempModel("gemini-2.5-flash"); }} 
-                className={`btn ${providerTab === "aistudio" ? "primary" : ""}`} 
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              > Google AI Studio </button>
-            </div>
-
-            {providerTab === "openrouter" && (
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                  Conecte sua conta OpenRouter para acesso a dezenas de modelos de IA. O login é automático.
-                </p>
-                {userApiKey && userApiKey.startsWith("sk-or-") ? (
-                  <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><CheckCircle size={18} /> Conta Vinculada</div>
-                    <button onClick={handleDisconnectAI} disabled={savingConfig} style={{ background: 'none', border: 'none', color: 'var(--error-text)', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.85rem' }}>Desvincular</button>
-                  </div>
-                ) : (
-                  <button onClick={handleConnectAI} className="btn primary" style={{ width: '100%', padding: '12px', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                    <Bot size={18} /> Conectar ao OpenRouter
-                  </button>
-                )}
-              </div>
-            )}
-
-            {providerTab === "aistudio" && (
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                  Use sua chave direta do Google AI Studio (Gemini). É gratuita e rápida.
-                </p>
-                <div style={{ marginBottom: '15px' }}>
-                  <label className="label">Chave de API (Google AI Studio)</label>
-                  <input type="password" placeholder="AIzaSy..." value={tempApiKey} onChange={(e) => setTempApiKey(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginBottom: '25px' }}>
-              <label className="label">Modelo Preferido</label>
-              <input type="text" placeholder="Ex: google/gemini-2.5-flash" value={tempModel} onChange={(e) => setTempModel(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-              <button onClick={() => setShowConfig(false)} className="btn">Fechar</button>
-              <button onClick={saveConfigToDB} className="btn primary">{savingConfig ? "⏳ Salvando..." : "Salvar Configurações"}</button>
-            </div>
           </div>
         </div>
       )}
@@ -976,7 +832,7 @@ export default function GabariteIngles() {
             </div>
             <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
               <div className="markdown-format" style={{ fontSize: '1rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <ReactMarkdown>{lessonContent}</ReactMarkdown>
+                <Md>{lessonContent}</Md>
               </div>
             </div>
             <div style={{ padding: '15px 20px', borderTop: '1px solid var(--border)', background: 'var(--hover-bg)', textAlign: 'right' }}>
@@ -1026,6 +882,37 @@ export default function GabariteIngles() {
               <span style={{ fontWeight: '500' }}>{translation}</span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
+      <Modal
+        open={showConfig}
+        onClose={() => setShowConfig(false)}
+        title="Conectar a sua inteligência artificial"
+        subtitle="A chave fica na sua conta e vale para todas as ferramentas da plataforma."
+      >
+        <AiKeyPanel
+          userApiKey={userApiKey}
+          userModel={userModel}
+          onChange={({ apiKey, model }) => { setUserApiKey(apiKey); setUserModel(model); }}
+          onFechar={() => setShowConfig(false)}
+        />
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmarLimpeza}
+        title="Limpar o histórico de Língua Inglesa"
+        message={`Apagar os ${stats.total} item(ns) já julgados e o desempenho por tópico?`}
+        detail="O histórico fica guardado apenas neste navegador e não pode ser recuperado depois."
+        confirmLabel="Limpar histórico"
+        onConfirm={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); setConfirmarLimpeza(false); }}
+        onCancel={() => setConfirmarLimpeza(false)}
+      />
+
+      {aviso && (
+        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg, 0 12px 32px rgba(0,0,0,.18))', borderRadius: '10px' }}>
+          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
         </div>
       )}
 

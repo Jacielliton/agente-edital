@@ -4,8 +4,10 @@ import {
   Sparkles, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
   X, CheckCircle, AlertCircle, Code
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+// Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
+import Md from "../components/Markdown";
+import { Modal, ConfirmDialog, Notice } from "../components/ui";
+import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
 
 // ==========================================
 // CONTEÚDO TEÓRICO (Baseado no Edital Fornecido)
@@ -23,22 +25,7 @@ const conteudosTeoricosJava = {
 };
 
 // Helper para ler token unificado
-const getAuthToken = () => {
-  const storages = [localStorage, sessionStorage];
-  for (const storage of storages) {
-    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
-    if (t && t.startsWith("eyJ")) return t;
-    try {
-      const uStr = storage.getItem("user");
-      if (uStr && uStr.startsWith("{")) {
-        const uObj = JSON.parse(uStr);
-        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
-        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
-      }
-    } catch(e) {}
-  }
-  return null;
-};
+// getAuthToken vive em components/AiKeyConfig.jsx — uma cópia só para todas as telas.
 
 // ==========================================
 // FUNÇÃO ANTI-ERRO (Com limpeza agressiva)
@@ -91,12 +78,9 @@ export default function GabariteJava() {
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
   const [showConfig, setShowConfig] = useState(false);
-  const [providerTab, setProviderTab] = useState("openrouter"); 
-  const [tempModel, setTempModel] = useState("");
-  const [tempApiKey, setTempApiKey] = useState(""); 
-  const [userApiKey, setUserApiKey] = useState("");
-  const [userModel, setUserModel] = useState("");
-  const [savingConfig, setSavingConfig] = useState(false);
+  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const [aviso, setAviso] = useState(null);
+  const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
   // --- ESTADOS DO SIMULADOR ---
   const [configFocus, setConfigFocus] = useState("completo");
@@ -128,7 +112,6 @@ export default function GabariteJava() {
   };
 
   useEffect(() => {
-    fetchUserSettings();
     const savedStats = localStorage.getItem('cespe_java_stats');
     if (savedStats) {
       try { setStats(JSON.parse(savedStats)); } catch (e) { console.error(e); }
@@ -140,71 +123,9 @@ export default function GabariteJava() {
     localStorage.setItem('cespe_java_stats', JSON.stringify(newStats));
   };
 
-  const fetchUserSettings = async () => {
-    try {
-      const token = getAuthToken();
-      if (!token) return;
-      const res = await fetch(`${API_URL}/users/me/settings`, { headers: { "Authorization": `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.api_key) setUserApiKey(data.api_key);
-        if (data.preferred_model) setUserModel(data.preferred_model);
-      }
-    } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
-  };
-
   const handleConnectAI = () => {
     const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
     window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
-  };
-
-  const openConfigModal = () => {
-    const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
-    setProviderTab(isAIStudio ? "aistudio" : "openrouter");
-    setTempApiKey(userApiKey || "");
-    setTempModel(userModel || (isAIStudio ? "gemini-2.5-flash-lite" : "google/gemini-2.5-flash-lite"));
-    setShowConfig(true);
-  };
-
-  const saveConfigToDB = async () => {
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-
-      const keyToSave = providerTab === "aistudio" ? tempApiKey.trim() : userApiKey;
-
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: keyToSave, preferred_model: tempModel.trim() })
-      });
-      
-      if (res.ok) {
-        setUserModel(tempModel.trim());
-        setUserApiKey(keyToSave);
-        setShowConfig(false);
-      } else { alert("Erro ao guardar no servidor."); }
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
-  };
-
-  const handleDisconnectAI = async () => {
-    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta?")) return;
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      const res = await fetch(`${API_URL}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
-      });
-      if (res.ok) {
-        setUserApiKey("");
-        setTempApiKey("");
-      }
-      else alert("Erro ao desvincular no servidor."); 
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
   };
 
   const generateExam = async () => {
@@ -343,7 +264,7 @@ export default function GabariteJava() {
 
     } catch (err) {
       console.error(err);
-      alert(err.message || "Falha ao gerar a aula explicativa.");
+      setAviso({ tone: "err", texto: err.message || "Falha ao gerar a aula explicativa." });
       setViewState("exam");
     }
   };
@@ -398,7 +319,7 @@ export default function GabariteJava() {
     });
 
     saveStats(newStats);
-    alert(`Simulado Java finalizado! Pontuação líquida CESPE: ${right - wrong}`);
+    setAviso({ tone: "ok", texto: `Simulado Java finalizado! Pontuação líquida CESPE: ${right - wrong}` });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -410,57 +331,12 @@ export default function GabariteJava() {
     });
   };
 
-  const resetStats = () => {
-    if(window.confirm("Apagar todo o histórico de Java?")) {
-      saveStats({ total: 0, correct: 0, wrong: 0, topics: {} });
-      setShowStatsModal(false);
-    }
-  };
+  const resetStats = () => setConfirmarLimpeza(true);
 
   const wrongCount = getWrongQuestions().length;
   const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && wrongCount > 0;
 
   // --- ESTILOS CUSTOMIZADOS PARA MARKDOWN (CÓDIGO IDENTADO) ---
-  const markdownComponents = {
-    code({ node, inline, className, children, ...props }) {
-      const match = /language-(\w+)/.exec(className || "");
-      return !inline ? (
-        <div style={{ margin: "15px 0", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}>
-          <div style={{ background: "#2d2d2d", color: "#ccc", fontSize: "0.75rem", padding: "5px 15px", fontFamily: "sans-serif", textTransform: "uppercase" }}>
-            {match ? match[1] : "JAVA"}
-          </div>
-          <pre style={{ 
-            background: "#1e1e1e", 
-            padding: "15px", 
-            overflowX: "auto", 
-            margin: 0,
-            whiteSpace: "pre-wrap", 
-            wordBreak: "break-word",
-            fontFamily: '"Fira Code", "Courier New", Courier, monospace',
-            color: "#d4d4d4",
-            fontSize: "0.95rem",
-            lineHeight: "1.5"
-          }}>
-            <code className={className} {...props}>
-              {children}
-            </code>
-          </pre>
-        </div>
-      ) : (
-        <code style={{ 
-          background: "var(--hover-bg)", 
-          color: "var(--primary)", 
-          padding: "2px 6px", 
-          borderRadius: "4px", 
-          fontFamily: '"Fira Code", "Courier New", Courier, monospace',
-          fontSize: "0.9em" 
-        }} {...props}>
-          {children}
-        </code>
-      );
-    }
-  };
-
   return (
     <div className="container">
       <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
@@ -475,14 +351,12 @@ export default function GabariteJava() {
         </button>
       </header>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '15px 20px', borderRadius: '12px', marginBottom: '20px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-        <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-          <strong>IA Geradora:</strong> {userApiKey ? <span style={{color: 'var(--success-text)'}}>Chave Ativa ({userModel || "Padrão"})</span> : <span>Configure a sua IA gratuitamente para geração contínua.</span>}
-        </div>
-        <button onClick={openConfigModal} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', fontSize: '0.95rem', cursor: 'pointer', fontWeight: 'bold', transition: 'background 0.2s' }}>
-          ⚙️ Configurar a Minha IA
-        </button>
-      </div>
+      <AiKeyBar
+        userApiKey={userApiKey}
+        userModel={userModel}
+        onConfigurar={() => setShowConfig(true)}
+        label="IA do Java"
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
@@ -673,9 +547,9 @@ export default function GabariteJava() {
                           </div>
                           <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Código Base / Cenário</h3>
                           <div className="markdown-format" style={{ fontSize: '1rem', color: 'var(--text-main)' }}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                            <Md>
                               {q.textoVinculado}
-                            </ReactMarkdown>
+                            </Md>
                           </div>
                         </div>
                       )}
@@ -693,9 +567,9 @@ export default function GabariteJava() {
                               {q.assunto}
                             </span>
                             <div className="markdown-format" style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
-                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                              <Md>
                                 {q.enunciado}
-                              </ReactMarkdown>
+                              </Md>
                             </div>
                             
                             <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
@@ -718,15 +592,9 @@ export default function GabariteJava() {
                                       }}
                                     >
                                       <span style={{ flex: 1, textAlign: 'left', whiteSpace: 'pre-line' }}>
-                                        <ReactMarkdown 
-                                          remarkPlugins={[remarkGfm]} 
-                                          components={{
-                                            ...markdownComponents,
-                                            p: ({node, ...props}) => <span {...props} />
-                                          }}
-                                        >
+                                        <Md inline>
                                           {alt}
-                                        </ReactMarkdown>
+                                        </Md>
                                       </span>
                                       {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)" style={{ flexShrink: 0, marginLeft: '10px' }}/>}
                                     </button>
@@ -773,9 +641,9 @@ export default function GabariteJava() {
                                   {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
                                 </div>
                                 <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                  <Md>
                                     {q.explicacao}
-                                  </ReactMarkdown>
+                                  </Md>
                                 </div>
                               </div>
                             )}
@@ -808,99 +676,6 @@ export default function GabariteJava() {
           </div>
         </div>
       </div>
-
-      {showConfig && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', border: '1px solid var(--border)' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '15px' }}>⚙️ Configurar a Minha IA</h3>
-            
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <button
-                onClick={() => {
-                  setProviderTab("openrouter");
-                  setTempModel("google/gemini-2.5-flash");
-                }}
-                className={`btn ${providerTab === "openrouter" ? "primary" : ""}`}
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              >
-                OpenRouter
-              </button>
-              <button
-                onClick={() => {
-                  setProviderTab("aistudio");
-                  setTempModel("gemini-2.5-flash");
-                }}
-                className={`btn ${providerTab === "aistudio" ? "primary" : ""}`}
-                style={{ flex: 1, padding: '10px', fontSize: '0.9rem' }}
-              >
-                Google AI Studio
-              </button>
-            </div>
-
-            {providerTab === "openrouter" && (
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                  Conecte sua conta OpenRouter para acesso a dezenas de modelos de IA. O login é automático.
-                </p>
-                {userApiKey && userApiKey.startsWith("sk-or-") ? (
-                  <div style={{ padding: '12px', borderRadius: '6px', background: 'var(--success-bg)', border: '1px solid var(--success-text)', color: 'var(--success-text)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-                    <span>✅ OpenRouter Conectado!</span>
-                    <button onClick={handleDisconnectAI} disabled={savingConfig} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Desvincular</button>
-                  </div>
-                ) : (
-                  <button onClick={handleConnectAI} className="btn primary" style={{ width: '100%', padding: '12px' }}>🔗 Conectar OpenRouter</button>
-                )}
-              </div>
-            )}
-
-            {providerTab === "aistudio" && (
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '15px', lineHeight: '1.4' }}>
-                  O Google AI Studio exige a geração manual da chave de acesso utilizando o seu Gmail. Siga os passos:
-                </p>
-                
-                <a 
-                  href="https://aistudio.google.com/app/apikey" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="btn" 
-                  style={{ width: '100%', marginBottom: '15px', display: 'block', textAlign: 'center', background: '#e2e8f0', color: '#1e293b', textDecoration: 'none', fontWeight: 'bold', padding: '12px' }}
-                >
-                  1️⃣ Obter Chave no AI Studio (Grátis)
-                </a>
-                
-                <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>
-                  2️⃣ Cole a Chave Gerada:
-                </label>
-                
-                <input
-                  type="password"
-                  value={tempApiKey}
-                  onChange={(e) => setTempApiKey(e.target.value)}
-                  placeholder="AIzaSy... ou AQ.Ab8..."
-                  style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }}
-                />
-                
-                {userApiKey && !userApiKey.startsWith("sk-or-") && tempApiKey === userApiKey && (
-                  <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'var(--success-text)', fontWeight: 'bold' }}>
-                    ✅ Chave AI Studio salva no sistema!
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '8px' }}>Modelo de IA:</label>
-              <input type="text" value={tempModel} onChange={(e) => setTempModel(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-              <button onClick={() => setShowConfig(false)} className="btn">Fechar</button>
-              <button onClick={saveConfigToDB} className="btn primary">{savingConfig ? "⏳ Salvando..." : "Salvar Configurações"}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showStatsModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -966,12 +741,43 @@ export default function GabariteJava() {
             </div>
             <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
               <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                <Md>
                   {lessonContent}
-                </ReactMarkdown>
+                </Md>
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
+      <Modal
+        open={showConfig}
+        onClose={() => setShowConfig(false)}
+        title="Conectar a sua inteligência artificial"
+        subtitle="A chave fica na sua conta e vale para todas as ferramentas da plataforma."
+      >
+        <AiKeyPanel
+          userApiKey={userApiKey}
+          userModel={userModel}
+          onChange={({ apiKey, model }) => { setUserApiKey(apiKey); setUserModel(model); }}
+          onFechar={() => setShowConfig(false)}
+        />
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmarLimpeza}
+        title="Limpar o histórico de Java"
+        message={`Apagar os ${stats.total} item(ns) já julgados e o desempenho por tópico?`}
+        detail="O histórico fica guardado apenas neste navegador e não pode ser recuperado depois."
+        confirmLabel="Limpar histórico"
+        onConfirm={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); setConfirmarLimpeza(false); }}
+        onCancel={() => setConfirmarLimpeza(false)}
+      />
+
+      {aviso && (
+        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg, 0 12px 32px rgba(0,0,0,.18))', borderRadius: '10px' }}>
+          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
         </div>
       )}
 

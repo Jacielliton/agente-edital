@@ -1,606 +1,744 @@
-import React, { useEffect, useState } from "react";
-import { Trash2, Eye, RefreshCw, Edit, BookOpen, ChevronLeft, ChevronRight, UserPlus, X, Search, Filter, Download } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  Trash2, Eye, RefreshCw, Pencil, BookOpen, ChevronLeft, ChevronRight,
+  UserPlus, X, Search, Download, Archive, Globe, Lock, Upload, Plus,
+} from "lucide-react";
 import JSZip from "jszip";
+import {
+  Button, Badge, Input, EmptyState, Skeleton, PageHeader, Modal, ConfirmDialog, Notice,
+} from "../components/ui";
+import "./GerenciarAulas.css";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const POR_PAGINA = 10;
+
+const getAuthToken = () => {
+  const storages = [localStorage, sessionStorage];
+  for (const storage of storages) {
+    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
+    if (t && t.startsWith("eyJ")) return t;
+    try {
+      const uStr = storage.getItem("user");
+      if (uStr && uStr.startsWith("{")) {
+        const uObj = JSON.parse(uStr);
+        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
+        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
+      }
+    } catch (e) { /* storage indisponível */ }
+  }
+  return "";
+};
+
+const authHeaders = (extra = {}) => {
+  const token = getAuthToken();
+  return { ...extra, Authorization: token ? `Bearer ${token}` : "" };
+};
+
+const nomeArquivo = (titulo) =>
+  (titulo ? titulo.replace(/[^a-z0-9]/gi, "_").toLowerCase() : "aula");
+
+function baixarBlob(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nome;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 export default function GerenciarAulas() {
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
-  
   const [plans, setPlans] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loadingPlans, setLoadingPlans] = useState(true);
-  
-  // Estados de Paginação
-  const [currentPlanPage, setCurrentPlanPage] = useState(1);
+
+  const [pagina, setPagina] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const limitPlansPerPage = 10;
 
-  // Estado do Filtro
-  const [searchTerm, setSearchTerm] = useState("");
+  const [busca, setBusca] = useState("");
+  const [buscaAplicada, setBuscaAplicada] = useState("");
 
-  // Estados de Edição
+  // Um único lugar para o resultado das ações, no lugar dos alert() nativos.
+  const [aviso, setAviso] = useState(null); // { tone, texto }
+
   const [editingPlan, setEditingPlan] = useState(null);
-  const [editFormData, setEditFormData] = useState({ title: '', area: '', ano: '', banca: '', concurso: '', visibility: 'public' });
+  const [editFormData, setEditFormData] = useState({
+    title: "", area: "", ano: "", banca: "", concurso: "", visibility: "public", content: null,
+  });
   const [savingPlan, setSavingPlan] = useState(false);
+
+  const [confirmacao, setConfirmacao] = useState(null); // { tipo, plan }
+  const [executando, setExecutando] = useState(false);
+
   const [downloadingId, setDownloadingId] = useState(null);
-  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
-  // Novos Estados de Compartilhamento (Acesso Privado)
+  const [backup, setBackup] = useState(null); // { feitos, total }
+
   const [sharingPlan, setSharingPlan] = useState(null);
   const [sharedEmails, setSharedEmails] = useState([]);
   const [newEmail, setNewEmail] = useState("");
   const [loadingShares, setLoadingShares] = useState(false);
+  const [erroShare, setErroShare] = useState("");
 
-  const getAuthToken = () => {
-    // Usando a mesma lógica robusta que você tem nos outros arquivos
-    const storages = [localStorage, sessionStorage];
-    for (const storage of storages) {
-      let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
-      if (t && t.startsWith("eyJ")) return t;
-      try {
-        const uStr = storage.getItem("user");
-        if (uStr && uStr.startsWith("{")) {
-          const uObj = JSON.parse(uStr);
-          if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
-          if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
-        }
-      } catch(e) {}
-    }
-    return "";
-  };
+  const buscaTimer = useRef(null);
 
-  const fetchPlans = (page = 1) => {
+  // ------------------------------------------------------------------ dados
+  const fetchPlans = useCallback((page, termo) => {
     setLoadingPlans(true);
-    const token = getAuthToken();
+    const params = new URLSearchParams({ page, limit: POR_PAGINA, manage_mode: "true" });
+    if (termo) params.append("search", termo);
 
-    // Adiciona o parâmetro de busca na URL dinamicamente
-    const queryParams = `page=${page}&limit=${limitPlansPerPage}&manage_mode=true${searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''}`;
-
-    fetch(`${API_URL}/plans?${queryParams}`, {
-      headers: { "Authorization": token ? `Bearer ${token}` : "" }
-    })
+    fetch(`${API_URL}/plans?${params.toString()}`, { headers: authHeaders() })
       .then((res) => {
-        if (!res.ok) throw new Error("Não autorizado");
+        if (!res.ok) throw new Error("Não foi possível carregar as aulas.");
         return res.json();
       })
       .then((data) => {
         setPlans(data.items || []);
-        const calculatedPages = Math.ceil((data.total || 0) / limitPlansPerPage);
-        setTotalPages(calculatedPages > 0 ? calculatedPages : 1);
+        setTotal(data.total || 0);
+        const paginas = Math.ceil((data.total || 0) / POR_PAGINA);
+        setTotalPages(paginas > 0 ? paginas : 1);
       })
-      .catch((err) => console.error(err))
+      .catch((err) => {
+        console.error(err);
+        setPlans([]);
+        setAviso({ tone: "err", texto: err.message || "Erro ao carregar as aulas." });
+      })
       .finally(() => setLoadingPlans(false));
-  };
+  }, []);
 
   useEffect(() => {
-    fetchPlans(currentPlanPage);
-  }, [currentPlanPage]);
+    fetchPlans(pagina, buscaAplicada);
+  }, [pagina, buscaAplicada, fetchPlans]);
 
-  const goToPage = (pageNumber) => {
-    if (pageNumber >= 1 && pageNumber <= totalPages) {
-      setCurrentPlanPage(pageNumber);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+  // A busca aplica sozinha depois que a pessoa para de digitar, e sempre
+  // volta para a primeira página — antes dava para ficar na página 3 vendo
+  // os resultados da página 1.
+  const handleBusca = (valor) => {
+    setBusca(valor);
+    if (buscaTimer.current) clearTimeout(buscaTimer.current);
+    buscaTimer.current = setTimeout(() => {
+      setPagina(1);
+      setBuscaAplicada(valor.trim());
+    }, 400);
   };
 
-  const handleDeletePlan = async (id) => {
-    if (!window.confirm("Tem certeza que deseja deletar esta aula?")) return;
+  const limparBusca = () => {
+    if (buscaTimer.current) clearTimeout(buscaTimer.current);
+    setBusca("");
+    setPagina(1);
+    setBuscaAplicada("");
+  };
+
+  useEffect(() => () => buscaTimer.current && clearTimeout(buscaTimer.current), []);
+
+  const irParaPagina = (n) => {
+    if (n < 1 || n > totalPages) return;
+    setPagina(n);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // ------------------------------------------------------------------ ações
+  const confirmarExclusao = async () => {
+    const plan = confirmacao?.plan;
+    if (!plan) return;
+    setExecutando(true);
     try {
-      const res = await fetch(`${API_URL}/plans/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${getAuthToken()}` } });
-      if (res.ok) fetchPlans(currentPlanPage);
-    } catch (e) { console.error(e); }
+      const res = await fetch(`${API_URL}/plans/${plan.id}`, { method: "DELETE", headers: authHeaders() });
+      if (!res.ok) throw new Error("O servidor recusou a exclusão.");
+      setConfirmacao(null);
+      setAviso({ tone: "ok", texto: `Aula "${plan.title}" excluída.` });
+      // Se era o último item da página, volta uma página para não ficar vazio.
+      const ultimaDaPagina = plans.length === 1 && pagina > 1;
+      if (ultimaDaPagina) setPagina(pagina - 1);
+      else fetchPlans(pagina, buscaAplicada);
+    } catch (e) {
+      console.error(e);
+      setAviso({ tone: "err", texto: e.message || "Erro ao excluir a aula." });
+      setConfirmacao(null);
+    } finally {
+      setExecutando(false);
+    }
   };
 
   const handleOpenEdit = (plan) => {
     setEditingPlan(plan);
     setEditFormData({
-      title: plan.title || '', 
-      area: plan.area || '', 
-      ano: plan.ano || '', 
-      banca: plan.banca || '', 
-      concurso: plan.concurso || '', 
-      visibility: plan.visibility || 'public',
-      content: null // <--- ADICIONADO
+      title: plan.title || "",
+      area: plan.area || "",
+      ano: plan.ano || "",
+      banca: plan.banca || "",
+      concurso: plan.concurso || "",
+      visibility: plan.visibility || "public",
+      content: null,
     });
   };
 
-  // --- NOVA FUNÇÃO PARA UPLOAD DE JSON ---
   const handleJsonUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target.result);
-        
-        // Verifica se o JSON tem estrutura de backup { meta: {...}, content: {...} } ou se é direto
-        const actualContent = (json.meta && json.content) ? json.content : json;
-        
-        setEditFormData(prev => ({ ...prev, content: actualContent }));
-        alert("✅ Arquivo JSON carregado com sucesso! Clique em 'Guardar Alterações' para aplicar na nuvem.");
+        // Aceita tanto o backup { meta, content } quanto o conteúdo direto.
+        const actualContent = json.meta && json.content ? json.content : json;
+
+        if (!Array.isArray(actualContent?.aulas) || actualContent.aulas.length === 0) {
+          throw new Error("O arquivo não tem a lista de aulas no formato esperado.");
+        }
+
+        setEditFormData((prev) => ({ ...prev, content: actualContent, contentNome: file.name }));
+        setAviso(null);
       } catch (error) {
-        console.error("Erro ao fazer parse do JSON:", error);
-        alert("❌ Erro ao ler o arquivo. Certifique-se de que é um JSON válido e não está corrompido.");
+        console.error(error);
+        setEditFormData((prev) => ({ ...prev, content: null, contentNome: null }));
+        setAviso({ tone: "err", texto: error.message || "Arquivo JSON inválido ou corrompido." });
       }
     };
     reader.readAsText(file);
+    e.target.value = "";
   };
 
   const handleSaveEdit = async () => {
+    if (!editFormData.title.trim()) {
+      setAviso({ tone: "warn", texto: "A aula precisa de um título." });
+      return;
+    }
     setSavingPlan(true);
-    const token = getAuthToken();
 
-    // 1. Criar um objeto de dados normalizado, garantindo caixa alta
     const normalizedData = {
       ...editFormData,
-      concurso: editFormData.concurso ? editFormData.concurso.trim().toUpperCase() : '',
-      banca: editFormData.banca ? editFormData.banca.trim().toUpperCase() : '',
-      area: editFormData.area ? editFormData.area.trim() : ''
+      concurso: editFormData.concurso ? editFormData.concurso.trim().toUpperCase() : "",
+      banca: editFormData.banca ? editFormData.banca.trim().toUpperCase() : "",
+      area: editFormData.area ? editFormData.area.trim() : "",
     };
+    delete normalizedData.contentNome;
 
     try {
       const res = await fetch(`${API_URL}/plans/${editingPlan.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": token ? `Bearer ${token}` : ""
-        },
-        body: JSON.stringify(normalizedData) // 2. Passar o objeto recém-criado em vez do editFormData cru
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(normalizedData),
       });
-      if (res.ok) {
-        setEditingPlan(null);
-        fetchPlans(currentPlanPage);
-      } else alert("Erro ao editar a aula");
-    } catch (e) { console.error(e); } finally { setSavingPlan(false); }
+      if (!res.ok) throw new Error("O servidor recusou a alteração.");
+      setEditingPlan(null);
+      setAviso({ tone: "ok", texto: "Aula atualizada." });
+      fetchPlans(pagina, buscaAplicada);
+    } catch (e) {
+      console.error(e);
+      setAviso({ tone: "err", texto: e.message || "Erro ao salvar a aula." });
+    } finally {
+      setSavingPlan(false);
+    }
   };
 
-  // --- NOVAS FUNÇÕES DE COMPARTILHAMENTO ---
+  // ----------------------------------------------------------- acessos
   const handleOpenShare = async (plan) => {
     setSharingPlan(plan);
+    setSharedEmails([]);
+    setErroShare("");
     setLoadingShares(true);
     try {
-      const res = await fetch(`${API_URL}/plans/${plan.id}/shares`, {
-        headers: { "Authorization": `Bearer ${getAuthToken()}` }
-      });
+      const res = await fetch(`${API_URL}/plans/${plan.id}/shares`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setSharedEmails(data.emails || []);
       }
-    } catch (e) { console.error(e); } finally { setLoadingShares(false); }
+    } catch (e) {
+      console.error(e);
+      setErroShare("Não foi possível carregar a lista de acessos.");
+    } finally {
+      setLoadingShares(false);
+    }
   };
 
   const handleAddEmail = async () => {
-    if (!newEmail.trim() || !newEmail.includes("@")) return alert("Digite um e-mail válido.");
-    
+    const email = newEmail.trim();
+    if (!email || !email.includes("@")) {
+      setErroShare("Digite um e-mail válido.");
+      return;
+    }
+    setErroShare("");
     try {
       const res = await fetch(`${API_URL}/plans/${sharingPlan.id}/shares`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
-        body: JSON.stringify({ email: newEmail.trim() })
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ email }),
       });
-      
-      if (res.ok) {
-        setSharedEmails([...sharedEmails, newEmail.trim()]);
-        setNewEmail("");
-      } else {
-        const err = await res.json();
-        alert(err.detail || "Erro ao adicionar usuário");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Não foi possível adicionar este e-mail.");
       }
-    } catch (e) { console.error(e); }
+      setSharedEmails((atual) => [...atual, email]);
+      setNewEmail("");
+    } catch (e) {
+      setErroShare(e.message);
+    }
   };
 
   const handleRemoveEmail = async (emailToRemove) => {
     try {
       const res = await fetch(`${API_URL}/plans/${sharingPlan.id}/shares/${emailToRemove}`, {
         method: "DELETE",
-        headers: { "Authorization": `Bearer ${getAuthToken()}` }
+        headers: authHeaders(),
       });
-      if (res.ok) {
-        setSharedEmails(sharedEmails.filter(e => e !== emailToRemove));
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const handleDownloadPlan = async (plan) => {
-    try {
-      setDownloadingId(plan.id);
-      const token = getAuthToken();
-      
-      // Busca o conteúdo completo da aula no backend
-      const res = await fetch(`${API_URL}/plans/${plan.id}`, {
-        headers: { "Authorization": token ? `Bearer ${token}` : "" }
-      });
-
-      if (!res.ok) throw new Error("Erro ao buscar o conteúdo da aula.");
-
-      const content = await res.json();
-      
-      // Estrutura os dados para incluir os metadados da aula junto com o conteúdo
-      const exportData = {
-        meta: {
-          id: plan.id,
-          title: plan.title,
-          area: plan.area,
-          banca: plan.banca,
-          concurso: plan.concurso,
-          ano: plan.ano,
-          visibility: plan.visibility
-        },
-        content: content
-      };
-
-      // Converte para JSON formatado (com indentação de 2 espaços)
-      //ALTEREI exportData POR content PARA MANTER O MESMO FORMATO DE BACKUP ANTIGO
-      const dataStr = JSON.stringify(content, null, 2);
-      const blob = new Blob([dataStr], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      
-      // Cria um link temporário para forçar o download
-      const link = document.createElement("a");
-      link.href = url;
-      
-      // Limpa o título para usar no nome do ficheiro
-      const safeTitle = plan.title ? plan.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'aula';
-      link.download = `aula_${safeTitle}.json`;
-      
-      document.body.appendChild(link);
-      link.click();
-      
-      // Limpeza
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      if (res.ok) setSharedEmails((atual) => atual.filter((e) => e !== emailToRemove));
     } catch (e) {
       console.error(e);
-      alert("Erro ao tentar baixar a aula.");
+      setErroShare("Não foi possível remover o acesso.");
+    }
+  };
+
+  // ---------------------------------------------------------- downloads
+  const handleDownloadPlan = async (plan) => {
+    setDownloadingId(plan.id);
+    try {
+      const res = await fetch(`${API_URL}/plans/${plan.id}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error("Erro ao buscar o conteúdo da aula.");
+      const content = await res.json();
+      baixarBlob(
+        new Blob([JSON.stringify(content, null, 2)], { type: "application/json" }),
+        `aula_${nomeArquivo(plan.title)}.json`
+      );
+    } catch (e) {
+      console.error(e);
+      setAviso({ tone: "err", texto: "Não foi possível baixar esta aula." });
     } finally {
       setDownloadingId(null);
     }
   };
 
-  const handleDownloadAllPlans = async () => {
-    if (!window.confirm("Deseja gerar um backup em ZIP de TODAS as aulas? Isso pode demorar alguns segundos.")) return;
-
-    setIsDownloadingAll(true);
-    const token = getAuthToken();
+  const confirmarBackup = async () => {
+    setConfirmacao(null);
+    setBackup({ feitos: 0, total: 0 });
 
     try {
-      // 1. Busca a lista de todas as aulas
-      const summaryRes = await fetch(`${API_URL}/plans?limit=1000&manage_mode=true`, {
-        headers: { "Authorization": token ? `Bearer ${token}` : "" }
-      });
-
+      const summaryRes = await fetch(`${API_URL}/plans?limit=1000&manage_mode=true`, { headers: authHeaders() });
       if (!summaryRes.ok) throw new Error("Erro ao buscar a lista de aulas.");
       const summaryData = await summaryRes.json();
       const plansToDownload = summaryData.items || [];
 
       if (plansToDownload.length === 0) {
-        alert("Não há aulas para gerar backup.");
-        setIsDownloadingAll(false);
+        setBackup(null);
+        setAviso({ tone: "warn", texto: "Não há aulas para gerar backup." });
         return;
       }
 
-      // 2. Inicializa o JSZip e cria uma pasta interna
+      setBackup({ feitos: 0, total: plansToDownload.length });
+
       const zip = new JSZip();
       const folder = zip.folder("backup_aulas");
+      let falharam = 0;
 
-      // 3. Busca o conteúdo detalhado de cada aula e adiciona ao ZIP
-      for (const plan of plansToDownload) {
-        const detailRes = await fetch(`${API_URL}/plans/${plan.id}`, {
-          headers: { "Authorization": token ? `Bearer ${token}` : "" }
-        });
-
-        if (detailRes.ok) {
-          const content = await detailRes.json();
-          const exportData = {
-            meta: {
-              id: plan.id,
-              title: plan.title,
-              area: plan.area,
-              banca: plan.banca,
-              concurso: plan.concurso,
-              ano: plan.ano,
-              visibility: plan.visibility
-            },
-            content: content
-          };
-
-          const dataStr = JSON.stringify(exportData, null, 2);
-          
-          // Formata o nome do ficheiro (ex: 12_aula_de_portugues.json)
-          const safeTitle = plan.title ? plan.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'aula';
-          const fileName = `${plan.id}_${safeTitle}.json`;
-          
-          // Adiciona o ficheiro à pasta no ZIP
-          folder.file(fileName, dataStr);
+      for (let i = 0; i < plansToDownload.length; i++) {
+        const plan = plansToDownload[i];
+        try {
+          const detailRes = await fetch(`${API_URL}/plans/${plan.id}`, { headers: authHeaders() });
+          if (detailRes.ok) {
+            const content = await detailRes.json();
+            const exportData = {
+              meta: {
+                id: plan.id, title: plan.title, area: plan.area,
+                banca: plan.banca, concurso: plan.concurso, ano: plan.ano,
+                visibility: plan.visibility,
+              },
+              content,
+            };
+            folder.file(`${plan.id}_${nomeArquivo(plan.title)}.json`, JSON.stringify(exportData, null, 2));
+          } else {
+            falharam += 1;
+          }
+        } catch (e) {
+          falharam += 1;
         }
+        setBackup({ feitos: i + 1, total: plansToDownload.length });
       }
 
-      // 4. Gera o ficheiro ZIP final e força o download
       const zipContent = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(zipContent);
-      
-      const link = document.createElement("a");
-      link.href = url;
-      
-      // Nomeia o ZIP com a data de hoje
-      const date = new Date().toISOString().split('T')[0];
-      link.download = `backup_aulas_${date}.zip`;
-      
-      document.body.appendChild(link);
-      link.click();
-      
-      // Limpeza da memória
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
+      const data = new Date().toISOString().split("T")[0];
+      baixarBlob(zipContent, `backup_aulas_${data}.zip`);
+
+      setAviso({
+        tone: falharam > 0 ? "warn" : "ok",
+        texto: falharam > 0
+          ? `Backup gerado com ${plansToDownload.length - falharam} de ${plansToDownload.length} aulas — ${falharam} falharam.`
+          : `Backup de ${plansToDownload.length} aula(s) gerado.`,
+      });
     } catch (e) {
       console.error(e);
-      alert("Erro ao tentar gerar o ficheiro ZIP.");
+      setAviso({ tone: "err", texto: "Erro ao gerar o arquivo ZIP." });
     } finally {
-      setIsDownloadingAll(false);
+      setBackup(null);
     }
   };
 
+  // ------------------------------------------------------------------ UI
+  const paginas = useMemo(() => {
+    const lista = [];
+    for (let n = 1; n <= totalPages; n++) {
+      if (n === 1 || n === totalPages || (n >= pagina - 1 && n <= pagina + 1)) lista.push(n);
+      else if (n === pagina - 2 || n === pagina + 2) lista.push("…");
+    }
+    return lista;
+  }, [totalPages, pagina]);
+
+  const AcoesDaAula = ({ plan }) => (
+    <div className="ga__actions">
+      <Link className="ga__icon-btn" to={`/aula/${plan.id}`} title="Abrir a aula" aria-label={`Abrir ${plan.title}`}>
+        <Eye size={16} />
+      </Link>
+      <button
+        className="ga__icon-btn"
+        onClick={() => handleDownloadPlan(plan)}
+        disabled={downloadingId === plan.id}
+        title="Baixar JSON"
+        aria-label={`Baixar ${plan.title} em JSON`}
+      >
+        {downloadingId === plan.id ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
+      </button>
+      {plan.visibility === "private" && (
+        <button
+          className="ga__icon-btn ga__icon-btn--accent"
+          onClick={() => handleOpenShare(plan)}
+          title="Gerenciar quem tem acesso"
+          aria-label={`Gerenciar acessos de ${plan.title}`}
+        >
+          <UserPlus size={16} />
+        </button>
+      )}
+      <button
+        className="ga__icon-btn"
+        onClick={() => handleOpenEdit(plan)}
+        title="Editar"
+        aria-label={`Editar ${plan.title}`}
+      >
+        <Pencil size={16} />
+      </button>
+      <button
+        className="ga__icon-btn ga__icon-btn--danger"
+        onClick={() => setConfirmacao({ tipo: "excluir", plan })}
+        title="Excluir"
+        aria-label={`Excluir ${plan.title}`}
+      >
+        <Trash2 size={16} />
+      </button>
+    </div>
+  );
+
+  const Visibilidade = ({ plan }) =>
+    plan.visibility === "private" ? (
+      <Badge icon={<Lock size={11} />}>Privado</Badge>
+    ) : (
+      <Badge tone="ok" icon={<Globe size={11} />}>Público</Badge>
+    );
+
+  const vazioPorBusca = !loadingPlans && plans.length === 0 && !!buscaAplicada;
+  const vazioTotal = !loadingPlans && plans.length === 0 && !buscaAplicada;
+
   return (
-    <div className="container">
-      <div className="header" style={{ textAlign: "left" }}>
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <BookOpen size={28} color="var(--primary)" /> Gerenciar Aulas
-        </h1>
-        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Edite, altere a visibilidade ou exclua as aulas do banco de dados.</p>
-      </div>
-
-      <div className="panel">
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-          <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Aulas Cadastradas</h3>
-          
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {/* NOVO CAMPO DE FILTRO COM ÍCONE DE BUSCA */}
-            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-              <Search size={16} color="var(--text-muted)" style={{ position: "absolute", left: "10px" }} />
-              <input 
-                type="text" 
-                placeholder="Pesquisar aulas..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && fetchPlans(1)}
-                style={{ padding: "8px 10px 8px 32px", borderRadius: "6px", border: "1px solid var(--border)", backgroundColor: "var(--input-bg)", color: "var(--text-main)", fontSize: "0.9rem", width: "220px" }}
-              />
-            </div>
-            
-            {/* BOTÃO DE APLICAR FILTRO */}
-            <button className="btn small" onClick={() => fetchPlans(1)} title="Aplicar Filtro" style={{ backgroundColor: 'var(--primary)', color: '#fff' }}>
-              <Filter size={14}/> Filtrar
-            </button>
-
-            {/* NOVO BOTÃO: BAIXAR TODAS (BACKUP) */}
-            <button 
-              className="btn small" 
-              onClick={handleDownloadAllPlans} 
-              disabled={isDownloadingAll}
-              style={{ backgroundColor: 'var(--success-bg, #d4edda)', color: 'var(--success-text, #155724)', borderColor: 'transparent' }}
+    <div className="ga">
+      <PageHeader
+        eyebrow="Gestão"
+        title="Gerenciar aulas"
+        description="Edite os dados, controle quem enxerga cada aula, baixe backups ou exclua o que não usa mais."
+        actions={
+          <>
+            <Button
+              onClick={() => setConfirmacao({ tipo: "backup" })}
+              disabled={backup !== null}
+              icon={<Archive size={15} />}
             >
-              {isDownloadingAll ? <RefreshCw size={14} className="spin" /> : <Download size={14} />} 
-              {isDownloadingAll ? "A gerar backup..." : "Baixar Todas"}
-            </button>
+              {backup ? `Backup ${backup.feitos}/${backup.total || "…"}` : "Baixar todas"}
+            </Button>
+            <Button variant="primary" to="/generator" icon={<Plus size={15} />}>Nova aula</Button>
+          </>
+        }
+      />
 
-            {/* BOTÃO DE ATUALIZAR */}
-            <button className="btn small" onClick={() => fetchPlans(currentPlanPage)}>
-              <RefreshCw size={14}/> Atualizar
+      {aviso && (
+        <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
+      )}
+
+      <div className="ga__toolbar">
+        <span className="ga__search">
+          <Search size={16} />
+          <input
+            type="search"
+            value={busca}
+            onChange={(e) => handleBusca(e.target.value)}
+            placeholder="Buscar por título, banca ou concurso…"
+            aria-label="Buscar aulas"
+          />
+          {busca && (
+            <button className="ga__search-clear" onClick={limparBusca} aria-label="Limpar busca">
+              <X size={15} />
             </button>
-          </div>
+          )}
+        </span>
+
+        <div className="ga__toolbar-actions">
+          <span className="ga__count" style={{ alignSelf: "center" }}>
+            {loadingPlans ? "carregando…" : `${total} aula(s)${buscaAplicada ? " encontradas" : ""}`}
+          </span>
+          <Button onClick={() => fetchPlans(pagina, buscaAplicada)} icon={<RefreshCw size={15} />}>
+            Atualizar
+          </Button>
         </div>
-
-        {loadingPlans ? <div className="status">A carregar aulas...</div> : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Título</th>
-                  <th>Visibilidade</th>
-                  <th>Área</th>
-                  <th>Banca / Concurso</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plans.map((plan) => (
-                  <tr key={plan.id}>
-                    <td style={{ color: 'var(--text-secondary)' }}>#{plan.id}</td>
-                    <td style={{ maxWidth: '250px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-main)' }}>
-                      <strong>{plan.title}</strong>
-                    </td>
-                    <td>
-                      <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: plan.visibility === 'private' ? 'var(--error-bg)' : 'var(--success-bg)', color: plan.visibility === 'private' ? 'var(--error-text)' : 'var(--success-text)' }}>
-                        {plan.visibility === 'private' ? 'PRIVADO' : 'PÚBLICO'}
-                      </span>
-                    </td>
-                    <td><span className="badge-area">{plan.area}</span></td>
-                    <td>
-                      {plan.banca && <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{plan.banca}</span>}
-                      {plan.concurso && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{plan.concurso}</div>}
-                    </td>
-                    <td>
-                      <div className="actions-cell">
-                        <Link to={`/aula/${plan.id}`} className="btn small" title="Ver"><Eye size={16} /></Link>
-                        
-                        {/* Botão de Download */}
-                        <button 
-                          className="btn small" 
-                          onClick={() => handleDownloadPlan(plan)} 
-                          title="Baixar Backup (JSON)"
-                          disabled={downloadingId === plan.id}
-                          style={{ 
-                            backgroundColor: 'var(--success-bg, #d4edda)', 
-                            color: 'var(--success-text, #155724)', 
-                            borderColor: 'transparent',
-                            opacity: downloadingId === plan.id ? 0.5 : 1
-                          }}
-                        >
-                          {downloadingId === plan.id ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
-                        </button>
-
-                        {/* NOVO BOTÃO: Só aparece se a aula for privada */}
-                        {plan.visibility === 'private' && (
-                          <button className="btn small" onClick={() => handleOpenShare(plan)} title="Gerenciar Acesso" style={{ backgroundColor: 'var(--primary-light)', borderColor: 'var(--primary)', color: 'var(--primary)' }}><UserPlus size={16} /></button>
-                        )}
-                        
-                        <button className="btn small" onClick={() => handleOpenEdit(plan)} title="Editar"><Edit size={16} /></button>
-                        <button className="btn small error-btn" onClick={() => handleDeletePlan(plan.id)} title="Excluir"><Trash2 size={16} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
-      {/* Paginação */}
-      {totalPages > 1 && !loadingPlans && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginTop: '1.5rem', padding: '1rem', background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-          <button className="btn" onClick={() => goToPage(currentPlanPage - 1)} disabled={currentPlanPage === 1}><ChevronLeft size={18} /> Anterior</button>
-          <div style={{ display: 'flex', gap: '5px' }}>
-            {[...Array(totalPages)].map((_, i) => {
-              const pageNum = i + 1;
-              if (pageNum === 1 || pageNum === totalPages || (pageNum >= currentPlanPage - 1 && pageNum <= currentPlanPage + 1)) {
-                return (
-                  <button key={pageNum} onClick={() => goToPage(pageNum)} style={{ width: '40px', height: '40px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px solid', backgroundColor: currentPlanPage === pageNum ? 'var(--primary)' : 'var(--card-bg)', color: currentPlanPage === pageNum ? '#fff' : 'var(--text-main)', borderColor: currentPlanPage === pageNum ? 'var(--primary)' : 'var(--border)' }}>{pageNum}</button>
-                );
-              } else if (pageNum === currentPlanPage - 2 || pageNum === currentPlanPage + 2) {
-                return <span key={pageNum} style={{ alignSelf: 'center', color: 'var(--text-muted)' }}>...</span>;
-              }
-              return null;
-            })}
-          </div>
-          <button className="btn" onClick={() => goToPage(currentPlanPage + 1)} disabled={currentPlanPage === totalPages}>Próxima <ChevronRight size={18} /></button>
+      {loadingPlans ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={56} radius="var(--radius-md)" />)}
         </div>
-      )}
-
-      {/* MODAL DE COMPARTILHAMENTO (NOVO) */}
-      {sharingPlan && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-            <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border)', color: 'var(--heading-color)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <UserPlus size={22} color="var(--primary)" /> Acessos à Aula Privada
-            </h3>
-            
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Adicione os e-mails dos utilizadores que podem acessar <strong>{sharingPlan.title}</strong>.
-            </p>
-
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-              <input 
-                type="email" 
-                placeholder="E-mail do utilizador..." 
-                value={newEmail} 
-                onChange={e => setNewEmail(e.target.value)} 
-                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} 
-                onKeyDown={(e) => e.key === 'Enter' && handleAddEmail()}
-              />
-              <button onClick={handleAddEmail} className="btn primary small">Adicionar</button>
-            </div>
-
-            <div style={{ background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)', maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
-              {loadingShares ? (
-                <div style={{ padding: '15px', textAlign: 'center', color: 'var(--text-muted)' }}>A carregar acessos...</div>
-              ) : sharedEmails.length === 0 ? (
-                <div style={{ padding: '15px', textAlign: 'center', color: 'var(--text-muted)' }}>Apenas você tem acesso a esta aula.</div>
-              ) : (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {sharedEmails.map((email, i) => (
-                    <li key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 15px', borderBottom: i < sharedEmails.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                      <span style={{ color: 'var(--text-main)', fontSize: '0.9rem' }}>{email}</span>
-                      <button onClick={() => handleRemoveEmail(email)} style={{ background: 'none', border: 'none', color: 'var(--error-text)', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Remover Acesso">
-                        <X size={16} />
-                      </button>
-                    </li>
+      ) : vazioTotal ? (
+        <EmptyState
+          icon={<BookOpen size={22} />}
+          title="Nenhuma aula cadastrada"
+          description="As aulas que você gerar aparecem aqui para editar, compartilhar ou baixar."
+          action={<Button variant="primary" to="/generator" icon={<Plus size={15} />}>Gerar a primeira aula</Button>}
+        />
+      ) : vazioPorBusca ? (
+        <EmptyState
+          icon={<Search size={22} />}
+          title="Nada encontrado"
+          description={`Nenhuma aula corresponde a "${buscaAplicada}". Tente outro título, banca ou concurso.`}
+          action={<Button onClick={limparBusca}>Limpar busca</Button>}
+        />
+      ) : (
+        <>
+          {/* Tabela (telas largas) */}
+          <div className="ga__table-wrap">
+            <div className="ga__scroll">
+              <table className="ga__table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 64 }}>ID</th>
+                    <th>Aula</th>
+                    <th style={{ width: 120 }}>Visibilidade</th>
+                    <th style={{ width: 200 }}>Banca / concurso</th>
+                    <th style={{ width: 190, textAlign: "right" }}>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {plans.map((plan) => (
+                    <tr key={plan.id}>
+                      <td className="ga__id">#{plan.id}</td>
+                      <td>
+                        <span className="ga__title">{plan.title}</span>
+                        {plan.area && <span className="ga__title-sub">{plan.area}</span>}
+                      </td>
+                      <td><Visibilidade plan={plan} /></td>
+                      <td>
+                        <span className="ga__cell-tags">
+                          {plan.banca && <Badge>{plan.banca}</Badge>}
+                          {plan.ano && <Badge outline>{plan.ano}</Badge>}
+                        </span>
+                        {plan.concurso && <span className="ga__title-sub">{plan.concurso}</span>}
+                      </td>
+                      <td><AcoesDaAula plan={plan} /></td>
+                    </tr>
                   ))}
-                </ul>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setSharingPlan(null)} className="btn small" style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)' }}>Fechar</button>
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
+
+          {/* Cartões (celular) */}
+          <div className="ga__cards">
+            {plans.map((plan) => (
+              <div className="ga__card" key={plan.id}>
+                <div className="ga__card-top">
+                  <span style={{ minWidth: 0 }}>
+                    <span className="ga__title">{plan.title}</span>
+                    <span className="ga__title-sub">
+                      #{plan.id}{plan.area ? ` · ${plan.area}` : ""}
+                    </span>
+                  </span>
+                  <Visibilidade plan={plan} />
+                </div>
+                <span className="ga__cell-tags">
+                  {plan.banca && <Badge>{plan.banca}</Badge>}
+                  {plan.ano && <Badge outline>{plan.ano}</Badge>}
+                  {plan.concurso && <Badge outline>{plan.concurso}</Badge>}
+                </span>
+                <AcoesDaAula plan={plan} />
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
-      {/* MODAL DE EDIÇÃO */}
-      {editingPlan && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '500px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-            <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border)', color: 'var(--heading-color)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Edit size={22} color="var(--primary)" /> Editar Aula
-            </h3>
-            
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Título da Aula</label>
-              <input type="text" value={editFormData.title} onChange={e => setEditFormData({...editFormData, title: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
-            </div>
-
-            <div style={{ marginBottom: '15px', display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Área</label>
-                <input type="text" value={editFormData.area} onChange={e => setEditFormData({...editFormData, area: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                 <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Ano</label>
-                 <input type="text" value={editFormData.ano} onChange={e => setEditFormData({...editFormData, ano: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '15px', display: 'flex', gap: '10px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Banca</label>
-                <input type="text" value={editFormData.banca} onChange={e => setEditFormData({...editFormData, banca: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                 <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Concurso</label>
-                 <input type="text" value={editFormData.concurso} onChange={e => setEditFormData({...editFormData, concurso: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }} />
-              </div>
-            </div>
-
-            {/* --- NOVO CAMPO ADICIONADO AQUI --- */}
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>
-                Substituir Conteúdo da Aula (Upload .json)
-              </label>
-              <input 
-                type="file" 
-                accept=".json" 
-                onChange={handleJsonUpload} 
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px dashed var(--primary)', backgroundColor: 'var(--bg)', color: 'var(--text-main)', cursor: 'pointer' }} 
-              />
-              {editFormData.content && (
-                <small style={{ color: 'var(--success-text)', display: 'block', marginTop: '5px', fontWeight: 'bold' }}>
-                  Arquivo preparado. Salve para confirmar.
-                </small>
-              )}
-            </div>
-            {/* --------------------------------- */}
-
-            <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Visibilidade</label>
-              <select 
-                value={editFormData.visibility} 
-                onChange={e => setEditFormData({...editFormData, visibility: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
+      {totalPages > 1 && !loadingPlans && (
+        <div className="ga__pager">
+          <Button onClick={() => irParaPagina(pagina - 1)} disabled={pagina === 1} icon={<ChevronLeft size={15} />}>
+            Anterior
+          </Button>
+          {paginas.map((n, i) =>
+            n === "…" ? (
+              <span key={`sep-${i}`} style={{ color: "var(--fg-3)" }}>…</span>
+            ) : (
+              <button
+                key={n}
+                className={`ga__page${pagina === n ? " is-current" : ""}`}
+                onClick={() => irParaPagina(n)}
+                aria-current={pagina === n ? "page" : undefined}
               >
-                <option value="public">🌍 Público</option>
-                <option value="private">🔒 Privado</option>
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setEditingPlan(null)} disabled={savingPlan} className="btn small" style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)' }}>Cancelar</button>
-              <button onClick={handleSaveEdit} disabled={savingPlan} className="btn primary small">{savingPlan ? "A guardar..." : "Guardar Alterações"}</button>
-            </div>
-          </div>
+                {n}
+              </button>
+            )
+          )}
+          <Button onClick={() => irParaPagina(pagina + 1)} disabled={pagina === totalPages}>
+            Próxima <ChevronRight size={15} />
+          </Button>
         </div>
       )}
+
+      {/* ----------------------------- Modais ----------------------------- */}
+      <ConfirmDialog
+        open={confirmacao?.tipo === "excluir"}
+        title="Excluir aula"
+        message={<>Excluir <b>{confirmacao?.plan?.title}</b> definitivamente?</>}
+        detail="A aula sai da biblioteca de todos que têm acesso a ela. Não há como desfazer — se quiser guardar uma cópia, baixe o JSON antes."
+        confirmLabel="Excluir aula"
+        loading={executando}
+        onConfirm={confirmarExclusao}
+        onCancel={() => setConfirmacao(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmacao?.tipo === "backup"}
+        title="Gerar backup completo"
+        danger={false}
+        message="Baixar um ZIP com o conteúdo de todas as aulas?"
+        detail="Cada aula é buscada uma a uma, então isso pode levar alguns minutos se houver muitas. Você acompanha o progresso no botão."
+        confirmLabel="Gerar backup"
+        onConfirm={confirmarBackup}
+        onCancel={() => setConfirmacao(null)}
+      />
+
+      <Modal
+        open={!!sharingPlan}
+        onClose={() => setSharingPlan(null)}
+        title="Quem pode acessar"
+        subtitle={sharingPlan?.title}
+        footer={<Button onClick={() => setSharingPlan(null)}>Fechar</Button>}
+      >
+        <p style={{ margin: 0, color: "var(--fg-2)", fontSize: "var(--text-sm)", lineHeight: 1.55 }}>
+          Esta aula é privada. Some ao seu acesso os e-mails das pessoas que também podem abri-la.
+        </p>
+
+        <div style={{ display: "flex", gap: "var(--space-2)" }}>
+          <Input
+            type="email"
+            value={newEmail}
+            onChange={(e) => { setNewEmail(e.target.value); setErroShare(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleAddEmail()}
+            placeholder="pessoa@exemplo.com"
+            aria-label="E-mail para liberar acesso"
+          />
+          <Button variant="primary" onClick={handleAddEmail} icon={<Plus size={15} />}>Adicionar</Button>
+        </div>
+
+        {erroShare && <Notice tone="err" onClose={() => setErroShare("")}>{erroShare}</Notice>}
+
+        <div className="ga__emails">
+          {loadingShares ? (
+            <div className="ga__email-empty">Carregando acessos…</div>
+          ) : sharedEmails.length === 0 ? (
+            <div className="ga__email-empty">Só você tem acesso a esta aula.</div>
+          ) : (
+            sharedEmails.map((email, i) => (
+              <div className="ga__email" key={`${email}-${i}`}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{email}</span>
+                <button
+                  className="ga__icon-btn ga__icon-btn--danger"
+                  onClick={() => handleRemoveEmail(email)}
+                  title="Remover acesso"
+                  aria-label={`Remover o acesso de ${email}`}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!editingPlan}
+        onClose={() => !savingPlan && setEditingPlan(null)}
+        title="Editar aula"
+        subtitle={editingPlan ? `#${editingPlan.id}` : ""}
+        footer={
+          <>
+            <Button onClick={() => setEditingPlan(null)} disabled={savingPlan}>Cancelar</Button>
+            <Button variant="primary" onClick={handleSaveEdit} disabled={savingPlan}>
+              {savingPlan ? "Salvando…" : "Salvar alterações"}
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="Título da aula"
+          value={editFormData.title}
+          onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+        />
+
+        <div className="ga__grid">
+          <Input
+            label="Área"
+            value={editFormData.area}
+            onChange={(e) => setEditFormData({ ...editFormData, area: e.target.value })}
+          />
+          <Input
+            label="Banca"
+            value={editFormData.banca}
+            onChange={(e) => setEditFormData({ ...editFormData, banca: e.target.value })}
+          />
+          <Input
+            label="Concurso"
+            value={editFormData.concurso}
+            onChange={(e) => setEditFormData({ ...editFormData, concurso: e.target.value })}
+          />
+          <Input
+            label="Ano"
+            value={editFormData.ano}
+            onChange={(e) => setEditFormData({ ...editFormData, ano: e.target.value })}
+          />
+        </div>
+
+        <label className="ui-field">
+          <span className="ui-field__label">Visibilidade</span>
+          <select
+            className="ui-input"
+            value={editFormData.visibility}
+            onChange={(e) => setEditFormData({ ...editFormData, visibility: e.target.value })}
+          >
+            <option value="public">Público — qualquer assinante encontra</option>
+            <option value="private">Privado — só você e quem você liberar</option>
+          </select>
+        </label>
+
+        <div className="ga__file">
+          <span className="ui-field__label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Upload size={14} /> Substituir o conteúdo por um arquivo
+          </span>
+          <input type="file" accept=".json" onChange={handleJsonUpload} aria-label="Arquivo JSON da aula" />
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--fg-3)", lineHeight: 1.5 }}>
+            Aceita o backup gerado aqui ou o JSON exportado do gerador. O conteúdo antigo é
+            substituído ao salvar — baixe uma cópia antes se quiser guardá-lo.
+          </span>
+          {editFormData.content && (
+            <Notice tone="ok">
+              {editFormData.contentNome || "Arquivo"} carregado, com {editFormData.content.aulas.length} módulo(s).
+              Salve para aplicar.
+            </Notice>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

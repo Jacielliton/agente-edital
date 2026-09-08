@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import ReactMarkdown from "react-markdown";
+// Mesmo markdown da aula: bloco de código com cabeçalho de linguagem, código
+// inline, tabelas e fórmulas. Antes o simulado usava o renderizador cru, sem
+// plugins nem componentes, e por isso o código saía como texto corrido.
+import Md from "./components/Markdown";
 import {
   Check,
   X,
@@ -153,7 +156,7 @@ export default function QuizCard({ question, index, onAnswer }) {
       </div>
 
       <div className="quiz-enunciado">
-        <ReactMarkdown>{safeString(question?.enunciado ?? "")}</ReactMarkdown>
+        <Md>{safeString(question?.enunciado ?? "")}</Md>
       </div>
 
       <div className="quiz-options">
@@ -180,7 +183,7 @@ export default function QuizCard({ question, index, onAnswer }) {
             >
               <span className="option-letter">{currentLetter})</span>
               <div className="option-text">
-                <ReactMarkdown>{displayAlt}</ReactMarkdown>
+                <Md inline>{displayAlt}</Md>
               </div>
 
               {showExplanation && isCorrect && <Check size={20} color="var(--success-text)" />}
@@ -216,7 +219,7 @@ export default function QuizCard({ question, index, onAnswer }) {
             <div className="explanation-snippet">
               <strong className="snippet-label">Trecho da aula:</strong>
               <div className="snippet-content">
-                <ReactMarkdown>{trechoAula}</ReactMarkdown>
+                <Md>{trechoAula}</Md>
               </div>
             </div>
           )}
@@ -224,7 +227,7 @@ export default function QuizCard({ question, index, onAnswer }) {
           <div className="explanation-comment">
             <strong className="comment-label">Comentário:</strong>
             <div className="comment-text">
-              <ReactMarkdown>{comentarioCorreta || "_Sem explicação disponível._"}</ReactMarkdown>
+              <Md>{comentarioCorreta || "_Sem explicação disponível._"}</Md>
             </div>
           </div>
 
@@ -242,7 +245,7 @@ export default function QuizCard({ question, index, onAnswer }) {
                       <div key={ltr} className="breakdown-item">
                         <div className="breakdown-letter">{ltr})</div>
                         <div className="breakdown-text">
-                          <ReactMarkdown>{safeString(reason)}</ReactMarkdown>
+                          <Md>{safeString(reason)}</Md>
                         </div>
                       </div>
                     );

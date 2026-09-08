@@ -1,8 +1,4 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css"; // Estilo obrigatório para formatar a fórmula corretamente
 import {
   BookOpen, Lightbulb, Wrench, ClipboardList, PenLine, Network, Settings,
@@ -12,7 +8,9 @@ import {
   RefreshCw, Calendar,
 } from "lucide-react";
 import QuizCard from "../QuizCard";
-import { Button, Badge, ProgressBar } from "./ui";
+import { Button, Badge, ProgressBar, Modal, Notice } from "./ui";
+import { AiKeyPanel, useAiKey, getAuthToken } from "./AiKeyConfig";
+import Md from "./Markdown";
 import "./LessonContent.css";
 
 // O Mermaid arrasta cytoscape e treemap junto (~900 kB). Como so aparece quando
@@ -22,40 +20,8 @@ const Mermaid = lazy(() => import("./Mermaid"));
 // Aquece o modulo quando o mouse passa pelo botao, para o clique parecer instantaneo.
 const prefetchMermaid = () => { import("./Mermaid"); };
 
-const MD_PLUGINS = { remarkPlugins: [remarkGfm, remarkMath], rehypePlugins: [rehypeKatex] };
-
-// --- RENDERIZAÇÃO DE CÓDIGO E LINKS DENTRO DO MARKDOWN ---
-const markdownComponents = {
-  code({ node, inline, className, children, ...props }) {
-    const match = /language-(\w+)/.exec(className || "");
-    if (inline) {
-      return <code className="lc-inline" {...props}>{children}</code>;
-    }
-    return (
-      <div className="lc-code">
-        <div className="lc-code__bar">
-          <span>{match ? match[1] : "código"}</span>
-        </div>
-        <pre>
-          <code className={className} {...props}>{children}</code>
-        </pre>
-      </div>
-    );
-  },
-  a({ node, children, ...props }) {
-    return <a target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
-  },
-};
-
-// Markdown reaproveitado em todo o arquivo, sempre com os mesmos plugins.
-const Md = ({ children, inline = false }) => (
-  <ReactMarkdown
-    {...MD_PLUGINS}
-    components={inline ? { ...markdownComponents, p: "span" } : markdownComponents}
-  >
-    {children}
-  </ReactMarkdown>
-);
+// O markdown (blocos de código, inline, links, tabelas) vive em ./Markdown.jsx,
+// compartilhado com o QuizCard para a aula e o simulado renderizarem igual.
 
 const safeArray = (v) => (Array.isArray(v) ? v : []);
 const safeString = (v) => {
@@ -64,38 +30,7 @@ const safeString = (v) => {
   return str.replace(/R\$/g, 'R\\$');
 };
 
-const getAuthToken = () => {
-  const storages = [localStorage, sessionStorage];
-  for (const storage of storages) {
-    let t = storage.getItem("access_token") || storage.getItem("token") || storage.getItem("professor_ai_token");
-    
-    if (t && t.startsWith("eyJ")) return t;
-    
-    try {
-      const uStr = storage.getItem("user");
-      if (uStr && uStr.startsWith("{")) {
-        const uObj = JSON.parse(uStr);
-        if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
-        if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
-      }
-    } catch(e) {}
-    
-    for (let i = 0; i < storage.length; i++) {
-      const key = storage.key(i);
-      const val = storage.getItem(key);
-      if (typeof val === "string" && val.startsWith("eyJ")) return val;
-      try {
-        if (val && val.startsWith("{")) {
-          const obj = JSON.parse(val);
-          for (let k in obj) {
-            if (typeof obj[k] === "string" && obj[k].startsWith("eyJ")) return obj[k];
-          }
-        }
-      } catch(e) {}
-    }
-  }
-  return null;
-};
+// getAuthToken vive em ./AiKeyConfig.jsx — uma cópia só para todas as telas.
 
 // NOVA FUNÇÃO: Dispara o salvamento da nota para o backend
 const savePerformance = async (tipo, tema, notaObtida, notaMaxima, nivel, formato, concurso) => {
@@ -441,7 +376,7 @@ function EssaySection({ initialDiscursiva, defaultModel, userApiKey, userModel, 
 
   const handleCorrect = async () => {
     if (answer.trim().length < 50) {
-      alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
+      setError("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
       return;
     }
     setLoading(true); setError(null); setCorrection(null);
@@ -624,7 +559,7 @@ function GlobalEssaySection({ defaultModel, userApiKey, userModel, area, aulas, 
 
   const handleCorrect = async () => {
     if (answer.trim().length < 50) {
-      alert("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
+      setError("A banca exige mais conteúdo. Desenvolva melhor os seus argumentos antes de enviar.");
       return;
     }
     setLoading(true); setError(null); setCorrection(null);
@@ -737,17 +672,8 @@ export default function LessonContent({ result }) {
   const [isNavOpen, setIsNavOpen] = useState(false);
   
   const [showConfig, setShowConfig] = useState(false);
-  const [providerTab, setProviderTab] = useState("openrouter");
-  const [tempKey, setTempKey] = useState("");
-  const [tempModel, setTempModel] = useState("");
-  const [userApiKey, setUserApiKey] = useState("");
-  const [userModel, setUserModel] = useState("");
-  const [savingConfig, setSavingConfig] = useState(false);
-
-  const handleConnectAI = () => {
-    const callbackUrl = encodeURIComponent(`${window.location.origin}/callback`);
-    window.location.href = `https://openrouter.ai/auth?callback_url=${callbackUrl}`;
-  };
+  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const [aviso, setAviso] = useState(null);
   
   const [simuladoQuestoes, setSimuladoQuestoes] = useState(null);
   const [simuladoLoading, setSimuladoLoading] = useState(false);
@@ -758,82 +684,9 @@ export default function LessonContent({ result }) {
   const [simuladoNivel, setSimuladoNivel] = useState("Normal");
   const [simuladoFormato, setSimuladoFormato] = useState("Múltipla Escolha");
 
-  useEffect(() => {
-    const fetchDBSettings = async () => {
-      try {
-        const token = getAuthToken();
-        if (!token) return;
-        const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-        const res = await fetch(`${apiUrl}/users/me/settings`, {
-          headers: { "Authorization": `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.api_key) setUserApiKey(data.api_key);
-          if (data.preferred_model) setUserModel(data.preferred_model);
-        }
-      } catch (err) { console.error("Falha ao buscar configurações de IA", err); }
-    };
-    fetchDBSettings();
-  }, []);
-
-  const openConfigModal = () => {
-    const isAIStudio = userApiKey && !userApiKey.startsWith("sk-or-");
-    setProviderTab(isAIStudio ? "aistudio" : "openrouter");
-    setTempKey(userApiKey || "");
-    setTempModel(userModel || result?.modelo_utilizado || (isAIStudio ? "gemini-2.5-flash" : "google/gemini-2.5-flash"));
-    setShowConfig(true);
-  };
-
-  const saveConfigToDB = async () => {
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      
-      const keyToSave = providerTab === "aistudio" ? tempKey.trim() : userApiKey;
-
-      const res = await fetch(`${apiUrl}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: keyToSave, preferred_model: tempModel.trim() })
-      });
-      if (res.ok) {
-        setUserModel(tempModel.trim());
-        setUserApiKey(keyToSave);
-        setShowConfig(false);
-      } else { alert("Erro ao guardar no servidor."); }
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
-  };
-
-  const handleDisconnectAI = async () => {
-    if (!window.confirm("Tem a certeza que deseja desvincular a sua conta? Os recursos interativos de IA serão bloqueados.")) return;
-    
-    setSavingConfig(true);
-    try {
-      const token = getAuthToken();
-      if (!token) { alert("Sessão expirada. Faça login."); return; }
-      
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const res = await fetch(`${apiUrl}/users/me/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ api_key: "", preferred_model: tempModel.trim() })
-      });
-      
-      if (res.ok) {
-        setUserApiKey(""); 
-        setTempKey("");
-      } else { 
-        alert("Erro ao desvincular no servidor."); 
-      }
-    } catch (err) { alert("Falha de conexão."); } finally { setSavingConfig(false); }
-  };
-
   const handleDownloadSVG = (titulo) => {
     const svgElement = document.querySelector('.mermaid-wrapper svg');
-    if (!svgElement) { alert("O mapa ainda está a ser gerado."); return; }
+    if (!svgElement) { setAviso({ tone: "warn", texto: "O mapa mental ainda está sendo desenhado. Tente de novo em instantes." }); return; }
     const serializer = new XMLSerializer();
     let svgString = serializer.serializeToString(svgElement);
     if (!svgString.includes('xmlns="http://www.w3.org/2000/svg"')) {
@@ -924,13 +777,13 @@ export default function LessonContent({ result }) {
 
     } catch (err) {
       console.error(err);
-      alert(err.message || "Ocorreu um erro ao gerar algumas questões. O processo foi interrompido.");
+      setAviso({ tone: "err", texto: err.message || "Ocorreu um erro ao gerar algumas questões. O processo foi interrompido." });
       errorGlobal = true;
     } finally {
       setSimuladoLoading(false);
       setSimuladoQuestoes(prev => {
         if (prev.length === 0 && !errorGlobal) {
-          alert("Não foi possível gerar as questões.");
+          setAviso({ tone: "err", texto: "Não foi possível gerar as questões deste simulado. Verifique a sua chave de IA e tente de novo." });
           return null;
         }
         return prev;
@@ -1017,7 +870,7 @@ export default function LessonContent({ result }) {
           <CheckCircle2 size={15} /> IA conectada ({userModel || result?.modelo_utilizado || "modelo padrão"})
           <button
             className="ui-btn ui-btn--ghost ui-btn--sm"
-            onClick={openConfigModal}
+            onClick={() => setShowConfig(true)}
             style={{ marginLeft: 4 }}
           >
             <Settings size={14} /> Alterar
@@ -1030,7 +883,7 @@ export default function LessonContent({ result }) {
             Conecte a sua IA para liberar o tutor dentro da aula, a geração de simulados inéditos e a
             correção de discursivas. A configuração leva menos de um minuto e há modelos gratuitos.
           </span>
-          <Button variant="primary" size="sm" onClick={openConfigModal} icon={<Settings size={14} />}>
+          <Button variant="primary" size="sm" onClick={() => setShowConfig(true)} icon={<Settings size={14} />}>
             Configurar minha IA
           </Button>
         </div>
@@ -1143,7 +996,7 @@ export default function LessonContent({ result }) {
                     userModel={userModel}
                     aula={aula}
                     area={result?.area_identificada}
-                    onOpenConfig={openConfigModal}
+                    onOpenConfig={() => setShowConfig(true)}
                   />
                 )}
 
@@ -1321,7 +1174,7 @@ export default function LessonContent({ result }) {
                 userModel={userModel}
                 area={result?.area_identificada}
                 aulas={aulas}
-                onOpenConfig={openConfigModal}
+                onOpenConfig={() => setShowConfig(true)}
               />
             </div>
           </section>
@@ -1362,7 +1215,7 @@ export default function LessonContent({ result }) {
         defaultModel={result?.modelo_utilizado}
         userApiKey={userApiKey}
         userModel={userModel}
-        onOpenConfig={openConfigModal}
+        onOpenConfig={() => setShowConfig(true)}
       />
 
       {/* ------------------------- Modal: mapa mental --------------------- */}
@@ -1390,102 +1243,24 @@ export default function LessonContent({ result }) {
       )}
 
       {/* --------------------------- Modal: IA ---------------------------- */}
-      {showConfig && (
-        <div className="lc__overlay" onClick={() => setShowConfig(false)}>
-          <div className="lc__modal lc__modal--config" onClick={(e) => e.stopPropagation()}>
-            <div className="lc__modal-head">
-              <h3>Configurar a minha IA</h3>
-              <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={() => setShowConfig(false)} aria-label="Fechar">
-                <X size={16} />
-              </button>
-            </div>
+      {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
+      <Modal
+        open={showConfig}
+        onClose={() => setShowConfig(false)}
+        title="Conectar a sua inteligência artificial"
+        subtitle="A chave libera o tutor, os simulados inéditos e a correção das discursivas."
+      >
+        <AiKeyPanel
+          userApiKey={userApiKey}
+          userModel={userModel}
+          onChange={({ apiKey, model }) => { setUserApiKey(apiKey); setUserModel(model); }}
+          onFechar={() => setShowConfig(false)}
+        />
+      </Modal>
 
-            <div className="lc__modal-body">
-              <div className="lc__tabs">
-                <Button
-                  variant={providerTab === "openrouter" ? "primary" : "default"}
-                  onClick={() => { setProviderTab("openrouter"); setTempModel("google/gemini-2.5-flash"); }}
-                >
-                  OpenRouter
-                </Button>
-                <Button
-                  variant={providerTab === "aistudio" ? "primary" : "default"}
-                  onClick={() => { setProviderTab("aistudio"); setTempModel("gemini-2.5-flash"); }}
-                >
-                  Google AI Studio
-                </Button>
-              </div>
-
-              {providerTab === "openrouter" && (
-                <>
-                  <p className="lc__hint">
-                    Conecte a sua conta OpenRouter para usar dezenas de modelos, inclusive gratuitos.
-                    O login é automático — você é levado ao site e volta já conectado.
-                  </p>
-                  {userApiKey && userApiKey.startsWith("sk-or-") ? (
-                    <div className="lc__mirror" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)" }}>
-                      <b style={{ margin: 0 }}><CheckCircle2 size={15} /> OpenRouter conectado</b>
-                      <button
-                        className="ui-btn ui-btn--sm ui-btn--danger"
-                        onClick={handleDisconnectAI}
-                        disabled={savingConfig}
-                      >
-                        Desvincular
-                      </button>
-                    </div>
-                  ) : (
-                    <Button variant="primary" block onClick={handleConnectAI} icon={<KeyRound size={15} />}>
-                      Conectar OpenRouter
-                    </Button>
-                  )}
-                </>
-              )}
-
-              {providerTab === "aistudio" && (
-                <>
-                  <p className="lc__hint">
-                    O Google AI Studio exige gerar a chave manualmente com a sua conta Google.
-                    São dois passos:
-                  </p>
-                  <Button href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" block>
-                    1. Obter a chave no AI Studio (gratuito)
-                  </Button>
-                  <label className="ui-field">
-                    <span className="ui-field__label">2. Cole a chave gerada</span>
-                    <input
-                      className="ui-input"
-                      type="password"
-                      value={tempKey}
-                      onChange={(e) => setTempKey(e.target.value)}
-                      placeholder="AIzaSy… ou AQ.Ab8…"
-                    />
-                  </label>
-                  {userApiKey && !userApiKey.startsWith("sk-or-") && tempKey === userApiKey && (
-                    <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--ok)" }}>
-                      Chave do AI Studio salva no sistema.
-                    </span>
-                  )}
-                </>
-              )}
-
-              <label className="ui-field">
-                <span className="ui-field__label">Modelo de IA</span>
-                <input
-                  className="ui-input"
-                  type="text"
-                  value={tempModel}
-                  onChange={(e) => setTempModel(e.target.value)}
-                />
-              </label>
-            </div>
-
-            <div className="lc__modal-foot">
-              <Button onClick={() => setShowConfig(false)}>Fechar</Button>
-              <Button variant="primary" onClick={saveConfigToDB} disabled={savingConfig}>
-                {savingConfig ? "Salvando…" : "Salvar configurações"}
-              </Button>
-            </div>
-          </div>
+      {aviso && (
+        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg)', borderRadius: '10px' }}>
+          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
         </div>
       )}
     </div>

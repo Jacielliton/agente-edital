@@ -1,8 +1,17 @@
-import React, { useEffect, useState } from "react";
-import { Trash2, RefreshCw, UserCog, Shield, Edit, Plus, Search, Ban, CheckCircle, ShieldOff, FileText, DollarSign, Settings2, Ticket } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Trash2, RefreshCw, UserCog, Shield, Pencil, Plus, Search, Ban, CheckCircle2,
+  ShieldOff, FileText, DollarSign, Settings2, Ticket, Users,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import {
+  Button, Badge, Input, ProgressBar, StatCard, EmptyState, Skeleton, PageHeader,
+  Modal, ConfirmDialog, Notice,
+} from "../components/ui";
+import "./AdminPanel.css";
 
-// Função robusta para capturar o token em qualquer ambiente
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
   for (const storage of storages) {
@@ -15,717 +24,1163 @@ const getAuthToken = () => {
         if (uObj.access_token && String(uObj.access_token).startsWith("eyJ")) return uObj.access_token;
         if (uObj.token && String(uObj.token).startsWith("eyJ")) return uObj.token;
       }
-    } catch(e) {}
+    } catch (e) { /* storage indisponível */ }
   }
   return "";
 };
 
-export default function AdminPanel() {
-  const { user } = useAuth(); 
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const authHeaders = (extra = {}) => {
+  const token = getAuthToken();
+  return { ...extra, Authorization: token ? `Bearer ${token}` : "" };
+};
 
-  // Estados de Usuários
+// Os números vêm da API: se um campo faltar, .toFixed/.toLocaleString derrubam
+// a tela inteira. Estas duas funções são o cinto de segurança.
+const num = (v) => Number(v || 0);
+const brl = (v) => `R$ ${num(v).toFixed(2).replace(".", ",")}`;
+const milhar = (v) => num(v).toLocaleString("pt-BR");
+
+const PLANOS = [
+  { id: "mensal_simples", nome: "Mensal Simples", detalhe: "30 dias · chave própria" },
+  { id: "trimestral_simples", nome: "Trimestral Simples", detalhe: "90 dias · chave própria" },
+  { id: "semestral_simples", nome: "Semestral Simples", detalhe: "180 dias · chave própria" },
+  { id: "mensal_plus", nome: "Mensal Plus", detalhe: "30 dias · 3M tokens" },
+  { id: "trimestral_plus", nome: "Trimestral Plus", detalhe: "90 dias · 3M tokens" },
+  { id: "semestral_plus", nome: "Semestral Plus", detalhe: "180 dias · 3M tokens" },
+  { id: "trimestral_pro", nome: "Trimestral Pro", detalhe: "90 dias · 6M tokens" },
+  { id: "semestral_pro", nome: "Semestral Pro", detalhe: "180 dias · 6M tokens" },
+];
+
+const ABAS = [
+  { id: "users", rotulo: "Usuários", icone: UserCog },
+  { id: "ai_config", rotulo: "IA global", icone: Settings2 },
+  { id: "coupons", rotulo: "Cupons", icone: Ticket },
+];
+
+export default function AdminPanel() {
+  const { user } = useAuth();
+
+  const [adminTab, setAdminTab] = useState("users");
+  const [aviso, setAviso] = useState(null); // { tone, texto }
+  const [confirmacao, setConfirmacao] = useState(null);
+  const [executando, setExecutando] = useState(false);
+
   const [users, setUsers] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]); 
   const [loadingUsers, setLoadingUsers] = useState(true);
-  const [searchTerm, setSearchTerm] = useState(""); 
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filtroPapel, setFiltroPapel] = useState("todos");
+
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [userFormData, setUserFormData] = useState({ email: '', password: '', role: 'user', can_manage_lessons: false, is_active: true, allowed_concursos: '' });
+  const [userFormData, setUserFormData] = useState({
+    email: "", password: "", role: "user", can_manage_lessons: false, is_active: true, allowed_concursos: "",
+  });
   const [savingUser, setSavingUser] = useState(false);
+
   const [showModal, setShowModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
 
-  // Estados de Cupons
   const [coupons, setCoupons] = useState([]);
   const [loadingCoupons, setLoadingCoupons] = useState(false);
   const [couponModalOpen, setCouponModalOpen] = useState(false);
   const [savingCoupon, setSavingCoupon] = useState(false);
-  // CORRIGIDO: discount_percent para discount_percentage
-  const [couponFormData, setCouponFormData] = useState({ code: '', discount_percentage: 10, max_uses: 100, expires_at: '' });
+  const [couponFormData, setCouponFormData] = useState({ code: "", discount_percentage: 10, max_uses: 100, expires_at: "" });
 
-  // Estados de Comissões
   const [commissionModalOpen, setCommissionModalOpen] = useState(false);
   const [selectedUserForCommission, setSelectedUserForCommission] = useState(null);
-  const [commissionTab, setCommissionTab] = useState('history'); // history, pay, edit
+  const [commissionTab, setCommissionTab] = useState("history");
   const [commissionHistory, setCommissionHistory] = useState([]);
   const [actionAmount, setActionAmount] = useState("");
   const [actionDesc, setActionDesc] = useState("");
   const [isProcessingComm, setIsProcessingComm] = useState(false);
+  const [erroComm, setErroComm] = useState("");
 
-  // Estados de IA
-  const [adminTab, setAdminTab] = useState('users'); // users, ai_config, coupons
-  const [aiConfig, setAiConfig] = useState({ model: '', api_key: '', temperature: 0.5, max_tokens: 8192, top_p: 1.0, global_prompt: '' });
+  const [aiConfig, setAiConfig] = useState({ model: "", api_key: "", temperature: 0.5, max_tokens: 8192, top_p: 1.0, global_prompt: "" });
   const [aiStats, setAiStats] = useState({ total_plus: 0, total_pro: 0, tokens_today: 0, tokens_month: 0, tokens_total: 0, estimated_cost: 0 });
   const [savingAi, setSavingAi] = useState(false);
 
-  useEffect(() => { 
-    if (user?.role === 'admin') {
+  useEffect(() => {
+    if (user?.role === "admin") {
       fetchUsers();
       fetchAiData();
       fetchCoupons();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // --- FUNÇÕES DE USUÁRIOS ---
+  // ------------------------------------------------------------ usuários
   const fetchUsers = async () => {
     setLoadingUsers(true);
-    const token = getAuthToken();
     try {
-      const resUsers = await fetch(`${API_URL}/users`, { headers: { "Authorization": `Bearer ${token}` } });
-      if (resUsers.ok) setUsers(await resUsers.json() || []);
-
-      try {
-        const resLead = await fetch(`${API_URL}/performance/leaderboard`, { headers: { "Authorization": `Bearer ${token}` } });
-        if (resLead.ok) setLeaderboard(await resLead.json() || []);
-      } catch (leadErr) {}
-    } catch (err) { alert("Erro ao carregar dados dos usuários."); } 
-    finally { setLoadingUsers(false); }
+      const resUsers = await fetch(`${API_URL}/users`, { headers: authHeaders() });
+      if (!resUsers.ok) throw new Error("Não foi possível carregar os usuários.");
+      setUsers((await resUsers.json()) || []);
+    } catch (err) {
+      console.error(err);
+      setAviso({ tone: "err", texto: err.message || "Erro ao carregar os usuários." });
+    } finally {
+      setLoadingUsers(false);
+    }
   };
 
   const handleOpenUserModal = (userData = null) => {
     setEditingUser(userData);
-    if (userData) {
-      setUserFormData({ 
-        email: userData.email, 
-        password: '', 
-        role: userData.role, 
-        can_manage_lessons: userData.can_manage_lessons || false, 
-        is_active: userData.is_active !== undefined ? userData.is_active : true,
-        allowed_concursos: userData.allowed_concursos || '' // <-- Novo campo
-      });
-    } else {
-      setUserFormData({ 
-        email: '', 
-        password: '', 
-        role: 'user', 
-        can_manage_lessons: false, 
-        is_active: true,
-        allowed_concursos: '' // <-- Novo campo
-      });
-    }
+    setUserFormData(
+      userData
+        ? {
+            email: userData.email,
+            password: "",
+            role: userData.role || "user",
+            can_manage_lessons: userData.can_manage_lessons || false,
+            is_active: userData.is_active !== undefined ? userData.is_active : true,
+            allowed_concursos: userData.allowed_concursos || "",
+          }
+        : { email: "", password: "", role: "user", can_manage_lessons: false, is_active: true, allowed_concursos: "" }
+    );
     setUserModalOpen(true);
   };
 
   const handleSaveUser = async () => {
-    if (!userFormData.email) return alert("O e-mail é obrigatório.");
-    if (!editingUser && !userFormData.password) return alert("A senha é obrigatória para novos usuários.");
-    
+    if (!userFormData.email) {
+      setAviso({ tone: "warn", texto: "O e-mail é obrigatório." });
+      return;
+    }
+    if (!editingUser && !userFormData.password) {
+      setAviso({ tone: "warn", texto: "Defina uma senha para o novo usuário." });
+      return;
+    }
+
     setSavingUser(true);
     const method = editingUser ? "PUT" : "POST";
     const endpoint = editingUser ? `${API_URL}/users/${editingUser.id}` : `${API_URL}/users`;
     const payload = { ...userFormData };
-    if (editingUser && !payload.password) delete payload.password; 
+    if (editingUser && !payload.password) delete payload.password;
 
     try {
       const res = await fetch(endpoint, {
         method,
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
-        body: JSON.stringify(payload)
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(payload),
       });
-      if (res.ok) { setUserModalOpen(false); fetchUsers(); } 
-      else { const err = await res.json(); alert(err.detail || "Erro ao salvar usuário."); }
-    } catch (e) { alert("Erro de conexão ao salvar usuário."); } 
-    finally { setSavingUser(false); }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Erro ao salvar o usuário.");
+      }
+      setUserModalOpen(false);
+      setAviso({ tone: "ok", texto: editingUser ? "Usuário atualizado." : "Usuário criado." });
+      fetchUsers();
+    } catch (e) {
+      setAviso({ tone: "err", texto: e.message });
+    } finally {
+      setSavingUser(false);
+    }
   };
 
-  const handleDeleteUser = async (id) => {
-    if (!window.confirm("Tem certeza que deseja excluir este usuário permanentemente?")) return;
+  const executarAcao = async () => {
+    if (!confirmacao?.acao) return;
+    setExecutando(true);
     try {
-      const res = await fetch(`${API_URL}/users/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${getAuthToken()}` } });
-      if (res.ok) setUsers(users.filter((u) => u.id !== id));
-    } catch (e) { console.error(e); }
+      await confirmacao.acao();
+      setConfirmacao(null);
+    } catch (e) {
+      setAviso({ tone: "err", texto: e.message || "Não foi possível concluir a ação." });
+      setConfirmacao(null);
+    } finally {
+      setExecutando(false);
+    }
   };
 
-  const handleToggleStatus = async (userObj) => {
-    if (userObj.id === 1) return alert("Não é possível suspender o Admin Principal.");
-    const newStatus = !userObj.is_active;
-    if (!window.confirm(newStatus ? `Reativar a conta de ${userObj.email}?` : `Suspender o acesso de ${userObj.email}?`)) return;
+  const pedirExclusaoUsuario = (u) =>
+    setConfirmacao({
+      titulo: "Excluir usuário",
+      mensagem: <>Excluir a conta de <b>{u.email}</b> permanentemente?</>,
+      detalhe: "Todo o histórico de desempenho e as comissões dessa conta deixam de ser acessíveis. Não há como desfazer.",
+      rotulo: "Excluir conta",
+      acao: async () => {
+        const res = await fetch(`${API_URL}/users/${u.id}`, { method: "DELETE", headers: authHeaders() });
+        if (!res.ok) throw new Error("O servidor recusou a exclusão.");
+        setUsers((atual) => atual.filter((x) => x.id !== u.id));
+        setAviso({ tone: "ok", texto: `Conta de ${u.email} excluída.` });
+      },
+    });
 
-    try {
-      const res = await fetch(`${API_URL}/users/${userObj.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
-        body: JSON.stringify({ is_active: newStatus })
-      });
-      if (res.ok) setUsers(users.map(u => u.id === userObj.id ? { ...u, is_active: newStatus } : u));
-    } catch (e) { console.error(e); }
+  const pedirTrocaStatus = (u) => {
+    if (u.id === 1) {
+      setAviso({ tone: "warn", texto: "O administrador principal não pode ser suspenso." });
+      return;
+    }
+    const novoStatus = !u.is_active;
+    setConfirmacao({
+      titulo: novoStatus ? "Reativar conta" : "Suspender conta",
+      danger: !novoStatus,
+      mensagem: novoStatus
+        ? <>Devolver o acesso de <b>{u.email}</b>?</>
+        : <>Suspender o acesso de <b>{u.email}</b>?</>,
+      detalhe: novoStatus
+        ? "A pessoa volta a entrar normalmente, com o plano que já tinha."
+        : "A pessoa não consegue mais entrar até ser reativada. O plano e o histórico são preservados.",
+      rotulo: novoStatus ? "Reativar" : "Suspender",
+      acao: async () => {
+        const res = await fetch(`${API_URL}/users/${u.id}`, {
+          method: "PUT",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ is_active: novoStatus }),
+        });
+        if (!res.ok) throw new Error("O servidor recusou a alteração.");
+        setUsers((atual) => atual.map((x) => (x.id === u.id ? { ...x, is_active: novoStatus } : x)));
+        setAviso({ tone: "ok", texto: novoStatus ? "Conta reativada." : "Conta suspensa." });
+      },
+    });
   };
 
   const handleSavePlan = async (planType) => {
     try {
       const res = await fetch(`${API_URL}/admin/grant-plan/${selectedUser.id}?plan=${planType}`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${getAuthToken()}`,
-          'Content-Type': 'application/json' 
-        }
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
       });
-      if (res.ok) {
-        setUsers(prevUsers => prevUsers.map(u => 
-          u.id === selectedUser.id ? { ...u, plan_expires_at: new Date(Date.now() + 30*24*60*60*1000).toISOString() } : u
-        ));
-        alert("Plano atribuído com sucesso!");
-        setShowModal(false);
-        await fetchUsers(); 
-      }
-    } catch (e) { alert("Erro de conexão ao salvar plano."); }
+      if (!res.ok) throw new Error("O servidor recusou a atribuição do plano.");
+      setShowModal(false);
+      setAviso({ tone: "ok", texto: `Plano atribuído a ${selectedUser.email}.` });
+      await fetchUsers();
+    } catch (e) {
+      setAviso({ tone: "err", texto: e.message || "Erro ao atribuir o plano." });
+    }
   };
 
-  const handleRevokePlan = async (userId) => {
-    if (!window.confirm("Isso removerá imediatamente o acesso pago do usuário. Tem certeza?")) return;
+  const pedirRevogacao = (u) =>
+    setConfirmacao({
+      titulo: "Remover plano ativo",
+      mensagem: <>Remover agora o acesso pago de <b>{u.email}</b>?</>,
+      detalhe: "O acesso é cortado imediatamente, sem esperar o fim do período contratado.",
+      rotulo: "Remover plano",
+      acao: async () => {
+        const res = await fetch(`${API_URL}/admin/revoke-plan/${u.id}`, { method: "POST", headers: authHeaders() });
+        if (!res.ok) throw new Error("O servidor recusou a remoção.");
+        setUsers((atual) =>
+          atual.map((x) => (x.id === u.id ? { ...x, plan_expires_at: new Date(Date.now() - 60000).toISOString() } : x))
+        );
+        setShowModal(false);
+        setAviso({ tone: "ok", texto: "Plano removido." });
+      },
+    });
+
+  const pedirZerarTokens = (u) =>
+    setConfirmacao({
+      titulo: "Zerar consumo de IA",
+      danger: false,
+      mensagem: <>Zerar os tokens já usados por <b>{u.email}</b>?</>,
+      detalhe: "A cota do plano volta ao valor integral neste ciclo. O custo já gasto na API não é devolvido.",
+      rotulo: "Zerar consumo",
+      acao: async () => {
+        const res = await fetch(`${API_URL}/admin/users/${u.id}/reset-tokens`, { method: "POST", headers: authHeaders() });
+        if (!res.ok) throw new Error("O servidor recusou a operação.");
+        await fetchUsers();
+        setAviso({ tone: "ok", texto: "Consumo zerado." });
+      },
+    });
+
+  const handleToggleAiBlock = async (userId) => {
     try {
-      const res = await fetch(`${API_URL}/admin/revoke-plan/${userId}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      if (res.ok) {
-        setUsers(users.map(u => u.id === userId ? { ...u, plan_expires_at: new Date(Date.now() - 60000).toISOString() } : u));
-        setShowModal(false);
-        alert("Plano removido com sucesso!");
-      }
-    } catch (e) { alert("Erro de conexão ao remover plano"); }
+      const res = await fetch(`${API_URL}/admin/users/${userId}/toggle-ai-block`, { method: "POST", headers: authHeaders() });
+      if (!res.ok) throw new Error("O servidor recusou a operação.");
+      await fetchUsers();
+    } catch (e) {
+      setAviso({ tone: "err", texto: e.message });
+    }
   };
 
-  // --- FUNÇÕES DA COMISSÃO ---
+  // ---------------------------------------------------------- comissões
   const handleOpenCommissionModal = async (userObj) => {
     setSelectedUserForCommission(userObj);
     setActionAmount("");
     setActionDesc("");
-    setCommissionTab('history');
+    setErroComm("");
+    setCommissionTab("history");
+    setCommissionHistory([]);
     setCommissionModalOpen(true);
-    
     try {
-      const res = await fetch(`${API_URL}/admin/users/${userObj.id}/commissions`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
+      const res = await fetch(`${API_URL}/admin/users/${userObj.id}/commissions`, { headers: authHeaders() });
       if (res.ok) setCommissionHistory(await res.json());
-    } catch (e) { console.error("Erro ao carregar histórico"); }
+    } catch (e) {
+      setErroComm("Não foi possível carregar o histórico.");
+    }
   };
 
   const submitCommissionAction = async (actionType) => {
-    const amount = parseFloat(actionAmount.toString().replace(',', '.'));
-    if (isNaN(amount) || amount < 0) return alert("Digite um valor válido.");
-    
-    if (actionType === 'pagamento' && amount > (selectedUserForCommission.commission_balance || 0)) {
-      return alert("Não pode pagar um valor maior do que o saldo atual.");
+    const amount = parseFloat(actionAmount.toString().replace(",", "."));
+    if (isNaN(amount) || amount < 0) {
+      setErroComm("Digite um valor válido.");
+      return;
+    }
+    if (actionType === "pagamento" && amount > num(selectedUserForCommission.commission_balance)) {
+      setErroComm("O pagamento não pode ser maior que o saldo atual.");
+      return;
     }
 
+    setErroComm("");
     setIsProcessingComm(true);
     try {
       const res = await fetch(`${API_URL}/admin/users/${selectedUserForCommission.id}/commission-action`, {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${getAuthToken()}`,
-          'Content-Type': 'application/json' 
-        },
-        body: JSON.stringify({ action: actionType, amount, description: actionDesc })
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ action: actionType, amount, description: actionDesc }),
       });
-      
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(users.map(u => u.id === selectedUserForCommission.id ? { ...u, commission_balance: data.new_balance } : u));
-        setSelectedUserForCommission({...selectedUserForCommission, commission_balance: data.new_balance});
-        setActionAmount("");
-        setActionDesc("");
-        setCommissionTab('history');
-        
-        const histRes = await fetch(`${API_URL}/admin/users/${selectedUserForCommission.id}/commissions`, {
-          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-        });
-        if (histRes.ok) setCommissionHistory(await histRes.json());
-        
-        alert("Ação realizada com sucesso!");
-      } else {
-        const err = await res.json();
-        alert(err.detail || "Erro ao processar ação.");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Erro ao processar a ação.");
       }
+      const data = await res.json();
+      setUsers((atual) =>
+        atual.map((u) => (u.id === selectedUserForCommission.id ? { ...u, commission_balance: data.new_balance } : u))
+      );
+      setSelectedUserForCommission({ ...selectedUserForCommission, commission_balance: data.new_balance });
+      setActionAmount("");
+      setActionDesc("");
+      setCommissionTab("history");
+
+      const histRes = await fetch(`${API_URL}/admin/users/${selectedUserForCommission.id}/commissions`, { headers: authHeaders() });
+      if (histRes.ok) setCommissionHistory(await histRes.json());
+      setAviso({ tone: "ok", texto: actionType === "pagamento" ? "Pagamento registrado." : "Saldo ajustado." });
     } catch (e) {
-      alert("Erro de conexão ao processar comissão.");
+      setErroComm(e.message);
     } finally {
       setIsProcessingComm(false);
     }
   };
 
-  // --- FUNÇÕES DE IA ---
+  // ----------------------------------------------------------------- IA
   const fetchAiData = async () => {
     try {
-      const token = getAuthToken();
       const [confRes, statsRes] = await Promise.all([
-        fetch(`${API_URL}/admin/ai-config`, { headers: { "Authorization": `Bearer ${token}` } }),
-        fetch(`${API_URL}/admin/ai-stats`, { headers: { "Authorization": `Bearer ${token}` } })
+        fetch(`${API_URL}/admin/ai-config`, { headers: authHeaders() }),
+        fetch(`${API_URL}/admin/ai-stats`, { headers: authHeaders() }),
       ]);
-      if (confRes.ok) { const data = await confRes.json(); if(data.model) setAiConfig(data); }
-      if (statsRes.ok) setAiStats(await statsRes.json());
-    } catch(e) {}
+      if (confRes.ok) {
+        const data = await confRes.json();
+        if (data.model) setAiConfig((atual) => ({ ...atual, ...data }));
+      }
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        setAiStats((atual) => ({ ...atual, ...data }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleSaveAiConfig = async () => {
     setSavingAi(true);
     try {
       const res = await fetch(`${API_URL}/admin/ai-config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
-        body: JSON.stringify(aiConfig)
+        method: "PUT",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(aiConfig),
       });
-      if(res.ok) alert("Configurações da IA salvas com sucesso!");
-      else alert("Erro ao salvar a configuração da IA.");
-    } catch(e) {}
-    setSavingAi(false);
+      if (!res.ok) throw new Error("Erro ao salvar a configuração da IA.");
+      setAviso({ tone: "ok", texto: "Configuração da IA salva." });
+    } catch (e) {
+      setAviso({ tone: "err", texto: e.message });
+    } finally {
+      setSavingAi(false);
+    }
   };
 
-  const handleResetTokens = async (userId) => {
-    if(!window.confirm("Deseja zerar os tokens usados por este usuário? Ele terá a cota integral do plano de volta.")) return;
-    try {
-      const res = await fetch(`${API_URL}/admin/users/${userId}/reset-tokens`, { method: 'POST', headers: { 'Authorization': `Bearer ${getAuthToken()}` } });
-      if(res.ok) fetchUsers();
-    } catch(e) {}
-  };
-
-  const handleToggleAiBlock = async (userId) => {
-    try {
-      const res = await fetch(`${API_URL}/admin/users/${userId}/toggle-ai-block`, { method: 'POST', headers: { 'Authorization': `Bearer ${getAuthToken()}` } });
-      if(res.ok) fetchUsers();
-    } catch(e) {}
-  };
-
-  // --- FUNÇÕES DE CUPONS ---
+  // ------------------------------------------------------------- cupons
   const fetchCoupons = async () => {
     setLoadingCoupons(true);
     try {
-      const res = await fetch(`${API_URL}/admin/coupons`, { headers: { "Authorization": `Bearer ${getAuthToken()}` } });
-      if (res.ok) setCoupons(await res.json() || []);
-    } catch (e) { console.error("Erro ao carregar cupons"); }
-    finally { setLoadingCoupons(false); }
+      const res = await fetch(`${API_URL}/admin/coupons`, { headers: authHeaders() });
+      if (res.ok) setCoupons((await res.json()) || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingCoupons(false);
+    }
   };
 
   const handleSaveCoupon = async () => {
-    if (!couponFormData.code) return alert("O código do cupom é obrigatório.");
+    if (!couponFormData.code) {
+      setAviso({ tone: "warn", texto: "O código do cupom é obrigatório." });
+      return;
+    }
     setSavingCoupon(true);
     try {
       const res = await fetch(`${API_URL}/admin/coupons`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getAuthToken()}` },
-        body: JSON.stringify(couponFormData)
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(couponFormData),
       });
-      if (res.ok) {
-        setCouponModalOpen(false);
-        fetchCoupons();
-        // CORRIGIDO: discount_percent para discount_percentage
-        setCouponFormData({ code: '', discount_percentage: 10, max_uses: 100, expires_at: '' });
-      } else {
-        const err = await res.json();
-        alert(err.detail || "Erro ao criar cupom.");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Erro ao criar o cupom.");
       }
-    } catch (e) { alert("Erro de conexão ao salvar cupom."); }
-    finally { setSavingCoupon(false); }
+      setCouponModalOpen(false);
+      setCouponFormData({ code: "", discount_percentage: 10, max_uses: 100, expires_at: "" });
+      setAviso({ tone: "ok", texto: "Cupom criado." });
+      fetchCoupons();
+    } catch (e) {
+      setAviso({ tone: "err", texto: e.message });
+    } finally {
+      setSavingCoupon(false);
+    }
   };
 
-  const handleDeleteCoupon = async (id) => {
-    if (!window.confirm("Deseja deletar este cupom permanentemente?")) return;
-    try {
-      const res = await fetch(`${API_URL}/admin/coupons/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${getAuthToken()}` } });
-      if (res.ok) setCoupons(coupons.filter(c => c.id !== id));
-    } catch (e) { console.error(e); }
+  const pedirExclusaoCupom = (c) =>
+    setConfirmacao({
+      titulo: "Excluir cupom",
+      mensagem: <>Excluir o cupom <b>{c.code}</b>?</>,
+      detalhe: "Quem ainda não usou deixa de conseguir aplicá-lo. Compras já feitas com ele não são afetadas.",
+      rotulo: "Excluir cupom",
+      acao: async () => {
+        const res = await fetch(`${API_URL}/admin/coupons/${c.id}`, { method: "DELETE", headers: authHeaders() });
+        if (!res.ok) throw new Error("O servidor recusou a exclusão.");
+        setCoupons((atual) => atual.filter((x) => x.id !== c.id));
+        setAviso({ tone: "ok", texto: "Cupom excluído." });
+      },
+    });
+
+  // ------------------------------------------------------------ derivados
+  const filteredUsers = useMemo(() => {
+    const termo = searchTerm.trim().toLowerCase();
+    return users.filter((u) => {
+      const casaBusca = !termo || (u.email || "").toLowerCase().includes(termo);
+      const casaPapel = filtroPapel === "todos" || (u.role || "user") === filtroPapel;
+      return casaBusca && casaPapel;
+    });
+  }, [users, searchTerm, filtroPapel]);
+
+  const resumo = useMemo(() => {
+    const agora = new Date();
+    let ativos = 0, suspensos = 0, comPlano = 0;
+    users.forEach((u) => {
+      if (u.is_active === false) suspensos += 1;
+      else ativos += 1;
+      if (u.role === "admin") comPlano += 1;
+      else if (u.plan_expires_at && new Date(u.plan_expires_at) > agora) comPlano += 1;
+    });
+    return { total: users.length, ativos, suspensos, comPlano };
+  }, [users]);
+
+  const statusDoPlano = (u) => {
+    const expira = u.plan_expires_at ? new Date(u.plan_expires_at) : null;
+    if (u.role === "admin") return { texto: "Vitalício (admin)", tone: "accent", ativo: true };
+    if (!expira || isNaN(expira.getTime())) return { texto: "Sem plano", tone: "default", ativo: false };
+    if (expira > new Date()) return { texto: `Até ${expira.toLocaleDateString("pt-BR")}`, tone: "ok", ativo: true };
+    return { texto: `Expirou em ${expira.toLocaleDateString("pt-BR")}`, tone: "danger", ativo: false };
   };
 
-  const filteredUsers = users.filter(u => u.email.toLowerCase().includes(searchTerm.toLowerCase()));
+  if (user && user.role !== "admin") {
+    return (
+      <EmptyState
+        icon={<Shield size={22} />}
+        title="Área restrita"
+        description="Esta página é do administrador da plataforma."
+      />
+    );
+  }
+
+  // ------------------------------------------------------------------ UI
+  const BlocoIA = ({ u }) => {
+    const limite = num(u.token_limit);
+    const usados = num(u.tokens_used);
+    const pct = limite > 0 ? (usados / limite) * 100 : 0;
+    return (
+      <div className="adm__ia">
+        <div className="adm__ia-line">
+          <span>{u.plan_type || "Simples"}</span>
+          <b>{limite > 0 ? `${milhar(usados)} / ${milhar(limite)}` : "sem cota"}</b>
+        </div>
+        {limite > 0 && (
+          <ProgressBar
+            value={pct}
+            color={pct >= 90 ? "var(--danger)" : pct >= 70 ? "var(--warn)" : "var(--accent)"}
+            aria-label={`Consumo de tokens de ${u.email}`}
+          />
+        )}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button className="adm__mini" onClick={() => pedirZerarTokens(u)} disabled={u.role === "admin"}>
+            Zerar
+          </button>
+          <button
+            className={`adm__mini${u.ai_blocked ? "" : " adm__mini--danger"}`}
+            onClick={() => handleToggleAiBlock(u.id)}
+            disabled={u.role === "admin"}
+          >
+            {u.ai_blocked ? "Desbloquear IA" : "Bloquear IA"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const AcoesUsuario = ({ u }) => (
+    <div className="adm__actions">
+      <button
+        className={`adm__icon-btn ${u.is_active === false ? "adm__icon-btn--ok" : "adm__icon-btn--danger"}`}
+        onClick={() => pedirTrocaStatus(u)}
+        disabled={u.id === 1}
+        title={u.is_active === false ? "Reativar" : "Suspender"}
+        aria-label={`${u.is_active === false ? "Reativar" : "Suspender"} ${u.email}`}
+      >
+        {u.is_active === false ? <CheckCircle2 size={16} /> : <Ban size={16} />}
+      </button>
+      <button
+        className="adm__icon-btn adm__icon-btn--accent"
+        onClick={() => { setSelectedUser(u); setShowModal(true); }}
+        title="Gerenciar plano"
+        aria-label={`Gerenciar plano de ${u.email}`}
+      >
+        <Shield size={16} />
+      </button>
+      <button
+        className="adm__icon-btn"
+        onClick={() => handleOpenUserModal(u)}
+        disabled={u.id === 1}
+        title="Editar"
+        aria-label={`Editar ${u.email}`}
+      >
+        <Pencil size={16} />
+      </button>
+      <button
+        className="adm__icon-btn adm__icon-btn--danger"
+        onClick={() => pedirExclusaoUsuario(u)}
+        disabled={u.id === 1}
+        title="Excluir"
+        aria-label={`Excluir ${u.email}`}
+      >
+        <Trash2 size={16} />
+      </button>
+    </div>
+  );
 
   return (
-    <div className="container">
-      <div className="header" style={{ textAlign: "left" }}>
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Shield size={28} color="var(--primary)" /> Painel Administrativo
-        </h1>
-        <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Gerencie acessos, uso de IA Compartilhada, comissões e cupons.</p>
+    <div className="adm">
+      <PageHeader
+        eyebrow="Administração"
+        title="Painel administrativo"
+        description="Contas, planos, consumo da IA compartilhada, comissões de indicação e cupons."
+        actions={
+          <Button
+            onClick={() => { fetchUsers(); fetchAiData(); fetchCoupons(); }}
+            icon={<RefreshCw size={15} />}
+          >
+            Atualizar tudo
+          </Button>
+        }
+      />
+
+      {aviso && <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>}
+
+      <div className="adm__tabs" role="tablist">
+        {ABAS.map(({ id, rotulo, icone: Icone }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={adminTab === id}
+            className={`adm__tab${adminTab === id ? " is-on" : ""}`}
+            onClick={() => setAdminTab(id)}
+          >
+            <Icone size={16} /> {rotulo}
+          </button>
+        ))}
       </div>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button className={`btn ${adminTab === 'users' ? 'primary' : ''}`} onClick={() => setAdminTab('users')}><UserCog size={16}/> Gestão de Usuários</button>
-        <button className={`btn ${adminTab === 'ai_config' ? 'primary' : ''}`} onClick={() => setAdminTab('ai_config')}><Settings2 size={16}/> Configuração IA Global</button>
-        <button className={`btn ${adminTab === 'coupons' ? 'primary' : ''}`} onClick={() => setAdminTab('coupons')}><Ticket size={16}/> Cupons de Desconto</button>
-      </div>
+      {/* =========================== USUÁRIOS =========================== */}
+      {adminTab === "users" && (
+        <>
+          <div className="adm__stats">
+            <StatCard label="Contas" value={resumo.total} delta="cadastradas na plataforma" />
+            <StatCard label="Com plano ativo" value={resumo.comPlano} delta="incluindo administradores" />
+            <StatCard label="Ativas" value={resumo.ativos} delta="podem entrar normalmente" />
+            <StatCard
+              label="Suspensas"
+              value={resumo.suspensos}
+              delta={resumo.suspensos > 0 ? "sem acesso no momento" : "nenhuma suspensa"}
+              deltaTone={resumo.suspensos > 0 ? "warn" : "flat"}
+            />
+          </div>
 
-      {/* --- ABA CUPONS --- */}
-      {adminTab === 'coupons' && (
-        <div className="panel">
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", alignItems: "center" }}>
-            <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Gerenciar Cupons</h3>
-            <div style={{display: 'flex', gap: '10px'}}>
-              <button className="btn primary small" onClick={() => setCouponModalOpen(true)}><Plus size={14}/> Novo Cupom</button>
-              <button className="btn small" onClick={fetchCoupons}><RefreshCw size={14}/> Atualizar</button>
+          <div className="adm__toolbar">
+            <span className="adm__search">
+              <Search size={16} />
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar por e-mail…"
+                aria-label="Buscar usuários por e-mail"
+              />
+            </span>
+
+            <label className="ui-field" style={{ flex: "0 1 200px" }}>
+              <select
+                className="ui-input"
+                value={filtroPapel}
+                onChange={(e) => setFiltroPapel(e.target.value)}
+                aria-label="Filtrar por nível de acesso"
+              >
+                <option value="todos">Todos os níveis</option>
+                <option value="user">Usuário padrão</option>
+                <option value="custom">Personalizado</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+
+            <div className="adm__toolbar-actions">
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--fg-3)" }}>
+                {filteredUsers.length} de {users.length}
+              </span>
+              <Button variant="primary" onClick={() => handleOpenUserModal()} icon={<Plus size={15} />}>
+                Novo usuário
+              </Button>
             </div>
           </div>
 
-          {loadingCoupons ? <div className="status">A carregar...</div> : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Código</th>
-                    <th>Desconto (%)</th>
-                    <th>Usos (Atual / Máx)</th>
-                    <th>Validade</th>
-                    <th>Status</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {coupons.length === 0 ? (
-                    <tr><td colSpan="6" style={{textAlign: 'center', padding: '20px', color: 'var(--text-muted)'}}>Nenhum cupom cadastrado.</td></tr>
-                  ) : coupons.map((c) => {
-                    const isExpired = c.expires_at && new Date(c.expires_at) < new Date();
-                    const isExhausted = c.max_uses > 0 && c.current_uses >= c.max_uses;
-                    const isValid = c.is_active && !isExpired && !isExhausted;
-
-                    return (
-                      <tr key={c.id}>
-                        <td><strong style={{color: 'var(--primary)', letterSpacing: '1px'}}>{c.code}</strong></td>
-                        {/* CORRIGIDO: discount_percent para discount_percentage */}
-                        <td>{c.discount_percentage}%</td>
-                        <td>{c.current_uses} / {c.max_uses || 'Ilimitado'}</td>
-                        <td>{c.expires_at ? new Date(c.expires_at).toLocaleDateString() : 'Sem Validade'}</td>
-                        <td>
-                          {isValid ? <span style={{color: 'var(--success-text)'}}>Ativo</span> : <span style={{color: 'var(--error-text)'}}>Inválido</span>}
-                        </td>
-                        <td>
-                          <button className="btn small error-btn" onClick={() => handleDeleteCoupon(c.id)} title="Excluir"><Trash2 size={16} /></button>
-                        </td>
+          {loadingUsers ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+              {[0, 1, 2, 3].map((i) => <Skeleton key={i} height={72} radius="var(--radius-md)" />)}
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <EmptyState
+              icon={<Users size={22} />}
+              title="Nenhum usuário encontrado"
+              description={
+                searchTerm || filtroPapel !== "todos"
+                  ? "Nenhuma conta corresponde ao que você filtrou."
+                  : "Ainda não há contas cadastradas."
+              }
+              action={
+                (searchTerm || filtroPapel !== "todos") && (
+                  <Button onClick={() => { setSearchTerm(""); setFiltroPapel("todos"); }}>Limpar filtros</Button>
+                )
+              }
+            />
+          ) : (
+            <>
+              <div className="adm__table-wrap">
+                <div className="adm__scroll">
+                  <table className="adm__table">
+                    <thead>
+                      <tr>
+                        <th>Usuário</th>
+                        <th style={{ width: 180 }}>Assinatura</th>
+                        <th style={{ width: 210 }}>IA compartilhada</th>
+                        <th style={{ width: 172 }}>Comissão</th>
+                        <th style={{ width: 186, textAlign: "right" }}>Ações</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((u) => {
+                        const plano = statusDoPlano(u);
+                        return (
+                          <tr key={u.id} className={u.is_active === false ? "is-off" : undefined}>
+                            <td>
+                              <span className="adm__user">
+                                <span className={`adm__email${u.is_active === false ? " is-off" : ""}`}>{u.email}</span>
+                                <span className="adm__meta">#{u.id}</span>
+                                <span className="adm__tags">
+                                  <Badge tone={u.role === "admin" ? "accent" : "default"}>
+                                    {(u.role || "user").toUpperCase()}
+                                  </Badge>
+                                  {u.is_active === false && <Badge tone="danger">Suspenso</Badge>}
+                                  {u.can_manage_lessons && <Badge outline>Gerencia aulas</Badge>}
+                                </span>
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                                <Badge tone={plano.tone}>{plano.texto}</Badge>
+                                {u.role !== "admin" && plano.ativo && (
+                                  <button className="adm__mini adm__mini--danger" onClick={() => pedirRevogacao(u)}>
+                                    <ShieldOff size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                                    Revogar
+                                  </button>
+                                )}
+                              </span>
+                            </td>
+                            <td><BlocoIA u={u} /></td>
+                            <td>
+                              <span style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                                <span className="adm__money">{brl(u.commission_balance)}</span>
+                                <button className="adm__mini" onClick={() => handleOpenCommissionModal(u)}>
+                                  Gerenciar ganhos
+                                </button>
+                              </span>
+                            </td>
+                            <td><AcoesUsuario u={u} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-      {/* --- ABA IA CONFIG --- */}
-      {adminTab === 'ai_config' && (
-        <div className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <h3 style={{ margin: 0, color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Estatísticas de Consumo da IA Compartilhada</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px' }}>
-            <div style={{ background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}><strong style={{color:'var(--text-muted)'}}>Usuários Plus</strong><br/><span style={{fontSize: '1.5rem', color: 'var(--text-main)'}}>{aiStats.total_plus}</span></div>
-            <div style={{ background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}><strong style={{color:'var(--text-muted)'}}>Usuários Pro</strong><br/><span style={{fontSize: '1.5rem', color: 'var(--text-main)'}}>{aiStats.total_pro}</span></div>
-            <div style={{ background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}><strong style={{color:'var(--text-muted)'}}>Tokens Consumidos Hoje</strong><br/><span style={{fontSize: '1.5rem', color: 'var(--success-text)'}}>{aiStats.tokens_today.toLocaleString()}</span></div>
-            <div style={{ background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}><strong style={{color:'var(--text-muted)'}}>Tokens Consumidos no Mês</strong><br/><span style={{fontSize: '1.5rem', color: 'var(--success-text)'}}>{aiStats.tokens_month.toLocaleString()}</span></div>
-            <div style={{ background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--border)' }}><strong style={{color:'var(--text-muted)'}}>Custo API Estimado</strong><br/><span style={{fontSize: '1.5rem', color: 'var(--error-text)'}}>$ {aiStats.estimated_cost.toFixed(2)}</span></div>
-          </div>
-
-          <h3 style={{ margin: '20px 0 0 0', color: 'var(--heading-color)', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>Configuração do OpenRouter</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            <div><label className="label">Modelo de Linguagem</label><input className="input" style={{width: '100%'}} value={aiConfig.model} onChange={e=>setAiConfig({...aiConfig, model: e.target.value})} placeholder="ex: openai/gpt-4o-mini" /></div>
-            <div><label className="label">API Key do OpenRouter</label><input type="password" className="input" style={{width: '100%'}} value={aiConfig.api_key} onChange={e=>setAiConfig({...aiConfig, api_key: e.target.value})} placeholder="sk-or-v1-..." /></div>
-            <div><label className="label">Temperatura</label><input type="number" step="0.1" className="input" style={{width: '100%'}} value={aiConfig.temperature} onChange={e=>setAiConfig({...aiConfig, temperature: parseFloat(e.target.value)})} /></div>
-            <div><label className="label">Max Tokens por Requisição</label><input type="number" className="input" style={{width: '100%'}} value={aiConfig.max_tokens} onChange={e=>setAiConfig({...aiConfig, max_tokens: parseInt(e.target.value)})} /></div>
-            <div style={{gridColumn: '1 / -1'}}><label className="label">Prompt Global (Opcional - Regra injetada em todas as chamadas da plataforma)</label><textarea className="textarea" style={{width: '100%', minHeight: '80px'}} value={aiConfig.global_prompt} onChange={e=>setAiConfig({...aiConfig, global_prompt: e.target.value})} /></div>
-          </div>
-          <button className="btn primary" onClick={handleSaveAiConfig} disabled={savingAi} style={{width: 'fit-content'}}>{savingAi ? 'Salvando...' : 'Salvar Configuração da IA'}</button>
-        </div>
-      )}
-
-      {/* --- ABA USUÁRIOS --- */}
-      {adminTab === 'users' && (
-      <div className="panel">
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem", alignItems: "center", flexWrap: "wrap", gap: "15px" }}>
-          <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Usuários ({filteredUsers.length})</h3>
-          <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center'}}>
-            <div style={{ position: 'relative' }}>
-              <Search size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input type="text" placeholder="Pesquisar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ padding: '8px 10px 8px 32px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)', fontSize: '0.9rem', outline: 'none' }} />
-            </div>
-            <button className="btn primary small" onClick={() => handleOpenUserModal()}><Plus size={14}/> Novo</button>
-            <button className="btn small" onClick={fetchUsers}><RefreshCw size={14}/> Atualizar</button>
-          </div>
-        </div>
-
-        {loadingUsers ? <div className="status">A carregar...</div> : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID / Status</th>
-                  <th>Email</th>
-                  <th>Comissões</th>
-                  <th>Status da Assinatura</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
+              <div className="adm__cards">
                 {filteredUsers.map((u) => {
-                  const expireDate = u.plan_expires_at ? new Date(u.plan_expires_at) : null;
-                  const now = new Date();
-                  let planStatus = "Gratuito (Sem Plano)";
-                  let statusColor = "var(--text-muted)";
-                  let hasActivePlan = false;
-
-                  if (u.role === 'admin') {
-                    planStatus = "Vitalício (Admin)"; statusColor = "var(--primary)"; hasActivePlan = true;
-                  } else if (expireDate && !isNaN(expireDate.getTime())) {
-                    if (expireDate > now) { planStatus = `Ativo até ${expireDate.toLocaleDateString()}`; statusColor = "var(--success-text)"; hasActivePlan = true; } 
-                    else { planStatus = `Expirou em ${expireDate.toLocaleDateString()}`; statusColor = "var(--error-text)"; }
-                  }
-
+                  const plano = statusDoPlano(u);
                   return (
-                    <tr key={u.id} style={{ opacity: u.is_active === false ? 0.6 : 1 }}>
-                      <td style={{ color: 'var(--text-secondary)' }}>
-                        #{u.id} <br/>
-                        {u.is_active !== false ? <span style={{ fontSize: '0.7rem', color: 'var(--success-text)' }}>● Ativo</span> : <span style={{ fontSize: '0.7rem', color: 'var(--error-text)' }}>● Suspenso</span>}
-                      </td>
-                      <td style={{ color: u.is_active === false ? 'var(--error-text)' : 'var(--text-main)', textDecoration: u.is_active === false ? 'line-through' : 'none' }}>
-                        <strong>{u.email}</strong><br/>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.role.toUpperCase()}</span>
-                        
-                        <div style={{ marginTop: '10px', padding: '8px', background: 'var(--bg)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid var(--border)' }}>
-                          <strong>Plano IA:</strong> {u.plan_type || 'Simples'} <br/>
-                          <strong>Tokens Usados:</strong> {(u.tokens_used || 0).toLocaleString()} / {u.token_limit > 0 ? u.token_limit.toLocaleString() : 'Sem Acesso'} <br/>
-                          <div style={{ display: 'flex', gap: '5px', marginTop: '6px', flexWrap: 'wrap' }}>
-                            <button onClick={() => handleResetTokens(u.id)} disabled={u.role === 'admin'} style={{ background: 'transparent', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '4px', cursor: 'pointer', padding: '3px 6px', fontSize: '0.7rem' }}>Zerar Consumo</button>
-                            <button onClick={() => handleToggleAiBlock(u.id)} disabled={u.role === 'admin'} style={{ background: u.ai_blocked ? 'var(--error-bg)' : 'transparent', border: '1px solid var(--error-text)', color: 'var(--error-text)', borderRadius: '4px', cursor: 'pointer', padding: '3px 6px', fontSize: '0.7rem', fontWeight: u.ai_blocked ? 'bold' : 'normal' }}>{u.ai_blocked ? 'Desbloquear IA' : 'Bloquear IA'}</button>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          <span style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>
-                            R$ {(u.commission_balance || 0).toFixed(2).replace('.', ',')}
-                          </span>
-                          <button onClick={() => handleOpenCommissionModal(u)} style={{ background: 'transparent', border: '1px solid var(--text-muted)', color: 'var(--text-main)', borderRadius: '4px', cursor: 'pointer', padding: '2px 5px', fontSize: '0.7rem', alignSelf: 'flex-start' }}>Gerenciar Ganhos</button>
-                        </div>
-                      </td>
-                      <td style={{ color: statusColor, fontWeight: 'bold', fontSize: '0.85rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          {planStatus}
-                          {u.role !== 'admin' && hasActivePlan && (
-                            <button onClick={() => handleRevokePlan(u.id)} title="Revogar Plano" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--error-text)', padding: '0 5px' }}><ShieldOff size={14} /></button>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="actions-cell">
-                          <button className="btn small" onClick={() => handleToggleStatus(u)} disabled={u.id === 1} title={u.is_active === false ? "Reativar" : "Suspender"} style={{ background: u.is_active === false ? 'var(--success-bg)' : 'var(--error-bg)', color: u.is_active === false ? 'var(--success-text)' : 'var(--error-text)', borderColor: 'transparent' }}>
-                            {u.is_active === false ? <CheckCircle size={16} /> : <Ban size={16} />}
-                          </button>
-                          <button className="btn small" onClick={() => handleOpenUserModal(u)} disabled={u.id === 1} title="Editar"><Edit size={16} /></button>
-                          <button className="btn small error-btn" onClick={() => handleDeleteUser(u.id)} disabled={u.id === 1} title="Excluir"><Trash2 size={16} /></button>
-                          <button onClick={() => {setSelectedUser(u); setShowModal(true);}} title="Gerenciar Plano" style={{ background: 'var(--success-bg)', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer' }}>
-                            <Shield size={16} color="var(--success-text)" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <div className={`adm__card${u.is_active === false ? " is-off" : ""}`} key={u.id}>
+                      <span className="adm__user">
+                        <span className="adm__email">{u.email}</span>
+                        <span className="adm__meta">#{u.id}</span>
+                        <span className="adm__tags">
+                          <Badge tone={u.role === "admin" ? "accent" : "default"}>{(u.role || "user").toUpperCase()}</Badge>
+                          <Badge tone={plano.tone}>{plano.texto}</Badge>
+                          {u.is_active === false && <Badge tone="danger">Suspenso</Badge>}
+                        </span>
+                      </span>
+                      <div className="adm__card-row">
+                        <span>Comissão</span>
+                        <span className="adm__money">{brl(u.commission_balance)}</span>
+                      </div>
+                      <BlocoIA u={u} />
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button className="adm__mini" onClick={() => handleOpenCommissionModal(u)}>Ganhos</button>
+                        {u.role !== "admin" && plano.ativo && (
+                          <button className="adm__mini adm__mini--danger" onClick={() => pedirRevogacao(u)}>Revogar plano</button>
+                        )}
+                      </div>
+                      <AcoesUsuario u={u} />
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </div>
+            </>
+          )}
+        </>
       )}
 
-      {/* --- MODAL DA COMISSÃO --- */}
-      {commissionModalOpen && selectedUserForCommission && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', padding: '0', borderRadius: '12px', border: '1px solid var(--border)', width: '100%', maxWidth: '600px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
-            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>Gestão de Comissões</h3>
-                <p style={{ margin: '5px 0 0 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{selectedUserForCommission.email}</p>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Saldo Atual Disponível</span><br/>
-                <strong style={{ fontSize: '1.5rem', color: 'var(--success-text)' }}>R$ {(selectedUserForCommission.commission_balance || 0).toFixed(2).replace('.', ',')}</strong>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-              <button onClick={() => setCommissionTab('history')} style={{ flex: 1, padding: '12px', border: 'none', borderBottom: commissionTab === 'history' ? '3px solid var(--primary)' : '3px solid transparent', background: 'transparent', color: commissionTab === 'history' ? 'var(--primary)' : 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', gap: '5px' }}><FileText size={16}/> Relatório</button>
-              <button onClick={() => {setCommissionTab('pay'); setActionAmount((selectedUserForCommission.commission_balance || 0).toFixed(2)); setActionDesc("");}} style={{ flex: 1, padding: '12px', border: 'none', borderBottom: commissionTab === 'pay' ? '3px solid var(--success-text)' : '3px solid transparent', background: 'transparent', color: commissionTab === 'pay' ? 'var(--success-text)' : 'var(--text-main)', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', gap: '5px' }}><DollarSign size={16}/> Pagar</button>
-              <button onClick={() => {setCommissionTab('edit'); setActionAmount((selectedUserForCommission.commission_balance || 0).toFixed(2)); setActionDesc("");}} style={{ flex: 1, padding: '12px', border: 'none', borderBottom: commissionTab === 'edit' ? '3px solid var(--text-main)' : '3px solid transparent', background: 'transparent', color: commissionTab === 'edit' ? 'var(--heading-color)' : 'var(--text-muted)', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', gap: '5px' }}><Settings2 size={16}/> Editar Saldo</button>
-            </div>
-
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
-              {commissionTab === 'history' && (
-                <div>
-                  {commissionHistory.length === 0 ? <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>Nenhum registro encontrado.</div> : (
-                    <table style={{ width: '100%', fontSize: '0.85rem', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-muted)' }}>Data</th>
-                          <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-muted)' }}>Tipo</th>
-                          <th style={{ textAlign: 'left', padding: '8px', color: 'var(--text-muted)' }}>Descrição</th>
-                          <th style={{ textAlign: 'right', padding: '8px', color: 'var(--text-muted)' }}>Valor</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {commissionHistory.map((item) => (
-                          <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td style={{ padding: '8px', color: 'var(--text-main)' }}>{new Date(item.created_at).toLocaleDateString()}</td>
-                            <td style={{ padding: '8px' }}>
-                              {item.action_type === 'ganho' && <span style={{ color: 'var(--success-text)', background: 'var(--success-bg)', padding: '2px 6px', borderRadius: '4px' }}>Entrada</span>}
-                              {item.action_type === 'pagamento' && <span style={{ color: 'var(--error-text)', background: 'var(--error-bg)', padding: '2px 6px', borderRadius: '4px' }}>Pagamento</span>}
-                              {item.action_type === 'ajuste' && <span style={{ color: '#3b82f6', background: '#eff6ff', padding: '2px 6px', borderRadius: '4px' }}>Ajuste</span>}
-                            </td>
-                            <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{item.description}</td>
-                            <td style={{ padding: '8px', textAlign: 'right', fontWeight: 'bold', color: item.action_type === 'pagamento' ? 'var(--error-text)' : 'var(--text-main)' }}>
-                              {item.action_type === 'pagamento' ? '-' : ''} R$ {item.amount.toFixed(2).replace('.', ',')}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )}
-              {commissionTab === 'pay' && (
-                <div>
-                  <div style={{ background: 'var(--success-bg)', padding: '15px', borderRadius: '8px', border: '1px solid var(--success-text)', marginBottom: '20px' }}><p style={{ margin: 0, color: 'var(--text-main)', fontSize: '0.9rem' }}>Use esta opção para registrar que você enviou um PIX ou transferência ao afiliado. O valor será deduzido do saldo total.</p></div>
-                  <div style={{ marginBottom: '15px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-main)', fontWeight: 'bold' }}>Valor do Pagamento (R$)</label>
-                    <input type="number" step="0.01" max={selectedUserForCommission.commission_balance || 0} value={actionAmount} onChange={(e) => setActionAmount(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-                  </div>
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-main)', fontWeight: 'bold' }}>Descrição / Comprovante (Opcional)</label>
-                    <input type="text" placeholder="Ex: PIX enviado dia 10/10" value={actionDesc} onChange={(e) => setActionDesc(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-                  </div>
-                  <button onClick={() => submitCommissionAction('pagamento')} disabled={isProcessingComm} className="btn primary" style={{ width: '100%', justifyContent: 'center', background: '#10b981', borderColor: '#10b981' }}>{isProcessingComm ? "Processando..." : "Confirmar e Deduzir Saldo"}</button>
-                </div>
-              )}
-              {commissionTab === 'edit' && (
-                <div>
-                  <div style={{ background: 'var(--bg)', padding: '15px', borderRadius: '8px', border: '1px dashed var(--border)', marginBottom: '20px' }}><p style={{ margin: 0, color: 'var(--text-main)', fontSize: '0.9rem' }}>⚠️ <strong>Edição Livre:</strong> Defina o valor exato que deve ficar na conta do usuário (útil para corrigir erros no sistema).</p></div>
-                  <div style={{ marginBottom: '15px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-main)', fontWeight: 'bold' }}>Novo Saldo Exato (R$)</label>
-                    <input type="number" step="0.01" value={actionAmount} onChange={(e) => setActionAmount(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-                  </div>
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-main)', fontWeight: 'bold' }}>Motivo do Ajuste</label>
-                    <input type="text" placeholder="Ex: Correção de lançamento duplicado" value={actionDesc} onChange={(e) => setActionDesc(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--input-bg)', color: 'var(--text-main)' }} />
-                  </div>
-                  <button onClick={() => submitCommissionAction('ajuste')} disabled={isProcessingComm} className="btn" style={{ width: '100%', justifyContent: 'center' }}>{isProcessingComm ? "Processando..." : "Forçar Novo Saldo"}</button>
-                </div>
-              )}
-            </div>
-            <div style={{ padding: '15px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg)', textAlign: 'right' }}>
-              <button onClick={() => setCommissionModalOpen(false)} disabled={isProcessingComm} className="btn small" style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-main)' }}>Fechar Janela</button>
-            </div>
+      {/* ============================ IA GLOBAL ========================== */}
+      {adminTab === "ai_config" && (
+        <>
+          <div className="adm__stats">
+            <StatCard label="Usuários Plus" value={num(aiStats.total_plus)} delta="3M tokens/mês" />
+            <StatCard label="Usuários Pro" value={num(aiStats.total_pro)} delta="6M tokens/mês" />
+            <StatCard label="Tokens hoje" value={milhar(aiStats.tokens_today)} delta="na chave compartilhada" />
+            <StatCard label="Tokens no mês" value={milhar(aiStats.tokens_month)} delta="acumulado do ciclo" />
+            <StatCard
+              label="Custo estimado"
+              value={`$ ${num(aiStats.estimated_cost).toFixed(2)}`}
+              delta="estimativa da API"
+              deltaTone="warn"
+            />
           </div>
-        </div>
-      )}
 
-      {/* --- MODAL NOVO CUPOM --- */}
-      {couponModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '400px' }}>
-            <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Ticket size={22} color="var(--primary)" /> Novo Cupom
-            </h3>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Código (Ex: PROMO20)</label>
-              <input type="text" value={couponFormData.code} onChange={e => setCouponFormData({...couponFormData, code: e.target.value.toUpperCase()})} autoFocus style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} />
-            </div>
-            <div style={{ marginBottom: '15px', display: 'flex', gap: '15px' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Desconto (%)</label>
-                {/* CORRIGIDO: discount_percent para discount_percentage */}
-                <input type="number" min="1" max="100" value={couponFormData.discount_percentage} onChange={e => setCouponFormData({...couponFormData, discount_percentage: parseInt(e.target.value)})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Qtd Usos (0 = Ilimitado)</label>
-                <input type="number" min="0" value={couponFormData.max_uses} onChange={e => setCouponFormData({...couponFormData, max_uses: parseInt(e.target.value)})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} />
-              </div>
-            </div>
-            <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Data de Validade (Opcional)</label>
-              <input type="date" value={couponFormData.expires_at} onChange={e => setCouponFormData({...couponFormData, expires_at: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setCouponModalOpen(false)} disabled={savingCoupon} className="btn small" style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }}>Cancelar</button>
-              <button onClick={handleSaveCoupon} disabled={savingCoupon} className="btn primary small">{savingCoupon ? "A guardar..." : "Criar Cupom"}</button>
-            </div>
-          </div>
-        </div>
-      )}
+          <div className="ui-card">
+            <div className="ui-card__head"><h3>Chave e modelo compartilhados</h3></div>
+            <div className="ui-card__body" style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+              <Notice tone="info">
+                Esta chave atende os planos Plus e Pro. Quem usa o plano Simples consome a própria chave.
+              </Notice>
 
-      {/* --- MODAL DO USUÁRIO --- */}
-      {userModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '30px', width: '100%', maxWidth: '400px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-            <h3 style={{ marginTop: 0, borderBottom: '1px solid var(--border)', color: 'var(--heading-color)', paddingBottom: '15px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <UserCog size={22} color="var(--primary)" /> {editingUser ? "Editar Usuário" : "Novo Usuário"}
-            </h3>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>E-mail</label>
-              <input type="email" value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} autoFocus style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} />
-            </div>
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Senha {editingUser && <span style={{fontWeight: 'normal', color: 'var(--text-muted)'}}>(Deixe em branco para manter)</span>}</label>
-              <input type="password" value={userFormData.password} onChange={e => setUserFormData({...userFormData, password: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} />
-            </div>
-            
-            <div style={{ marginBottom: '15px' }}>
-              <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>Nível de Acesso</label>
-              <select value={userFormData.role} onChange={e => setUserFormData({...userFormData, role: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }}>
-                <option value="user">Usuário Padrão (Aluno - Acesso Público)</option>
-                <option value="custom">Usuário Personalizado (Apenas Concursos Atribuídos)</option>
-                <option value="admin">Administrador Global</option>
-              </select>
-            </div>
-
-            {/* Renderização condicional do campo de concursos */}
-            {userFormData.role === 'custom' && (
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '5px', color: 'var(--text-main)' }}>
-                  Concursos Permitidos <span style={{fontWeight: 'normal', color: 'var(--text-muted)'}}>(Separados por vírgula)</span>
-                </label>
-                <input 
-                  type="text" 
-                  value={userFormData.allowed_concursos} 
-                  onChange={e => setUserFormData({...userFormData, allowed_concursos: e.target.value})} 
-                  placeholder="Ex: Polícia Federal, INSS, Banco do Brasil" 
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', outline: 'none' }} 
+              <div className="adm__form-grid">
+                <Input
+                  label="Modelo de linguagem"
+                  value={aiConfig.model || ""}
+                  onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
+                  placeholder="ex: openai/gpt-4o-mini"
+                />
+                <Input
+                  label="Chave da OpenRouter"
+                  type="password"
+                  value={aiConfig.api_key || ""}
+                  onChange={(e) => setAiConfig({ ...aiConfig, api_key: e.target.value })}
+                  placeholder="sk-or-v1-…"
+                />
+                <Input
+                  label="Temperatura"
+                  type="number"
+                  step="0.1"
+                  value={aiConfig.temperature}
+                  onChange={(e) => setAiConfig({ ...aiConfig, temperature: parseFloat(e.target.value) })}
+                />
+                <Input
+                  label="Máximo de tokens por requisição"
+                  type="number"
+                  value={aiConfig.max_tokens}
+                  onChange={(e) => setAiConfig({ ...aiConfig, max_tokens: parseInt(e.target.value, 10) })}
                 />
               </div>
-            )}
-            <div style={{ marginBottom: '25px', background: 'var(--bg)', padding: '15px', borderRadius: '6px', border: '1px solid var(--border)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-main)' }}>
-                <input type="checkbox" checked={userFormData.can_manage_lessons} onChange={e => setUserFormData({...userFormData, can_manage_lessons: e.target.checked})} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                Permitir Criação/Gestão de Aulas
+
+              <label className="ui-field">
+                <span className="ui-field__label">Prompt global (opcional)</span>
+                <textarea
+                  className="ui-input"
+                  style={{ minHeight: 110, resize: "vertical", lineHeight: 1.6 }}
+                  value={aiConfig.global_prompt || ""}
+                  onChange={(e) => setAiConfig({ ...aiConfig, global_prompt: e.target.value })}
+                  placeholder="Regra injetada em todas as chamadas de IA da plataforma."
+                />
               </label>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button onClick={() => setUserModalOpen(false)} disabled={savingUser} className="btn small" style={{ backgroundColor: 'var(--hover-bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }}>Cancelar</button>
-              <button onClick={handleSaveUser} disabled={savingUser} className="btn primary small">{savingUser ? "A guardar..." : "Guardar (Enter)"}</button>
+
+              <Button variant="primary" onClick={handleSaveAiConfig} disabled={savingAi} style={{ alignSelf: "flex-start" }}>
+                {savingAi ? "Salvando…" : "Salvar configuração"}
+              </Button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      {showModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', padding: '20px', borderRadius: '8px', color: 'black', width: '320px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{color: 'black', marginBottom: '15px'}}>Gerenciar plano de {selectedUser?.email.split('@')[0]}</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[
-                { id: 'mensal_simples', nome: 'Mensal Simples' },
-                { id: 'trimestral_simples', nome: 'Trimestral Simples' },
-                { id: 'semestral_simples', nome: 'Semestral Simples' },
-                { id: 'mensal_plus', nome: 'Mensal Plus (3M)' },
-                { id: 'trimestral_plus', nome: 'Trimestral Plus (3M)' },
-                { id: 'semestral_plus', nome: 'Semestral Plus (3M)' },
-                { id: 'trimestral_pro', nome: 'Trimestral Pro (6M)' },
-                { id: 'semestral_pro', nome: 'Semestral Pro (6M)' }
-              ].map(p => (
-                <button key={p.id} onClick={() => handleSavePlan(p.id)} style={{padding: '10px', cursor: 'pointer', background: '#0f172a', color: 'white', border: 'none', borderRadius: '4px'}}>{p.nome}</button>
-              ))}
-              <hr style={{margin: '10px 0'}}/>
-              <button onClick={() => handleRevokePlan(selectedUser?.id)} style={{ background: '#ef4444', color: 'white', padding: '10px', cursor: 'pointer', border: 'none', borderRadius: '4px', fontWeight: 'bold' }}>Remover Plano Ativo</button>
-              <button onClick={() => setShowModal(false)} style={{ background: 'gray', color: 'white', padding: '10px', cursor: 'pointer', border: 'none', borderRadius: '4px' }}>Cancelar</button>
+      {/* ============================== CUPONS =========================== */}
+      {adminTab === "coupons" && (
+        <>
+          <div className="adm__toolbar">
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--fg-2)" }}>
+              Cupons aplicados no cadastro, na etapa de escolha do plano.
+            </span>
+            <div className="adm__toolbar-actions">
+              <Button variant="primary" onClick={() => setCouponModalOpen(true)} icon={<Plus size={15} />}>
+                Novo cupom
+              </Button>
             </div>
           </div>
-        </div>
+
+          {loadingCoupons ? (
+            <Skeleton height={180} radius="var(--radius-md)" />
+          ) : coupons.length === 0 ? (
+            <EmptyState
+              icon={<Ticket size={22} />}
+              title="Nenhum cupom cadastrado"
+              description="Cupons dão desconto percentual no primeiro pagamento e podem ter limite de usos e validade."
+              action={<Button variant="primary" onClick={() => setCouponModalOpen(true)} icon={<Plus size={15} />}>Criar cupom</Button>}
+            />
+          ) : (
+            <div className="adm__table-wrap">
+              <div className="adm__scroll">
+                <table className="adm__table" style={{ minWidth: 680 }}>
+                  <thead>
+                    <tr>
+                      <th>Código</th>
+                      <th style={{ width: 110 }}>Desconto</th>
+                      <th style={{ width: 150 }}>Usos</th>
+                      <th style={{ width: 150 }}>Validade</th>
+                      <th style={{ width: 110 }}>Situação</th>
+                      <th style={{ width: 80, textAlign: "right" }}>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coupons.map((c) => {
+                      const expirado = c.expires_at && new Date(c.expires_at) < new Date();
+                      const esgotado = c.max_uses > 0 && c.current_uses >= c.max_uses;
+                      const valido = c.is_active && !expirado && !esgotado;
+                      return (
+                        <tr key={c.id}>
+                          <td>
+                            <span className="adm__email" style={{ fontFamily: "var(--font-mono)", letterSpacing: ".05em" }}>
+                              {c.code}
+                            </span>
+                          </td>
+                          <td><b style={{ color: "var(--fg)" }}>{c.discount_percentage}%</b></td>
+                          <td>{num(c.current_uses)} / {c.max_uses > 0 ? c.max_uses : "ilimitado"}</td>
+                          <td>{c.expires_at ? new Date(c.expires_at).toLocaleDateString("pt-BR") : "sem validade"}</td>
+                          <td>
+                            {valido ? (
+                              <Badge tone="ok">Válido</Badge>
+                            ) : (
+                              <Badge tone="danger">{expirado ? "Expirado" : esgotado ? "Esgotado" : "Inativo"}</Badge>
+                            )}
+                          </td>
+                          <td>
+                            <div className="adm__actions">
+                              <button
+                                className="adm__icon-btn adm__icon-btn--danger"
+                                onClick={() => pedirExclusaoCupom(c)}
+                                title="Excluir cupom"
+                                aria-label={`Excluir o cupom ${c.code}`}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
+
+      {/* ============================== MODAIS =========================== */}
+      <ConfirmDialog
+        open={!!confirmacao}
+        title={confirmacao?.titulo}
+        message={confirmacao?.mensagem}
+        detail={confirmacao?.detalhe}
+        confirmLabel={confirmacao?.rotulo}
+        danger={confirmacao?.danger !== false}
+        loading={executando}
+        onConfirm={executarAcao}
+        onCancel={() => setConfirmacao(null)}
+      />
+
+      <Modal
+        open={userModalOpen}
+        onClose={() => !savingUser && setUserModalOpen(false)}
+        title={editingUser ? "Editar usuário" : "Novo usuário"}
+        subtitle={editingUser?.email}
+        footer={
+          <>
+            <Button onClick={() => setUserModalOpen(false)} disabled={savingUser}>Cancelar</Button>
+            <Button variant="primary" onClick={handleSaveUser} disabled={savingUser}>
+              {savingUser ? "Salvando…" : "Salvar"}
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="E-mail"
+          type="email"
+          autoFocus
+          value={userFormData.email}
+          onChange={(e) => setUserFormData({ ...userFormData, email: e.target.value })}
+        />
+        <Input
+          label={editingUser ? "Senha (deixe em branco para manter)" : "Senha"}
+          type="password"
+          value={userFormData.password}
+          onChange={(e) => setUserFormData({ ...userFormData, password: e.target.value })}
+        />
+
+        <label className="ui-field">
+          <span className="ui-field__label">Nível de acesso</span>
+          <select
+            className="ui-input"
+            value={userFormData.role}
+            onChange={(e) => setUserFormData({ ...userFormData, role: e.target.value })}
+          >
+            <option value="user">Usuário padrão — vê as aulas públicas</option>
+            <option value="custom">Personalizado — só os concursos atribuídos</option>
+            <option value="admin">Administrador — acesso total</option>
+          </select>
+        </label>
+
+        {userFormData.role === "custom" && (
+          <Input
+            label="Concursos permitidos (separados por vírgula)"
+            value={userFormData.allowed_concursos}
+            onChange={(e) => setUserFormData({ ...userFormData, allowed_concursos: e.target.value })}
+            placeholder="Ex: Polícia Federal, INSS, DATAPREV"
+          />
+        )}
+
+        <label className="adm__check">
+          <input
+            type="checkbox"
+            checked={userFormData.can_manage_lessons}
+            onChange={(e) => setUserFormData({ ...userFormData, can_manage_lessons: e.target.checked })}
+          />
+          <span>
+            <b>Pode criar e gerenciar aulas</b>
+            <span>Libera o gerador e a tela de gerenciamento para esta conta.</span>
+          </span>
+        </label>
+      </Modal>
+
+      <Modal
+        open={couponModalOpen}
+        onClose={() => !savingCoupon && setCouponModalOpen(false)}
+        title="Novo cupom"
+        footer={
+          <>
+            <Button onClick={() => setCouponModalOpen(false)} disabled={savingCoupon}>Cancelar</Button>
+            <Button variant="primary" onClick={handleSaveCoupon} disabled={savingCoupon}>
+              {savingCoupon ? "Criando…" : "Criar cupom"}
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="Código"
+          autoFocus
+          value={couponFormData.code}
+          onChange={(e) => setCouponFormData({ ...couponFormData, code: e.target.value.toUpperCase() })}
+          placeholder="Ex: APROVADO20"
+          style={{ textTransform: "uppercase", fontFamily: "var(--font-mono)" }}
+        />
+        <div className="adm__form-grid">
+          <Input
+            label="Desconto (%)"
+            type="number"
+            min="1"
+            max="100"
+            value={couponFormData.discount_percentage}
+            onChange={(e) => setCouponFormData({ ...couponFormData, discount_percentage: parseInt(e.target.value, 10) })}
+          />
+          <Input
+            label="Limite de usos (0 = ilimitado)"
+            type="number"
+            min="0"
+            value={couponFormData.max_uses}
+            onChange={(e) => setCouponFormData({ ...couponFormData, max_uses: parseInt(e.target.value, 10) })}
+          />
+        </div>
+        <Input
+          label="Validade (opcional)"
+          type="date"
+          value={couponFormData.expires_at}
+          onChange={(e) => setCouponFormData({ ...couponFormData, expires_at: e.target.value })}
+        />
+      </Modal>
+
+      <Modal
+        open={showModal && !!selectedUser}
+        onClose={() => setShowModal(false)}
+        title="Atribuir plano"
+        subtitle={selectedUser?.email}
+        wide
+        footer={<Button onClick={() => setShowModal(false)}>Fechar</Button>}
+      >
+        <Notice tone="warn">
+          O plano é concedido na hora, sem passar pelo pagamento. Use para cortesias, testes e correções.
+        </Notice>
+        <div className="adm__plans">
+          {PLANOS.map((p) => (
+            <button key={p.id} className="adm__plan" onClick={() => handleSavePlan(p.id)}>
+              {p.nome}
+              <small>{p.detalhe}</small>
+            </button>
+          ))}
+        </div>
+        {selectedUser && statusDoPlano(selectedUser).ativo && selectedUser.role !== "admin" && (
+          <Button variant="danger" onClick={() => pedirRevogacao(selectedUser)} icon={<ShieldOff size={15} />}>
+            Remover o plano ativo
+          </Button>
+        )}
+      </Modal>
+
+      <Modal
+        open={commissionModalOpen && !!selectedUserForCommission}
+        onClose={() => !isProcessingComm && setCommissionModalOpen(false)}
+        title="Comissões de indicação"
+        subtitle={selectedUserForCommission?.email}
+        wide
+        footer={
+          <Button onClick={() => setCommissionModalOpen(false)} disabled={isProcessingComm}>Fechar</Button>
+        }
+      >
+        <div className="adm__saldo">
+          <span>Saldo disponível</span>
+          <b>{brl(selectedUserForCommission?.commission_balance)}</b>
+        </div>
+
+        <div className="adm__tabs" role="tablist">
+          <button
+            role="tab"
+            aria-selected={commissionTab === "history"}
+            className={`adm__tab${commissionTab === "history" ? " is-on" : ""}`}
+            onClick={() => setCommissionTab("history")}
+          >
+            <FileText size={15} /> Extrato
+          </button>
+          <button
+            role="tab"
+            aria-selected={commissionTab === "pay"}
+            className={`adm__tab${commissionTab === "pay" ? " is-on" : ""}`}
+            onClick={() => {
+              setCommissionTab("pay");
+              setActionAmount(num(selectedUserForCommission?.commission_balance).toFixed(2));
+              setActionDesc("");
+              setErroComm("");
+            }}
+          >
+            <DollarSign size={15} /> Registrar pagamento
+          </button>
+          <button
+            role="tab"
+            aria-selected={commissionTab === "edit"}
+            className={`adm__tab${commissionTab === "edit" ? " is-on" : ""}`}
+            onClick={() => {
+              setCommissionTab("edit");
+              setActionAmount(num(selectedUserForCommission?.commission_balance).toFixed(2));
+              setActionDesc("");
+              setErroComm("");
+            }}
+          >
+            <Settings2 size={15} /> Corrigir saldo
+          </button>
+        </div>
+
+        {erroComm && <Notice tone="err" onClose={() => setErroComm("")}>{erroComm}</Notice>}
+
+        {commissionTab === "history" && (
+          <div className="adm__hist">
+            {commissionHistory.length === 0 ? (
+              <div className="adm__hist-empty">Nenhum lançamento registrado.</div>
+            ) : (
+              commissionHistory.map((item) => (
+                <div className="adm__hist-row" key={item.id}>
+                  <span>{new Date(item.created_at).toLocaleDateString("pt-BR")}</span>
+                  <span>
+                    {item.action_type === "ganho" && <Badge tone="ok">Entrada</Badge>}
+                    {item.action_type === "pagamento" && <Badge tone="danger">Pagamento</Badge>}
+                    {item.action_type === "ajuste" && <Badge tone="accent">Ajuste</Badge>}
+                  </span>
+                  <span className="d" style={{ color: "var(--fg-2)" }}>{item.description}</span>
+                  <span className={`v${item.action_type === "pagamento" ? " is-out" : ""}`}>
+                    {item.action_type === "pagamento" ? "−" : ""} {brl(item.amount)}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {commissionTab === "pay" && (
+          <>
+            <Notice tone="info">
+              Registra que você já enviou o dinheiro ao afiliado (PIX ou transferência). O valor é
+              deduzido do saldo — o envio em si acontece fora da plataforma.
+            </Notice>
+            <Input
+              label="Valor pago (R$)"
+              type="number"
+              step="0.01"
+              max={num(selectedUserForCommission?.commission_balance)}
+              value={actionAmount}
+              onChange={(e) => setActionAmount(e.target.value)}
+            />
+            <Input
+              label="Comprovante ou observação (opcional)"
+              value={actionDesc}
+              onChange={(e) => setActionDesc(e.target.value)}
+              placeholder="Ex: PIX enviado em 10/09"
+            />
+            <Button variant="primary" onClick={() => submitCommissionAction("pagamento")} disabled={isProcessingComm} block>
+              {isProcessingComm ? "Processando…" : "Registrar pagamento e deduzir do saldo"}
+            </Button>
+          </>
+        )}
+
+        {commissionTab === "edit" && (
+          <>
+            <Notice tone="warn">
+              Isto define o saldo exato da conta, ignorando o histórico. Use só para corrigir erros de
+              lançamento — o valor antigo não fica guardado em lugar nenhum.
+            </Notice>
+            <Input
+              label="Novo saldo exato (R$)"
+              type="number"
+              step="0.01"
+              value={actionAmount}
+              onChange={(e) => setActionAmount(e.target.value)}
+            />
+            <Input
+              label="Motivo do ajuste"
+              value={actionDesc}
+              onChange={(e) => setActionDesc(e.target.value)}
+              placeholder="Ex: correção de lançamento duplicado"
+            />
+            <Button onClick={() => submitCommissionAction("ajuste")} disabled={isProcessingComm} block>
+              {isProcessingComm ? "Processando…" : "Definir este saldo"}
+            </Button>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
