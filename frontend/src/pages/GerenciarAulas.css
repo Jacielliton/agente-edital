@@ -16,7 +16,7 @@
 .ga__search input {
   width: 100%;
   padding: 10px 36px 10px 36px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--fg);
@@ -72,7 +72,7 @@
 .ga__icon-btn {
   width: 32px; height: 32px;
   display: grid; place-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   background: var(--surface-2);
   color: var(--fg-2);
   border-radius: var(--radius-sm);

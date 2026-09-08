@@ -1,0 +1,287 @@
+/* ===================== Peças do simulador ===================== */
+/* Compartilhado pelas seis telas Gabarite. Nenhuma cor literal aqui:
+   o painel de erros era #f59e0b / #fef3c7 / #b45309 / #92400e cravados,
+   que não trocavam no tema escuro. */
+
+/* ---------------------------------------------------- texto-base */
+.sim-texto {
+  position: relative;
+  margin: var(--space-5) 0 var(--space-4);
+  padding: var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+}
+.sim-texto__marca {
+  position: absolute; top: calc(var(--space-4) * -1); left: var(--space-4);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-fg);
+  box-shadow: var(--shadow-2);
+}
+.sim-texto h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs); font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.sim-texto__corpo { font-size: 16px; line-height: 1.8; color: var(--fg); }
+.sim-texto__corpo.is-serif { font-family: Georgia, "Times New Roman", serif; }
+.sim-texto__corpo p { margin: 0 0 var(--space-3); text-indent: 2rem; text-align: justify; }
+.sim-texto__corpo p:last-child { margin-bottom: 0; }
+
+/* ---------------------------------------------------- cartão da questão */
+.sim-questao {
+  display: flex; gap: var(--space-4);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.sim-questao.is-certo { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
+.sim-questao.is-errado { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+
+.sim-questao__n {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none; width: 34px; height: 34px; border-radius: 9px;
+  background: var(--surface-3); color: var(--fg-2);
+  font-size: var(--text-sm); font-weight: 800;
+}
+.sim-questao__corpo { flex: 1; min-width: 0; }
+
+.sim-questao__assunto {
+  display: inline-block; margin-bottom: var(--space-3);
+  padding: 4px 9px; border-radius: 5px;
+  background: var(--surface-3); color: var(--fg-3);
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.sim-questao__enunciado {
+  margin-bottom: var(--space-4);
+  font-size: 16px; line-height: 1.65; color: var(--fg); font-weight: 500;
+}
+.sim-questao__enunciado p { margin: 0 0 .7em; }
+.sim-questao__enunciado p:last-child { margin-bottom: 0; }
+
+/* ---------------------------------------------------- alternativas */
+.sim-opcoes { display: flex; flex-direction: column; gap: var(--space-2); }
+.sim-opcoes.is-binaria { flex-direction: row; flex-wrap: wrap; }
+.sim-opcoes.is-binaria .sim-opcao { flex: 1 1 150px; justify-content: center; font-weight: 800; letter-spacing: .04em; }
+
+.sim-opcao {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 2px solid var(--line); border-radius: 10px;
+  background: transparent; color: var(--fg-2);
+  font-size: var(--text-sm); line-height: 1.5; text-align: left;
+  transition: border-color .15s ease, background-color .15s ease, opacity .15s ease;
+}
+.sim-opcao:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-3); }
+.sim-opcao:disabled { cursor: default; }
+.sim-opcao__texto { flex: 1; min-width: 0; }
+.sim-opcao__marca { flex: none; color: var(--ok); }
+
+.sim-opcao.is-marcada { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+.sim-opcao.is-acerto  { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
+.sim-opcao.is-erro    { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }
+/* a correta que o aluno NÃO marcou: aparece sem gritar */
+.sim-opcao.is-gabarito { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
+.sim-opcao.is-apagada { opacity: .5; }
+
+/* ---------------------------------------------------- gabarito comentado */
+.sim-gabarito {
+  margin-top: var(--space-4); padding-top: var(--space-4);
+  border-top: 1px dashed var(--line);
+}
+.sim-gabarito__topo {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+.sim-gabarito__topo.is-certo { color: var(--ok); }
+.sim-gabarito__topo.is-errado { color: var(--danger); }
+.sim-gabarito__topo span { color: var(--fg-3); font-weight: 600; }
+.sim-gabarito__texto { font-size: var(--text-sm); color: var(--fg-2); line-height: 1.65; }
+.sim-gabarito__texto p { margin: 0 0 .6em; }
+.sim-gabarito__texto p:last-child { margin-bottom: 0; }
+
+/* ---------------------------------------------------- painel de erros */
+.sim-erros {
+  max-width: 540px; margin: var(--space-5) auto;
+  padding: var(--space-5);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  text-align: center;
+}
+.sim-erros h4 {
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg); font-weight: 800; color: var(--warn);
+}
+.sim-erros p { margin: 0 0 var(--space-4); font-size: var(--text-sm); color: var(--fg-2); line-height: 1.6; }
+
+/* ---------------------------------------------------- placar */
+.sim-placar {
+  display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap;
+  margin: var(--space-5) 0;
+  padding: var(--space-5);
+  background: var(--surface-3);
+  border-radius: var(--radius);
+}
+.sim-placar.is-alto { background: var(--ok-soft); }
+.sim-placar.is-baixo { background: var(--danger-soft); }
+.sim-placar__num { display: flex; align-items: baseline; gap: 6px; }
+.sim-placar__num b { font-size: 34px; font-weight: 800; letter-spacing: -.03em; color: var(--fg); }
+.sim-placar__num span { font-size: var(--text-sm); color: var(--fg-3); }
+.sim-placar__info { display: flex; flex-direction: column; gap: 3px; }
+.sim-placar__info b { font-size: var(--text-base, 15px); font-weight: 700; color: var(--fg); }
+.sim-placar__info span { font-size: var(--text-xs); color: var(--fg-3); }
+.sim-placar__acoes { margin-left: auto; display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ---------------------------------------------------- histórico */
+.sim-hist { display: flex; flex-direction: column; gap: var(--space-4); }
+.sim-hist__resumo { display: flex; gap: var(--space-3); }
+.sim-hist__caixa {
+  flex: 1; padding: var(--space-4) var(--space-3); text-align: center;
+  background: var(--surface-3); border-radius: var(--radius-sm);
+}
+.sim-hist__caixa.is-ok { background: var(--ok-soft); }
+.sim-hist__caixa.is-erro { background: var(--danger-soft); }
+.sim-hist__caixa b { display: block; font-size: 26px; font-weight: 800; color: var(--fg); }
+.sim-hist__caixa.is-ok b { color: var(--ok); }
+.sim-hist__caixa.is-erro b { color: var(--danger); }
+.sim-hist__caixa span {
+  font-size: var(--text-xs); letter-spacing: .05em; text-transform: uppercase; color: var(--fg-3);
+}
+
+.sim-hist__titulo {
+  display: flex; align-items: center; gap: 7px; margin: 0;
+  font-size: var(--text-xs); font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.sim-hist__vazio { margin: 0; font-size: var(--text-sm); color: var(--fg-3); line-height: 1.6; }
+.sim-hist__lista { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+.sim-hist__item {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) 0; border-bottom: 1px solid var(--line);
+}
+.sim-hist__item:last-child { border-bottom: none; }
+.sim-hist__nome {
+  font-size: var(--text-sm); color: var(--fg-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sim-hist__nums { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.sim-hist__pct { font-size: var(--text-sm); font-weight: 800; min-width: 42px; text-align: right; }
+.sim-hist__pct.is-ok { color: var(--ok); }
+.sim-hist__pct.is-atencao { color: var(--warn); }
+.sim-hist__pct.is-erro { color: var(--danger); }
+
+@media (max-width: 640px) {
+  .sim-questao { padding: var(--space-4); gap: var(--space-3); }
+  .sim-texto { padding: var(--space-4); }
+  .sim-placar__acoes { margin-left: 0; width: 100%; }
+  .sim-placar__acoes .ui-btn { flex: 1; justify-content: center; }
+}
+
+/* --- Peças herdadas do App.css que só as telas Gabarite usam --- */
+}
+
+.skeleton-box {
+  animation: pulseSkeleton 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* --- Sumário (Resultados) --- */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+/* --- Details / Accordion --- */
+.details {
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+}
+
+.details:last-child {
+  border-bottom: none;
+}
+
+.details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* --- Grid de Mini Cards --- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+  
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .summary {
+    grid-template-columns: 1fr;
+  }
+
+/* Efeito de hover para as palavras interativas do GabariteIngles */
+.hover-word {
+  border-bottom: 1px dashed transparent;
+}
+
+.hover-word:hover {
+  background-color: var(--primary-light, var(--accent-soft));
+  color: var(--primary, var(--accent));
+  border-bottom: 1px dashed var(--primary, var(--accent));
+}
+
+/* --- Moldura das telas Gabarite ---
+   Substitui .container e .header do App.css, que era carregado em toda página
+   só para dar largura e respiro a estas seis telas. */
+.gab {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* O .header legado era um hero centralizado, com título de 2,25rem e parágrafo
+   com margin-inline auto. As seis telas já sobrescreviam para a esquerda com
+   estilo inline — aqui fica o que de fato se via, no tamanho do PageHeader. */
+.gab__topo {
+  text-align: left;
+  margin-bottom: 0;
+}
+.gab__topo h1 {
+  margin: 0 0 5px;
+  font-size: var(--text-2xl, 24px);
+  font-weight: 800;
+  letter-spacing: -.025em;
+  color: var(--fg);
+}
+.gab__topo p {
+  margin: 0;
+  max-width: 68ch;
+  font-size: var(--text-sm);
+  color: var(--fg-2);
+  line-height: 1.6;
+}
+.gab__erro {
+  padding: var(--space-4);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+

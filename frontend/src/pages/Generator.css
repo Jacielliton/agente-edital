@@ -1,0 +1,69 @@
+/* ===================== Gerador de aulas ===================== */
+.gen { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.gen__form { display: flex; flex-direction: column; gap: var(--space-4); }
+.gen__campo { display: flex; flex-direction: column; gap: var(--space-2); }
+.gen__campo-topo { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.gen__contagem { font-size: var(--text-xs); color: var(--fg-3); font-variant-numeric: tabular-nums; }
+.gen__contagem.is-ok { color: var(--ok); }
+
+.gen__textarea {
+  width: 100%; resize: vertical;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--control-line); border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--fg);
+  font-size: var(--text-sm); line-height: 1.7; font-family: inherit;
+}
+.gen__textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.gen__linha { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-3); align-items: end; }
+.gen__estreito { max-width: 190px; }
+
+/* ---------- progresso ---------- */
+.gen__progresso {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.gen__progresso-topo {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3);
+  font-size: var(--text-sm); font-weight: 700; color: var(--accent);
+}
+.gen__progresso-topo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gen__progresso-topo b { flex: none; font-variant-numeric: tabular-nums; }
+.gen__progresso p { margin: 0; font-size: var(--text-xs); color: var(--fg-3); line-height: 1.55; }
+
+/* ---------- ações ---------- */
+.gen__acoes { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.gen__acoes > .ui-btn:first-child { flex: 1 1 220px; justify-content: center; }
+.gen__arquivo { flex: 0 1 160px; justify-content: center; cursor: pointer; }
+
+/* ---------- módulos que falharam ---------- */
+.gen__falhas {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--radius-sm);
+}
+.gen__falhas > b { font-size: var(--text-sm); color: var(--warn); }
+.gen__falha {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap;
+}
+.gen__falha span { font-size: var(--text-sm); color: var(--fg); }
+.gen__falha i { margin-left: 8px; font-size: var(--text-xs); color: var(--fg-3); font-style: normal; }
+
+/* ---------- salvar ---------- */
+.gen__salvar {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface-3); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.gen__salvar h3 { margin: 0; font-size: var(--text-base, 15px); font-weight: 800; color: var(--fg); }
+.gen__salvar p { margin: 0; font-size: var(--text-sm); color: var(--fg-2); }
+.gen__salvar p b { color: var(--fg); }
+
+.gen__resultado { margin-top: var(--space-5); }
+
+@media (max-width: 560px) {
+  .gen__estreito { max-width: none; }
+  .gen__acoes .ui-btn, .gen__arquivo { flex: 1 1 100%; }
+}

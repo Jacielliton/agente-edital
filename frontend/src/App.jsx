@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import AppShell from "./components/AppShell";
 import { Button, EmptyState, Skeleton } from "./components/ui";
 import ErrorBoundary from "./components/ErrorBoundary";
-import "./App.css";
+import "./components/Publico.css";
 
 // 1. LAZY LOADING (Code Splitting)
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -26,6 +26,9 @@ const GabariteSintaxe = lazy(() => import("./pages/GabariteSintaxe"));
 const GabariteDireito = lazy(() => import("./pages/GabariteDireito"));
 const GabariteIngles = lazy(() => import("./pages/GabariteIngles"));
 const GabariteJava = lazy(() => import("./pages/GabariteJava"));
+const LeiSeca = lazy(() => import("./pages/LeiSeca"));
+const ComparadorBancas = lazy(() => import("./pages/ComparadorBancas"));
+const Baralho = lazy(() => import("./pages/Baralho"));
 
 // Esqueleto de carregamento: mesma silhueta da pagina que vai entrar,
 // para a troca de rota nao "piscar" um vazio.
@@ -62,28 +65,15 @@ const PrivateRoute = ({ children, adminOnly = false, requireManageLessons = fals
 // Rodape simples das paginas publicas (login e planos), que nao usam o AppShell.
 function PublicFooter() {
   return (
-    <footer
-      style={{
-        borderTop: "1px solid var(--line)",
-        background: "var(--surface-2)",
-        padding: "var(--space-5)",
-        textAlign: "center",
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-3)",
-        alignItems: "center",
-        color: "var(--fg-3)",
-        fontSize: "var(--text-xs)",
-      }}
-    >
-      <span style={{ color: "var(--fg-2)" }}>
+    <footer className="publico__foot">
+      <span className="publico__foot-aviso">
         A IA pode cometer erros. Na dúvida, consulte sempre o material oficial do edital.
       </span>
-      <span style={{ display: "flex", gap: "var(--space-4)", alignItems: "center" }}>
-        <a href="https://www.instagram.com/tecnopriv.top/" target="_blank" rel="noopener noreferrer" title="Instagram" style={{ color: "var(--fg-3)", display: "flex" }}>
+      <span className="publico__foot-social">
+        <a href="https://www.instagram.com/tecnopriv.top/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
           <Instagram size={20} />
         </a>
-        <a href="https://www.youtube.com/@tecnopriv.top1" target="_blank" rel="noopener noreferrer" title="YouTube" style={{ color: "var(--fg-3)", display: "flex" }}>
+        <a href="https://www.youtube.com/@tecnopriv.top1" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
           <Youtube size={22} />
         </a>
       </span>
@@ -101,8 +91,9 @@ function Chrome({ children }) {
 
   if (!user || isPublicPage) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--surface)" }}>
-        <div style={{ flex: 1 }}>{children}</div>
+      <div className="publico">
+        <a className="publico__skip" href="#conteudo">Pular para o conteúdo</a>
+        <main className="publico__conteudo" id="conteudo" tabIndex={-1}>{children}</main>
         <PublicFooter />
       </div>
     );
@@ -147,6 +138,9 @@ export default function App() {
               <Route path="/gabarite-direito" element={<PrivateRoute><GabariteDireito /></PrivateRoute>} />
               <Route path="/gabarite-ingles" element={<PrivateRoute><GabariteIngles /></PrivateRoute>} />
               <Route path="/gabarite-java" element={<PrivateRoute><GabariteJava /></PrivateRoute>} />
+              <Route path="/lei-seca" element={<PrivateRoute><LeiSeca /></PrivateRoute>} />
+              <Route path="/comparador-bancas" element={<PrivateRoute><ComparadorBancas /></PrivateRoute>} />
+              <Route path="/baralho" element={<PrivateRoute><Baralho /></PrivateRoute>} />
               <Route path="/generator" element={<PrivateRoute requireManageLessons={true}><Generator /></PrivateRoute>} />
               <Route path="/gerenciar" element={<PrivateRoute requireManageLessons={true}><GerenciarAulas /></PrivateRoute>} />
 

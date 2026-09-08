@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  Coffee, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, 
-  Sparkles, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
-  X, CheckCircle, AlertCircle, Code
+import {
+  Coffee, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, Sparkles, Cpu, Code,
 } from "lucide-react";
 // Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
 import Md from "../components/Markdown";
-import { Modal, ConfirmDialog, Notice } from "../components/ui";
+import { Modal, ConfirmDialog, Notice, Toast} from "../components/ui";
 import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
+import { QuestaoCard, TextoBase, PainelErros, HistoricoModal } from "../components/simulador";
 
 // ==========================================
 // CONTEÚDO TEÓRICO (Baseado no Edital Fornecido)
@@ -80,7 +79,6 @@ export default function GabariteJava() {
   const [showConfig, setShowConfig] = useState(false);
   const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
   const [aviso, setAviso] = useState(null);
-  const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
   // --- ESTADOS DO SIMULADOR ---
   const [configFocus, setConfigFocus] = useState("completo");
@@ -331,22 +329,21 @@ export default function GabariteJava() {
     });
   };
 
-  const resetStats = () => setConfirmarLimpeza(true);
 
   const wrongCount = getWrongQuestions().length;
   const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && wrongCount > 0;
 
   // --- ESTILOS CUSTOMIZADOS PARA MARKDOWN (CÓDIGO IDENTADO) ---
   return (
-    <div className="container">
-      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
+    <div className="gab">
+      <header className="gab__topo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
         <div>
-          <h1 style={{ color: 'var(--heading-color)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h1 style={{ color: 'var(--fg)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Coffee size={32} color="var(--primary)" /> Gabarite Java <span style={{ color: 'var(--primary)' }}>CESPE</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Treino avançado de programação Java com questões inéditas focadas em concursos de TI.</p>
+          <p style={{ color: 'var(--fg-2)', margin: 0 }}>Treino avançado de programação Java com questões inéditas focadas em concursos de TI.</p>
         </div>
-        <button onClick={() => setShowStatsModal(true)} className="btn" style={{ fontWeight: 'bold' }}>
+        <button onClick={() => setShowStatsModal(true)} className="ui-btn" style={{ fontWeight: 'bold' }}>
           <BarChart2 size={20} /> O meu Desempenho
         </button>
       </header>
@@ -362,15 +359,15 @@ export default function GabariteJava() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
           
           <aside style={{ display: 'flex', flexDirection: 'column', gap: '20px', gridColumn: '1 / span 1', maxWidth: '350px' }}>
-            <div className="panel" style={{ padding: '20px' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)' }}>
+            <div className="ui-card ui-card--pad" style={{ padding: '20px' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--fg)' }}>
                 <SlidersHorizontal size={20} color="var(--primary)" /> Configurar Simulado
               </h2>
               
               <div style={{ marginBottom: '15px' }}>
-                <label className="label">Foco de Estudo (Edital de TI)</label>
+                <label className="ui-field__label">Foco de Estudo (Edital de TI)</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', flex: 1 }}>
+                  <select className="ui-input" value={configFocus} onChange={e => setConfigFocus(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', flex: 1 }}>
                     <option value="completo">Simulado Completo (Todos)</option>
                     <option value="sintaxe">1. Sintaxe e Tipos de Dados</option>
                     <option value="poo">2. Orientação a Objetos (POO)</option>
@@ -383,7 +380,7 @@ export default function GabariteJava() {
                   </select>
                   <button 
                     onClick={handleShowTheory} 
-                    className="btn" 
+                    className="ui-btn" 
                     style={{ 
                       width: '42px', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0', background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: '8px', flexShrink: 0 
                     }} 
@@ -395,8 +392,8 @@ export default function GabariteJava() {
               </div>
 
               <div style={{ marginBottom: '15px' }}>
-                <label className="label">Dificuldade</label>
-                <select className="select" value={configDifficulty} onChange={e => setConfigDifficulty(e.target.value)}>
+                <label className="ui-field__label">Dificuldade</label>
+                <select className="ui-input" value={configDifficulty} onChange={e => setConfigDifficulty(e.target.value)}>
                   <option value="medio">Média (Padrão Analista de TI)</option>
                   <option value="facil">Fácil (Técnico / Fundamentos)</option>
                   <option value="dificil">Difícil (Pegadinhas de Código e Frameworks)</option>
@@ -405,15 +402,15 @@ export default function GabariteJava() {
               </div>
 
               <div style={{ marginBottom: '15px' }}>
-                <label className="label">Formato da Questão</label>
-                <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', width: '100%' }}>
+                <label className="ui-field__label">Formato da Questão</label>
+                <select className="ui-input" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ padding: '10px', fontSize: '0.9rem', width: '100%' }}>
                   <option value="Múltipla Escolha">Múltipla Escolha (A, B, C, D)</option>
                   <option value="Certo/Errado">Certo / Errado (Padrão CESPE)</option>
                 </select>
               </div>
 
               <div style={{ marginBottom: '20px' }}>
-                <label className="label">Quantidade de Questões</label>
+                <label className="ui-field__label">Quantidade de Questões</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   {[5, 10, 15, 20].map(val => (
                     <button 
@@ -422,7 +419,7 @@ export default function GabariteJava() {
                       style={{ 
                         flex: 1, padding: '8px 0', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.9rem', cursor: 'pointer', transition: 'all 0.2s',
                         background: configAmount === val ? 'var(--primary-light)' : 'var(--bg)',
-                        color: configAmount === val ? 'var(--primary)' : 'var(--text-secondary)',
+                        color: configAmount === val ? 'var(--primary)' : 'var(--fg-2)',
                         border: configAmount === val ? '2px solid var(--primary)' : '1px solid var(--border)'
                       }}
                     >
@@ -435,7 +432,7 @@ export default function GabariteJava() {
               <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', cursor: 'pointer' }} onClick={() => setConfigTextBase(!configTextBase)}>
-                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--fg)' }}>
                   <FileText size={18} /> Gerar Snippet / Classe Base
                 </span>
                 <div style={{ width: '40px', height: '22px', background: configTextBase ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
@@ -444,7 +441,7 @@ export default function GabariteJava() {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setConfigExamMode(!configExamMode)}>
-                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
+                <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--fg)' }}>
                   <BookOpenCheck size={18} /> Modo Prova (Oculta)
                 </span>
                 <div style={{ width: '40px', height: '22px', background: configExamMode ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
@@ -455,7 +452,7 @@ export default function GabariteJava() {
               <button 
                 onClick={generateExam} 
                 disabled={viewState === "loading"}
-                className="btn primary" 
+                className="ui-btn ui-btn--primary" 
                 style={{ width: '100%', marginTop: '25px', padding: '15px', fontSize: '1.05rem', gap: '10px' }}
               >
                 <Sparkles size={20} /> Gerar Questões de Java
@@ -463,16 +460,16 @@ export default function GabariteJava() {
               {error && <div style={{ color: 'var(--error-text)', fontSize: '0.85rem', marginTop: '10px', textAlign: 'center', fontWeight: 'bold' }}>{error}</div>}
             </div>
 
-            <div className="panel" style={{ padding: '20px', background: 'var(--card-bg)' }}>
-              <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Aproveitamento em Java</h3>
+            <div className="ui-card ui-card--pad" style={{ padding: '20px', background: 'var(--card-bg)' }}>
+              <h3 style={{ fontSize: '0.85rem', color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Aproveitamento em Java</h3>
               <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '15px' }}>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)', margin: 0 }}>{stats.correct}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Acertos</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--fg-3)', margin: 0 }}>Acertos</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)', margin: 0 }}>{stats.wrong}</p>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Erros</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--fg-3)', margin: 0 }}>Erros</p>
                 </div>
               </div>
               <div>
@@ -486,36 +483,36 @@ export default function GabariteJava() {
           <div style={{ gridColumn: 'auto / -1', minWidth: '0' }}>
             
             {viewState === "initial" && (
-              <div className="panel" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent', boxShadow: 'none' }}>
+              <div className="ui-card ui-card--pad" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent', boxShadow: 'none' }}>
                 <div style={{ width: '90px', height: '90px', background: 'var(--primary-light)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' }}>
                   <Code size={48} color="var(--primary)" />
                 </div>
-                <h2 style={{ fontSize: '1.5rem', color: 'var(--heading-color)', marginBottom: '10px' }}>Desenvolvimento Java (CESPE)</h2>
-                <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginBottom: '25px' }}>
+                <h2 style={{ fontSize: '1.5rem', color: 'var(--fg)', marginBottom: '10px' }}>Desenvolvimento Java (CESPE)</h2>
+                <p style={{ color: 'var(--fg-2)', maxWidth: '400px', marginBottom: '25px' }}>
                   Treine POO, Streams, Coleções e JPA com trechos de código e cenários inéditos criados pela Inteligência Artificial com foco em Editais de TI.
                 </p>
-                <button onClick={generateExam} className="btn primary" style={{ padding: '10px 25px' }}>Gerar Primeiro Simulado</button>
+                <button onClick={generateExam} className="ui-btn ui-btn--primary" style={{ padding: '10px 25px' }}>Gerar Primeiro Simulado</button>
               </div>
             )}
 
             {viewState === "loading" && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div className="panel">
-                  <div className="skeleton-box" style={{ width: '200px', height: '24px', marginBottom: '15px' }}></div>
-                  <div className="skeleton-box" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
-                  <div className="skeleton-box" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
+                <div className="ui-card ui-card--pad">
+                  <div className="ui-skel" style={{ width: '200px', height: '24px', marginBottom: '15px' }}></div>
+                  <div className="ui-skel" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
+                  <div className="ui-skel" style={{ width: '100%', height: '16px', marginBottom: '10px' }}></div>
                 </div>
-                <div className="panel" style={{ display: 'flex', gap: '15px' }}>
-                  <div className="skeleton-box" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }}></div>
+                <div className="ui-card ui-card--pad" style={{ display: 'flex', gap: '15px' }}>
+                  <div className="ui-skel" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }}></div>
                   <div style={{ flex: 1 }}>
-                    <div className="skeleton-box" style={{ width: '100%', height: '20px', marginBottom: '10px' }}></div>
+                    <div className="ui-skel" style={{ width: '100%', height: '20px', marginBottom: '10px' }}></div>
                     <div style={{ display: 'flex', gap: '15px' }}>
-                      <div className="skeleton-box" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
-                      <div className="skeleton-box" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
+                      <div className="ui-skel" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
+                      <div className="ui-skel" style={{ width: '120px', height: '45px', borderRadius: '8px' }}></div>
                     </div>
                   </div>
                 </div>
-                <p style={{ textAlign: 'center', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '20px', fontWeight: 'bold' }}>
+                <p style={{ textAlign: 'center', color: 'var(--fg-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '20px', fontWeight: 'bold' }}>
                   <Cpu className="spin" size={20} /> {loadingMsg}
                 </p>
               </div>
@@ -529,226 +526,70 @@ export default function GabariteJava() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold' }}>
                       <BookOpenCheck size={20} /> Modo Prova Ativado
                     </div>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Respostas ocultas. Finalize para corrigir.</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--fg-2)' }}>Respostas ocultas. Finalize para corrigir.</span>
                   </div>
                 )}
 
                 {currentData.questoes.map((q, index) => {
-                  const uAns = userAnswers[q.id];
-                  const showExp = isExamFinished || (!configExamMode && uAns);
-                  const isCorrect = uAns === q.gabarito;
-                  
-                  return (
-                    <React.Fragment key={q.id}>
-                      {q.textoVinculado && (
-                        <div className="panel" style={{ borderLeft: '4px solid var(--primary)', position: 'relative', marginTop: index > 0 ? '30px' : '0', marginBottom: '20px' }}>
-                          <div style={{ position: 'absolute', top: '-15px', left: '-15px', background: 'var(--primary)', color: 'white', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-md)' }}>
-                            <Code size={16} />
-                          </div>
-                          <h3 style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '15px', paddingLeft: '15px' }}>Código Base / Cenário</h3>
-                          <div className="markdown-format" style={{ fontSize: '1rem', color: 'var(--text-main)' }}>
-                            <Md>
-                              {q.textoVinculado}
-                            </Md>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="quiz-card-container" style={{ 
-                        borderColor: showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--border)',
-                        boxShadow: showExp ? (isCorrect ? '0 0 0 1px var(--success-text)' : '0 0 0 1px var(--error-text)') : 'var(--shadow-sm)'
-                      }}>
-                        <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                          <div style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            {index + 1}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <span style={{ display: 'inline-block', padding: '4px 8px', background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontSize: '0.75rem', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px' }}>
-                              {q.assunto}
-                            </span>
-                            <div className="markdown-format" style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
-                              <Md>
-                                {q.enunciado}
-                              </Md>
-                            </div>
-                            
-                            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
-                              {q.alternativas && q.alternativas.length > 0 ? (
-                                q.alternativas.map((alt, altIdx) => {
-                                  const letra = alt.charAt(0).toUpperCase(); 
-                                  const isCorrectAlt = q.gabarito.toUpperCase() === letra;
-                                  return (
-                                    <button 
-                                      key={altIdx}
-                                      onClick={() => handleAnswer(q.id, letra)}
-                                      disabled={showExp && !configExamMode}
-                                      style={{
-                                        padding: '12px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.95rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
-                                        border: '2px solid',
-                                        borderColor: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                        background: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary-light)') : 'transparent',
-                                        color: uAns === letra && !showExp ? 'var(--primary)' : (showExp && uAns === letra ? 'inherit' : 'var(--text-secondary)'),
-                                        opacity: (showExp && uAns !== letra && !isCorrectAlt) ? 0.5 : 1
-                                      }}
-                                    >
-                                      <span style={{ flex: 1, textAlign: 'left', whiteSpace: 'pre-line' }}>
-                                        <Md inline>
-                                          {alt}
-                                        </Md>
-                                      </span>
-                                      {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)" style={{ flexShrink: 0, marginLeft: '10px' }}/>}
-                                    </button>
-                                  )
-                                })
-                              ) : (
-                                <>
-                                  <button 
-                                    onClick={() => handleAnswer(q.id, 'C')}
-                                    disabled={showExp && !configExamMode} 
-                                    style={{
-                                      flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                                      border: '2px solid',
-                                      borderColor: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                      background: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                                      color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
-                                      opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
-                                    }}
-                                  >
-                                    CERTO {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
-                                  </button>
-                                  <button 
-                                    onClick={() => handleAnswer(q.id, 'E')}
-                                    disabled={showExp && !configExamMode}
-                                    style={{
-                                      flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                                      border: '2px solid',
-                                      borderColor: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                      background: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                                      color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
-                                      opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
-                                    }}
-                                  >
-                                    ERRADO {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
-                                  </button>
-                                </>
-                              )}
-                            </div>
-
-                            {showExp && (
-                              <div className="quiz-explanation" style={{ marginTop: '20px', animation: 'fadeIn 0.3s ease-out' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '8px', color: isCorrect ? 'var(--success-text)' : 'var(--error-text)' }}>
-                                  {isCorrect ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                                  {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
-                                </div>
-                                <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                                  <Md>
-                                    {q.explicacao}
-                                  </Md>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </React.Fragment>
-                  );
-                })}
+                const uAns = userAnswers[q.id];
+                const showExp = Boolean(isExamFinished || (!configExamMode && uAns));
+                return (
+                  <React.Fragment key={q.id}>
+                    {q.textoVinculado && <TextoBase texto={q.textoVinculado} />}
+                    <QuestaoCard
+                      numero={index + 1}
+                      assunto={q.assunto}
+                      enunciado={q.enunciado}
+                      alternativas={q.alternativas}
+                      gabarito={q.gabarito}
+                      explicacao={q.explicacao}
+                      resposta={uAns}
+                      mostrarGabarito={showExp}
+                      travado={showExp && !configExamMode}
+                      onResponder={(letra) => handleAnswer(q.id, letra)}
+                    />
+                  </React.Fragment>
+                );
+              })}
 
                 {configExamMode && !isExamFinished && (
-                  <button onClick={finishExam} className="btn primary" style={{ padding: '15px', fontSize: '1.1rem', margin: '20px auto', display: 'block', maxWidth: '400px', width: '100%' }}>
+                  <button onClick={finishExam} className="ui-btn ui-btn--primary" style={{ padding: '15px', fontSize: '1.1rem', margin: '20px auto', display: 'block', maxWidth: '400px', width: '100%' }}>
                     Entregar Prova e Corrigir
                   </button>
                 )}
 
                 {showLessonAction && (
-                  <div style={{ background: 'var(--warning-bg, #fffbeb)', border: '1px solid #fcd34d', padding: '25px', borderRadius: '12px', textAlign: 'center', margin: '20px auto', maxWidth: '500px', boxShadow: 'var(--shadow-md)' }}>
-                    <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1.2rem' }}>
-                      <GraduationCap size={24} /> Professor Sênior de Java (IA)
-                    </h4>
-                    <p style={{ color: '#92400e', fontSize: '0.95rem', marginBottom: '20px' }}>Você errou {wrongCount} questão(ões) de Código/Teoria. Quer uma explicação passo-a-passo e análise técnica focada no que errou?</p>
-                    <button onClick={() => generateLesson(getWrongQuestions())} className="btn" style={{ background: '#f59e0b', color: 'white', border: 'none', width: '100%', padding: '12px', fontSize: '1.05rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                      <Wand2 size={20} /> Gerar Explicação Detalhada
-                    </button>
-                  </div>
-                )}
+                <PainelErros
+                  titulo="Professor sênior de Java"
+                  descricao={`Você errou ${wrongCount} questão(ões) de código ou teoria. Quer uma análise técnica passo a passo do que errou?`}
+                  rotuloBotao="Gerar explicação detalhada"
+                  onGerar={() => generateLesson(getWrongQuestions())}
+                />
+              )}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {showStatsModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
-            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)' }}>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <PieChart size={22} color="var(--primary)" /> Histórico de Java
-              </h2>
-              <button onClick={() => setShowStatsModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            <div style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
-                <div style={{ flex: 1, background: 'var(--bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{stats.total}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Resolvidas</span>
-                </div>
-                <div style={{ flex: 1, background: 'var(--success-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)' }}>{stats.correct}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Certas</span>
-                </div>
-                <div style={{ flex: 1, background: 'var(--error-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)' }}>{stats.wrong}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Erradas</span>
-                </div>
-              </div>
+      <HistoricoModal
+        aberto={showStatsModal}
+        titulo="Histórico de Java"
+        materia="Java"
+        stats={stats}
+        onFechar={() => setShowStatsModal(false)}
+        onLimpar={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); }}
+      />
 
-              <h3 style={{ fontSize: '1rem', color: 'var(--heading-color)', marginBottom: '15px' }}>Desempenho por Assunto</h3>
-              <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '10px' }}>
-                {Object.keys(stats.topics).length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum dado registrado.</p>
-                ) : (
-                  Object.entries(stats.topics).map(([name, data]) => {
-                    const pct = (data.correct + data.wrong) > 0 ? Math.round((data.correct / (data.correct + data.wrong)) * 100) : 0;
-                    return (
-                      <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                        <span style={{ color: 'var(--text-main)', fontSize: '0.9rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-                        <div style={{ display: 'flex', gap: '15px', fontSize: '0.9rem' }}>
-                          <span style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>{data.correct}C</span>
-                          <span style={{ color: 'var(--error-text)', fontWeight: 'bold' }}>{data.wrong}E</span>
-                          <span style={{ color: pct >= 70 ? 'var(--success-text)' : pct < 50 ? 'var(--error-text)' : '#f59e0b', fontWeight: '900', width: '40px', textAlign: 'right' }}>{pct}%</span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-              <button onClick={resetStats} style={{ width: '100%', marginTop: '20px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                Zerar Histórico
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showLessonModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out', border: '2px solid #f59e0b' }}>
-            <div style={{ background: '#f59e0b', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <GraduationCap size={24} /> Resolução Passo-a-Passo
-              </h2>
-              <button onClick={() => setShowLessonModal(false)} style={{ background: 'none', border: 'none', color: '#fef3c7', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
-              <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <Md>
-                  {lessonContent}
-                </Md>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={showLessonModal}
+        onClose={() => setShowLessonModal(false)}
+        title="Análise técnica dos seus erros"
+        subtitle="Gerada a partir das questões que você errou."
+        wide
+      >
+        <Md>{lessonContent}</Md>
+      </Modal>
 
       {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
       <Modal
@@ -765,21 +606,7 @@ export default function GabariteJava() {
         />
       </Modal>
 
-      <ConfirmDialog
-        open={confirmarLimpeza}
-        title="Limpar o histórico de Java"
-        message={`Apagar os ${stats.total} item(ns) já julgados e o desempenho por tópico?`}
-        detail="O histórico fica guardado apenas neste navegador e não pode ser recuperado depois."
-        confirmLabel="Limpar histórico"
-        onConfirm={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); setConfirmarLimpeza(false); }}
-        onCancel={() => setConfirmarLimpeza(false)}
-      />
-
-      {aviso && (
-        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg, 0 12px 32px rgba(0,0,0,.18))', borderRadius: '10px' }}>
-          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
-        </div>
-      )}
+      <Toast aviso={aviso} onFechar={() => setAviso(null)} />
 
     </div>
   );

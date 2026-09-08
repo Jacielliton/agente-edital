@@ -107,3 +107,16 @@ button {
 /* Ícone em rotação, usado nos botões que estão processando algo. */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin .9s linear infinite; }
+
+/* Raiz da aplicação — vinha do App.css legado. */
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Largura de leitura das páginas internas. O AppShell já dá o respiro externo. */
+.pagina {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+}

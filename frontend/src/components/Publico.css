@@ -1,0 +1,51 @@
+/* =========================================================================
+   Moldura das paginas publicas (login e planos), que nao passam pelo
+   AppShell. Nasceu de ~20 style={{ }} dentro do App.jsx.
+   ========================================================================= */
+
+.publico {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--surface);
+}
+
+.publico__conteudo { flex: 1; }
+.publico__conteudo:focus { outline: none; }
+.publico__conteudo:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+
+/* Mesmo link de pular do AppShell: as paginas publicas tambem tem menu
+   e rodape em volta do conteudo. */
+.publico__skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 200;
+  transform: translateY(-200%);
+  padding: 10px 16px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  box-shadow: var(--shadow-3);
+  transition: transform .18s ease;
+}
+.publico__skip:focus { transform: translateY(0); color: var(--accent-fg); }
+
+.publico__foot {
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  padding: var(--space-5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: center;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+}
+.publico__foot-aviso { color: var(--fg-2); }
+.publico__foot-social { display: flex; gap: var(--space-4); align-items: center; }
+.publico__foot-social a { color: var(--fg-3); display: flex; }
+.publico__foot-social a:hover { color: var(--accent); }

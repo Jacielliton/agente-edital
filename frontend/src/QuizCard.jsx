@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 // inline, tabelas e fórmulas. Antes o simulado usava o renderizador cru, sem
 // plugins nem componentes, e por isso o código saía como texto corrido.
 import Md from "./components/Markdown";
+import "./QuizCard.css";
 import {
   Check,
   X,
@@ -129,14 +130,14 @@ export default function QuizCard({ question, index, onAnswer }) {
         <div className="quiz-meta">
           {!!topicoRelacionado && (
             <span className="quiz-tag" title="Tópico relacionado">
-              <Target size={16} color="var(--text-secondary)" />
+              <Target size={16} color="var(--fg-2)" />
               {topicoRelacionado}
             </span>
           )}
 
           {(!!nivel || !!habilidade) && (
             <span className="quiz-tag meta" title="Metadados da questão">
-              <Sparkles size={16} color="var(--text-main)" />
+              <Sparkles size={16} color="var(--fg)" />
               {nivel ? `Nível: ${nivel}` : "Nível: —"}
               {habilidade ? ` • ${habilidade}` : ""}
             </span>

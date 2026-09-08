@@ -3734,6 +3734,225 @@ async def handle_commission_action(
     
     return {"message": "Ação realizada com sucesso", "new_balance": target_user.commission_balance}
                     
+# ============================================================================
+# FERRAMENTAS DE TREINO: LEI SECA EM LACUNAS E COMPARADOR DE BANCAS
+# ============================================================================
+
+class TextoLegalRequest(BaseModel):
+    dispositivo: str
+    contexto: Optional[str] = ""
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class LeiSecaRequest(BaseModel):
+    texto: str
+    intensidade: Optional[Literal["Leve", "Media", "Pesada"]] = "Media"
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class ComparadorRequest(BaseModel):
+    tema: str
+    conteudo: Optional[str] = ""
+    bancas: Optional[List[str]] = None
+    nivel: Optional[Literal["Iniciante", "Normal", "Avancado", "Expert"]] = "Normal"
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+# Quantas lacunas abrir a cada 100 palavras, por intensidade.
+DENSIDADE_LACUNAS = {"Leve": "4 a 6", "Media": "8 a 12", "Pesada": "14 a 20"}
+
+MAX_TEXTO_LEI = 6000
+MAX_BANCAS_COMPARADAS = 3
+
+
+@app.post("/training/texto-legal")
+async def training_texto_legal(req: TextoLegalRequest, current_user: User = Depends(get_current_user)):
+    """Reconstitui o texto de um dispositivo para o aluno CONFERIR antes de treinar.
+
+    Ressalva que define o desenho desta rota: um modelo de linguagem reproduz
+    texto legal de memoria e pode errar uma palavra — justamente o tipo de erro
+    que a Lei Seca em Lacunas existe para combater. Por isso o resultado nunca
+    vai direto para o exercicio: ele volta para o campo de texto, editavel, com
+    o aviso de conferir na fonte oficial. E o prompt manda o modelo declarar
+    `confiavel: false` quando nao tiver certeza da literalidade, em vez de
+    inventar uma versao plausivel.
+    """
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"):
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
+
+    dispositivo = (req.dispositivo or "").strip()
+    if len(dispositivo) < 3:
+        raise HTTPException(status_code=400, detail="Diga qual dispositivo você quer, ex: art. 37 da CF/88.")
+
+    contexto = (req.contexto or "").strip()[:600]
+    recorte = f"\nOBSERVACAO DO ALUNO: {contexto}\n" if contexto else ""
+
+    prompt = f"""
+Voce e um assistente juridico. Reproduza o texto do dispositivo pedido.
+
+DISPOSITIVO PEDIDO: {dispositivo}
+{recorte}
+REGRAS INEGOCIAVEIS:
+- Reproduza a LITERALIDADE do texto vigente. Nao resuma, nao explique, nao
+  parafraseie, nao modernize a redacao, nao corrija a pontuacao original.
+- Mantenha a numeracao original de artigos, paragrafos, incisos e alineas.
+- Se o dispositivo foi alterado por emenda, reproduza a redacao EM VIGOR.
+- Se voce nao tiver certeza da literalidade — porque o dispositivo e pouco
+  conhecido, muito recente, foi alterado, ou porque voce pode estar confundindo
+  com norma parecida — responda com "confiavel": false e explique em
+  "observacao" o que exatamente esta em duvida. NAO invente uma versao
+  plausivel: um texto quase certo e pior que nenhum texto, porque o aluno vai
+  decorar a palavra errada.
+- Se o pedido nao for um dispositivo normativo, devolva "confiavel": false e
+  diga isso em "observacao".
+- Limite: no maximo 5 artigos. Se o aluno pedir mais, traga os 5 primeiros e
+  avise em "observacao".
+
+RETORNE APENAS ESTE JSON EXATO:
+{{
+  "titulo": "Identificacao curta, ex: CF/88, art. 37, caput e incisos I a III",
+  "fonte": "Norma completa, ex: Constituicao Federal de 1988",
+  "texto": "O texto literal, com as quebras de linha entre artigos e incisos.",
+  "confiavel": true,
+  "observacao": "Vazio quando confiavel. Quando nao, o que esta em duvida."
+}}
+"""
+    return await get_json_response(prompt, req.model or DEFAULT_MODEL, temp=0.0, api_key=req.api_key)
+
+
+@app.post("/training/lei-seca")
+async def training_lei_seca(req: LeiSecaRequest, current_user: User = Depends(get_current_user)):
+    """Apaga do texto legal exatamente as palavras que a banca troca.
+
+    A ideia da ferramenta: em Direito, boa parte do erro nao e de conceito, e de
+    operador. O candidato sabe o artigo e nao percebe que a assertiva trocou
+    "podera" por "devera". Aqui o operador e o objeto do treino, nao a armadilha.
+    """
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"):
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
+
+    texto = (req.texto or "").strip()
+    if len(texto) < 40:
+        raise HTTPException(status_code=400, detail="Cole um trecho maior — pelo menos algumas linhas do texto legal.")
+    texto = texto[:MAX_TEXTO_LEI]
+    densidade = DENSIDADE_LACUNAS.get(req.intensidade or "Media", DENSIDADE_LACUNAS["Media"])
+
+    prompt = f"""
+Atue como um professor de concursos preparando um exercicio de memorizacao de lei seca.
+
+TEXTO OFICIAL (nao altere uma virgula dele):
+\"\"\"{texto}\"\"\"
+
+TAREFA: reescreva o texto substituindo por marcadores {{{{1}}}}, {{{{2}}}}, {{{{3}}}}... APENAS as
+palavras e expressoes que as bancas de concurso costumam trocar para tornar uma
+assertiva errada. Abra {densidade} lacunas a cada 100 palavras.
+
+O QUE VIRA LACUNA (nesta ordem de prioridade):
+1. Operadores deonticos: devera, podera, e vedado, e obrigatorio, compete, cabe.
+2. Quantificadores e limites: ate, no minimo, no maximo, superior a, inferior a,
+   e os proprios numeros e prazos (5 anos, 30 dias, dois tercos).
+3. Ressalvas e condicoes: salvo, exceto, desde que, ressalvado, independentemente de.
+4. Sujeitos e competencias: quem pratica o ato, quem julga, quem autoriza.
+5. Conectivos que mudam o sentido: e / ou, bem como, sem prejuizo de.
+
+O QUE NUNCA VIRA LACUNA: artigos, preposicoes, palavras sem valor normativo, e a
+numeracao dos artigos, incisos e alineas.
+
+REGRAS:
+- Cada lacuna guarda a palavra ou expressao EXATA que estava no texto, sem parafrase.
+- Os distratores devem ser plausiveis e do mesmo tipo da resposta ("podera" contra
+  "devera", "ate" contra "no minimo") — nunca absurdos e nunca de outra categoria.
+- "por_que_importa" explica em UMA frase o que muda no sentido da norma se a
+  palavra for trocada pelo distrator. Nada de repetir a definicao.
+
+RETORNE APENAS ESTE JSON EXATO:
+{{
+  "titulo": "Identificacao do dispositivo, ex: Art. 37 da CF/88",
+  "texto_com_lacunas": "Texto integral com os marcadores {{{{1}}}} no lugar das palavras escolhidas.",
+  "lacunas": [
+    {{
+      "id": 1,
+      "resposta": "a palavra ou expressao exata do texto original",
+      "distratores": ["alternativa plausivel", "outra alternativa plausivel"],
+      "categoria": "operador | limite | ressalva | competencia | conectivo",
+      "por_que_importa": "Uma frase sobre o que muda no sentido se trocar."
+    }}
+  ]
+}}
+"""
+    return await get_json_response(prompt, req.model or DEFAULT_MODEL, temp=0.15, api_key=req.api_key)
+
+
+@app.post("/training/comparador-bancas")
+async def training_comparador_bancas(req: ComparadorRequest, current_user: User = Depends(get_current_user)):
+    """Mesmo conteudo, uma questao por banca, lado a lado.
+
+    Responde a duvida de quem presta mais de um concurso: "estudei isso, mas cai
+    desse jeito na MINHA prova?". Reaproveita o BANCA_ESTILOS ja existente.
+    """
+    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"):
+        raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
+
+    tema = (req.tema or "").strip()
+    if not tema:
+        raise HTTPException(status_code=400, detail="Informe o tema a comparar.")
+
+    bancas = [b.strip() for b in (req.bancas or []) if b and b.strip()][:MAX_BANCAS_COMPARADAS]
+    if len(bancas) < 2:
+        raise HTTPException(status_code=400, detail="Escolha pelo menos duas bancas para comparar.")
+
+    blocos = "\n".join(
+        f"- {b}: {estilo_da_banca(b) or 'Siga o padrao historico desta banca.'}" for b in bancas
+    )
+    conteudo = (req.conteudo or "").strip()[:4000]
+    recorte = f"\nRECORTE DO CONTEUDO A COBRAR:\n{conteudo}\n" if conteudo else ""
+
+    prompt = f"""
+Atue como elaborador de questoes de concurso publico.
+
+TEMA: {tema}
+NIVEL: {req.nivel or 'Normal'}
+{recorte}
+Escreva UMA questao inedita sobre EXATAMENTE o mesmo ponto do tema para cada banca
+abaixo, respeitando a regra de elaboracao de cada uma:
+
+{blocos}
+
+REGRAS:
+- O conteudo cobrado tem de ser o MESMO nas questoes. O que muda e a forma de cobrar.
+  Sem isso a comparacao nao ensina nada.
+- Respeite o formato de cada banca: CEBRASPE e CESPE usam CERTO/ERRADO com duas
+  opcoes; as demais usam multipla escolha com quatro ou cinco alternativas.
+- "o_que_a_banca_fez" e o coracao da ferramenta: diga, em duas frases, qual manobra
+  aquela banca usou nesta questao especifica (onde escondeu o erro, que palavra
+  carrega a pegadinha, que tipo de raciocinio ela cobra). Seja concreto, citando a
+  palavra ou o trecho — nada de descricao generica do estilo da banca.
+- "sintese" fecha com o que o candidato deve mudar no jeito de estudar conforme a
+  banca do concurso dele.
+
+RETORNE APENAS ESTE JSON EXATO:
+{{
+  "tema": "{tema}",
+  "questoes": [
+    {{
+      "banca": "nome da banca",
+      "formato": "Certo/Errado ou Multipla Escolha",
+      "enunciado": "texto da questao",
+      "alternativas": ["A) ...", "B) ..."],
+      "gabarito": "A",
+      "comentario": "por que o gabarito e esse",
+      "o_que_a_banca_fez": "a manobra concreta desta questao"
+    }}
+  ],
+  "sintese": "O que muda no estudo conforme a banca."
+}}
+"""
+    return await get_json_response(prompt, req.model or DEFAULT_MODEL, temp=0.35, api_key=req.api_key)
+
+
 if __name__ == "__main__":
     # O Railway injeta dinamicamente a variável de ambiente PORT. Se não achar, usa 8000.
     port = int(os.environ.get("PORT", 8000))

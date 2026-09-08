@@ -2,30 +2,6 @@
 .adm { display: flex; flex-direction: column; gap: var(--space-5); }
 
 /* ------------------------------ Abas -------------------------------- */
-.adm__tabs {
-  display: flex;
-  gap: 2px;
-  border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-}
-.adm__tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 16px;
-  border: 0;
-  background: none;
-  color: var(--fg-3);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color .15s ease, border-color .15s ease;
-}
-.adm__tab:hover { color: var(--fg); }
-.adm__tab.is-on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
-
 /* ---------------------------- Indicadores --------------------------- */
 .adm__stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--space-3); }
 
@@ -45,7 +21,7 @@
 .adm__search input {
   width: 100%;
   padding: 10px 12px 10px 36px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--fg);
@@ -111,7 +87,7 @@
 .adm__icon-btn {
   width: 32px; height: 32px;
   display: grid; place-items: center;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   background: var(--surface-2);
   color: var(--fg-2);
   border-radius: var(--radius-sm);
@@ -142,7 +118,7 @@
 .adm__check {
   display: flex; align-items: flex-start; gap: 10px;
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: var(--radius-sm);
   background: var(--surface);
   cursor: pointer;

@@ -155,7 +155,7 @@
 .shell__search input {
   width: 100%;
   padding: 9px 12px 9px 36px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--fg);
@@ -171,7 +171,7 @@
   width: 36px; height: 36px;
   display: grid; place-items: center;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   background: var(--surface-2);
   color: var(--fg-2);
   transition: background-color .15s ease, color .15s ease;
@@ -188,6 +188,10 @@
   max-width: var(--content-max);
   margin: 0 auto;
 }
+/* O <main> so recebe foco por programa (o link de pular). Sem isto ele
+   ganharia um anel toda vez que a pessoa clica em qualquer lugar dele. */
+.shell__content:focus { outline: none; }
+.shell__content:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
 
 .shell__foot {
   border-top: 1px solid var(--line);
@@ -239,4 +243,62 @@
 
 @media (max-width: 560px) {
   .shell__top-actions .shell__label { display: none; }
+}
+
+/* ---------------------- Pular para o conteúdo ----------------------
+   Fica fora da tela até receber foco. Não usa display:none nem
+   visibility:hidden: os dois tirariam o link da ordem de tabulação, que
+   é justamente o que ele precisa ter. */
+.shell__skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 200;
+  transform: translateY(-200%);
+  padding: 10px 16px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  box-shadow: var(--shadow-3);
+  transition: transform .18s ease;
+}
+.shell__skip:focus {
+  transform: translateY(0);
+  color: var(--accent-fg);
+}
+
+/* ---------------------- Tamanho da letra ---------------------------
+   Vive ao lado do tema: as duas são preferências de apresentação, e a
+   pessoa procura as duas no mesmo lugar. */
+.shell__fonte {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3) 0;
+}
+.shell__fonte-rotulo {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--sidebar-label);
+}
+.shell__fonte .ui-seg {
+  background: var(--sidebar-hover);
+  align-self: flex-start;
+}
+.shell__fonte .ui-seg__item {
+  color: var(--sidebar-fg);
+  padding: 4px 12px;
+  font-weight: 700;
+}
+.shell__fonte .ui-seg__item:nth-child(1) { font-size: var(--text-xs); }
+.shell__fonte .ui-seg__item:nth-child(2) { font-size: var(--text-base); }
+.shell__fonte .ui-seg__item:nth-child(3) { font-size: var(--text-lg); }
+.shell__fonte .ui-seg__item.is-on {
+  background: var(--sidebar-active);
+  color: var(--sidebar-fg-strong);
+  box-shadow: none;
 }

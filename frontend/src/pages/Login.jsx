@@ -118,6 +118,7 @@ export default function Login() {
 
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [motivoSaida, setMotivoSaida] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [isDark, setIsDark] = useState(() => localStorage.getItem('theme') === 'dark');
@@ -131,6 +132,18 @@ export default function Login() {
     document.documentElement.classList.toggle('dark', isDark);
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
   }, [isDark]);
+
+  /* Por que o usuário foi desconectado — gravado pelo AuthContext antes de
+     redirecionar para cá. Lido uma vez e apagado, para não reaparecer. */
+  useEffect(() => {
+    try {
+      const motivo = sessionStorage.getItem('motivo_saida');
+      if (motivo) {
+        setMotivoSaida(motivo);
+        sessionStorage.removeItem('motivo_saida');
+      }
+    } catch (e) { /* modo privado */ }
+  }, []);
 
   useEffect(() => {
     const status = new URLSearchParams(location.search).get('status');
@@ -343,6 +356,25 @@ export default function Login() {
             <h2>{tituloCard}</h2>
             <p>{subtituloCard}</p>
           </div>
+
+          {motivoSaida && (
+            <div className="auth__alert auth__alert--warn">
+              <span style={{ display: 'flex', gap: 10, alignItems: 'center', fontWeight: 700 }}>
+                <AlertCircle size={17} />
+                {motivoSaida === 'CONFLITO_DE_SESSAO' ? 'Você foi desconectado' : 'O seu acesso expirou'}
+              </span>
+              <span style={{ marginTop: 6 }}>
+                {motivoSaida === 'CONFLITO_DE_SESSAO'
+                  ? 'A sua conta foi aberta em outro dispositivo. Por segurança, esta sessão foi encerrada — entre de novo para continuar.'
+                  : 'O seu período de acesso terminou. Renove para voltar a usar a plataforma.'}
+              </span>
+              {motivoSaida === 'CONTA_EXPIRADA' && (
+                <Button variant="primary" onClick={() => navigate('/planos')} style={{ marginTop: 12 }}>
+                  Renovar acesso
+                </Button>
+              )}
+            </div>
+          )}
 
           {successMsg && (
             <div className="auth__alert auth__alert--ok">

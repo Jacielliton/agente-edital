@@ -1,14 +1,10 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import "katex/dist/katex.min.css"; // Estilo obrigatório para formatar a fórmula corretamente
 import {
-  BookOpen, Lightbulb, Wrench, ClipboardList, PenLine, Network, Settings,
-  Sparkles, ChevronDown, ChevronsDownUp, ChevronsUpDown, X, Send, MessageCircle,
-  List, Check, CheckCircle2,
-  AlertTriangle, Download, Trophy, ArrowUp, KeyRound, Target, GraduationCap,
-  RefreshCw, Calendar,
+  BookOpen, Lightbulb, PenLine, Network, Settings, Sparkles, ChevronDown, ChevronsDownUp, ChevronsUpDown, X, Send, MessageCircle, List, Check, CheckCircle2, AlertTriangle, Download, Trophy, ArrowUp, KeyRound, GraduationCap, RefreshCw, Wrench, ClipboardList, Target, Calendar,
 } from "lucide-react";
 import QuizCard from "../QuizCard";
-import { Button, Badge, ProgressBar, Modal, Notice } from "./ui";
+import { Button, Badge, ProgressBar, Modal, Notice, Toast} from "./ui";
 import { AiKeyPanel, useAiKey, getAuthToken } from "./AiKeyConfig";
 import Md from "./Markdown";
 import "./LessonContent.css";
@@ -1258,11 +1254,7 @@ export default function LessonContent({ result }) {
         />
       </Modal>
 
-      {aviso && (
-        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg)', borderRadius: '10px' }}>
-          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
-        </div>
-      )}
+      <Toast aviso={aviso} onFechar={() => setAviso(null)} />
     </div>
   );
 }

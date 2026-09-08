@@ -1,152 +1,91 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { PenTool, Wrench, Lock, Brain, Calculator, FileText, Scale, Type, Coffee } from "lucide-react";
+import {
+  PenTool, Brain, Calculator, FileText, Scale, Type, Coffee,
+  Gavel, GitCompare, Layers, ArrowRight,
+} from "lucide-react";
+import { PageHeader, Badge } from "../components/ui";
+import "./Ferramentas.css";
+
+/* A lista é declarativa de propósito: antes, cada cartão era um <Link> com o
+   mesmo bloco de estilo inline copiado, e acrescentar uma ferramenta significava
+   duplicar trinta linhas. */
+const GRUPOS = [
+  {
+    titulo: "Treino por matéria",
+    descricao: "Simuladores que geram questões inéditas no padrão da sua banca.",
+    itens: [
+      { to: "/gabarite-cespe", icone: Brain, nome: "Português CESPE",
+        texto: "Questões inéditas no padrão CEBRASPE, com texto-base e análise item a item." },
+      { to: "/gabarite-logica", icone: Calculator, nome: "Raciocínio Lógico",
+        texto: "Tabelas-verdade, negações e equivalências, com resolução passo a passo." },
+      { to: "/gabarite-sintaxe", icone: FileText, nome: "Sintaxe",
+        texto: "Teoria gramatical e simulados de múltipla escolha com as pegadinhas da banca." },
+      { to: "/gabarite-direito", icone: Scale, nome: "Noções de Direito",
+        texto: "Casos de Constitucional, Penal, Processual Penal e Administrativo, na lei seca e no entendimento dos tribunais." },
+      { to: "/gabarite-ingles", icone: Type, nome: "Inglês",
+        texto: "Compreensão textual, vocabulário e coesão pronominal, com tradução por clique." },
+      { to: "/gabarite-java", icone: Coffee, nome: "Java",
+        texto: "POO, Streams, Coleções e JPA com trechos de código e cenários de editais de TI." },
+    ],
+  },
+  {
+    titulo: "Memorizar e revisar",
+    descricao: "Para o que precisa ficar na ponta da língua até o dia da prova.",
+    novo: true,
+    itens: [
+      { to: "/lei-seca", icone: Gavel, nome: "Lei Seca em Lacunas",
+        texto: "A IA apaga do artigo exatamente as palavras que a banca troca — deverá, até, salvo, no mínimo — e você escreve de volta." },
+      { to: "/baralho", icone: Layers, nome: "Baralho do Edital",
+        texto: "Os termos-chave das suas aulas viram cartas. O que você erra volta antes do que acerta." },
+    ],
+  },
+  {
+    titulo: "Entender a prova",
+    descricao: "Como a sua banca cobra, e como escrever o que ela espera.",
+    itens: [
+      { to: "/comparador-bancas", icone: GitCompare, nome: "Comparador de Bancas", novo: true,
+        texto: "O mesmo ponto do mesmo tema, do jeito de duas ou três bancas, lado a lado — com a manobra que cada uma usou." },
+      { to: "/treino", icone: PenTool, nome: "Simulador de Discursivas",
+        texto: "Cenários inéditos por banca e cargo, com correção que aponta onde a sua resposta perderia pontos." },
+    ],
+  },
+];
 
 export default function Ferramentas() {
   return (
-    <div className="container">
-      <header style={{ marginBottom: '2rem' }}>
-        <h1 style={{ color: 'var(--heading-color)', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Wrench size={32} color="var(--primary)" /> Central de Ferramentas
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', marginTop: '8px' }}>
-          Explore utilitários baseados em IA para otimizar os seus estudos e produtividade.
-        </p>
-      </header>
+    <div className="fer">
+      <PageHeader
+        eyebrow="Ferramentas"
+        title="Central de ferramentas"
+        description="Dez ferramentas de IA em volta de um edital só. Nenhuma delas devolve questão de banco: tudo é gerado a partir do que o seu concurso cobra."
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-        
-        {/* FERRAMENTA 1: DISCURSIVA */}
-        <Link to="/treino" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <PenTool size={28} color="var(--primary)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Simulador de Discursivas</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-              Gere cenários inéditos e treine a sua escrita adaptada a diferentes bancas e cargos com correção automática via IA.
-            </p>
+      {GRUPOS.map((grupo) => (
+        <section key={grupo.titulo} className="fer__grupo">
+          <header className="fer__grupo-topo">
+            <h2>
+              {grupo.titulo}
+              {grupo.novo && <Badge tone="accent">novo</Badge>}
+            </h2>
+            <p>{grupo.descricao}</p>
+          </header>
+
+          <div className="fer__grade">
+            {grupo.itens.map(({ to, icone: Icone, nome, texto, novo }) => (
+              <Link key={to} to={to} className="fer__card">
+                <span className="fer__card-icone"><Icone size={22} /></span>
+                <h3>
+                  {nome}
+                  {novo && <Badge tone="accent">novo</Badge>}
+                </h3>
+                <p>{texto}</p>
+                <span className="fer__card-ir">Abrir <ArrowRight size={14} /></span>
+              </Link>
+            ))}
           </div>
-        </Link>
-
-        {/* FERRAMENTA 2: GABARITE CESPE */}
-        <Link to="/gabarite-cespe" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <Brain size={28} color="var(--primary)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Gabarite Português CESPE | IA</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-              Simulador de questões inéditas no padrão CEBRASPE. Crie textos-base e assertivas para treinar com análise detalhada e aulas de revisão.
-            </p>
-          </div>
-        </Link>
-
-        {/* FERRAMENTA 3: GABARITE LÓGICA */}
-        <Link to="/gabarite-logica" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <Calculator size={28} color="var(--primary)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Gabarite Lógica CESPE | IA</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-              Treino direcionado de Raciocínio Lógico (Tabelas-verdade, Negações, Equivalências) com correção passo-a-passo.
-            </p>
-          </div>
-        </Link>
-
-        {/* FERRAMENTA 4: GABARITE SINTAXE (NOVA) */}
-        <Link to="/gabarite-sintaxe" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <FileText size={28} color="var(--primary)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Sintaxe para Concursos CESPE</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-              Aprenda a teoria gramatical e gere simulados de múltipla escolha para validar seu conhecimento com pegadinhas de bancas.
-            </p>
-          </div>
-        </Link>
-
-        {/* FERRAMENTA 5: GABARITE DIREITO (NOVA) */}
-        <Link to="/gabarite-direito" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <Scale size={28} color="var(--primary)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Noções de Direito CESPE</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-              Casos hipotéticos envolvendo Constitucional, Penal, Processual Penal e Administrativo embasados na lei seca e jurisprudência dominante do STF/STJ.
-            </p>
-          </div>
-        </Link>
-
-        {/* FERRAMENTA 6: GABARITE INGLÊS (NOVA) */}
-        <Link to="/gabarite-ingles" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <Type size={28} color="var(--primary)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Gabarite Inglês CESPE</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-              Treino focado em Compreensão Textual, Vocabulário e Coesão Pronominal no padrão da banca CEBRASPE.
-            </p>
-          </div>
-        </Link>
-
-        {/* FERRAMENTA 7: GABARITE JAVA (NOVA) */}
-        <Link to="/gabarite-java" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div 
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            <div style={{ background: 'var(--primary-light)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <Coffee size={28} color="var(--primary)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)' }}>Gabarite Java CESPE</h3>
-            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', flex: 1 }}>
-              Treine POO, Streams, Coleções e JPA com trechos de código e cenários inéditos focados em Editais de TI.
-            </p>
-          </div>
-        </Link>
-
-        {/* SLOT FUTURO */}
-        <div style={{ background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: '12px', padding: '20px', opacity: 0.7, height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ background: 'var(--hover-bg)', padding: '12px', borderRadius: '10px', width: 'fit-content', marginBottom: '15px' }}>
-              <Lock size={28} color="var(--text-muted)" />
-            </div>
-            <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-muted)' }}>Nova Ferramenta</h3>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.95rem', flex: 1 }}>
-              Novos recursos de inteligência artificial estão em desenvolvimento e serão adicionados aqui em breve.
-            </p>
-        </div>
-
-      </div>
+        </section>
+      ))}
     </div>
   );
 }

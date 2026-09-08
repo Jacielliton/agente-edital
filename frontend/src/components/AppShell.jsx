@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  BookOpen, TrendingUp, PenTool, Brain, Calculator, FileText, Scale, Type,
-  Coffee, Wrench, PlusCircle, FolderCog, Settings, LogOut, Moon, Sun, Menu, X,
-  Search, Sparkles, UserCircle, Instagram, Youtube,
+  BookOpen, Wrench, PlusCircle, FolderCog, Settings, LogOut, Moon, Sun, Menu, X, Search, Sparkles, UserCircle, Instagram, Youtube, TrendingUp, PenTool, Brain, Calculator, FileText, Scale, Type, Coffee, Gavel, GitCompare, Layers,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { Button } from "./ui";
+import { Button, SegmentedControl } from "./ui";
+import { ESCALAS, lerEscala, aplicarEscala, lerTema, aplicarTema } from "../preferencias";
 import "./AppShell.css";
 
 const ICON = 17;
@@ -31,6 +30,9 @@ const NAV = [
       { to: "/gabarite-direito", label: "Noções de Direito", icon: Scale },
       { to: "/gabarite-ingles", label: "Inglês", icon: Type },
       { to: "/gabarite-java", label: "Java", icon: Coffee },
+      { to: "/lei-seca", label: "Lei Seca", icon: Gavel },
+      { to: "/comparador-bancas", label: "Comparar Bancas", icon: GitCompare },
+      { to: "/baralho", label: "Baralho", icon: Layers },
     ],
   },
   {
@@ -60,14 +62,13 @@ export default function AppShell({ children }) {
   const isAdmin = user?.role === "admin";
   const podeGerenciar = isAdmin || user?.can_manage_lessons === true;
 
-  const [isDark, setIsDark] = useState(() => localStorage.getItem("theme") === "dark");
+  const [isDark, setIsDark] = useState(lerTema);
+  const [escala, setEscala] = useState(lerEscala);
   const [menuOpen, setMenuOpen] = useState(false);
   const [busca, setBusca] = useState("");
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDark);
-    localStorage.setItem("theme", isDark ? "dark" : "light");
-  }, [isDark]);
+  useEffect(() => { aplicarTema(isDark); }, [isDark]);
+  useEffect(() => { aplicarEscala(escala); }, [escala]);
 
   useEffect(() => { setMenuOpen(false); }, [location]);
 
@@ -100,6 +101,10 @@ export default function AppShell({ children }) {
 
   return (
     <div className={`shell${menuOpen ? " is-open" : ""}`}>
+      {/* Primeiro elemento focavel da pagina: quem navega por teclado pula
+          os ~20 links do menu em vez de tabular por todos a cada tela. */}
+      <a className="shell__skip" href="#conteudo">Pular para o conteúdo</a>
+
       <button
         className="shell__scrim"
         aria-label="Fechar menu"
@@ -138,6 +143,16 @@ export default function AppShell({ children }) {
               <span className={`shell__user-plan${plano.warn ? " is-warn" : ""}`}>{plano.text}</span>
             </span>
           </Link>
+          <div className="shell__fonte">
+            <span className="shell__fonte-rotulo">Tamanho da letra</span>
+            <SegmentedControl
+              aria="Tamanho da letra"
+              valor={escala}
+              onTrocar={setEscala}
+              itens={ESCALAS.map((e) => ({ id: e.id, rotulo: e.rotulo, aria: e.aria }))}
+            />
+          </div>
+
           <div className="shell__side-actions">
             <button
               className="shell__item"
@@ -187,7 +202,9 @@ export default function AppShell({ children }) {
           </div>
         </header>
 
-        <main className="shell__content">{children}</main>
+        {/* tabIndex -1: o "pular para o conteudo" precisa poder POR o foco
+            aqui, senao o link rola a pagina e o foco continua no menu. */}
+        <main className="shell__content" id="conteudo" tabIndex={-1}>{children}</main>
 
         <footer className="shell__foot">
           <span>A IA pode cometer erros. Na dúvida, consulte sempre o material oficial do edital.</span>

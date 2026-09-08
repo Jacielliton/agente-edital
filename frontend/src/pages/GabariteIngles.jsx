@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  Calculator, BarChart2, SlidersHorizontal, FileText, BookOpenCheck, 
-  Sparkles, Bot, Cpu, AlignLeft, GraduationCap, Wand2, PieChart, 
-  X, CheckCircle, AlertCircle, Binary, Type, Wrench
+import {
+  BarChart2, FileText, BookOpenCheck, Sparkles, Bot, Cpu, X, Type,
 } from "lucide-react";
 // Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Md, { componentesMarkdown } from "../components/Markdown";
-import { Modal, ConfirmDialog, Notice } from "../components/ui";
+import { Modal, ConfirmDialog, Notice, Toast} from "../components/ui";
 import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
+import { QuestaoCard, TextoBase, PainelErros, HistoricoModal } from "../components/simulador";
 
 // Dados teóricos integrados para Língua Inglesa
 const conteudosTeoricosIngles = {
@@ -126,7 +125,6 @@ export default function GabariteIngles() {
   const [showConfig, setShowConfig] = useState(false);
   const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
   const [aviso, setAviso] = useState(null);
-  const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
 
   // --- ESTADOS DO SIMULADOR ---
   const [configFocus, setConfigFocus] = useState("completo");
@@ -388,7 +386,6 @@ export default function GabariteIngles() {
     });
   };
 
-  const resetStats = () => setConfirmarLimpeza(true);
 
   // Nova versão recursiva: lida com strings, arrays de texto e tags (como negrito e itálico)
   function InteractiveText({ children, onWordClick }) {
@@ -490,15 +487,15 @@ export default function GabariteIngles() {
   const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentData?.questoes?.length)) && wrongCount > 0;
 
   return (
-    <div className="container">
-      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
+    <div className="gab">
+      <header className="gab__topo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left', marginBottom: '1rem', flexWrap: 'wrap', gap: '15px' }}>
         <div>
-          <h1 style={{ color: 'var(--heading-color)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h1 style={{ color: 'var(--fg)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <Type size={32} color="var(--primary)" /> Gabarite Inglês <span style={{ color: 'var(--primary)' }}>CESPE</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Treino de Compreensão Textual e Gramática focadas no edital.</p>
+          <p style={{ color: 'var(--fg-2)', margin: 0 }}>Treino de Compreensão Textual e Gramática focadas no edital.</p>
         </div>
-        <button onClick={() => setShowStatsModal(true)} className="btn" style={{ fontWeight: 'bold' }}>
+        <button onClick={() => setShowStatsModal(true)} className="ui-btn" style={{ fontWeight: 'bold' }}>
           <BarChart2 size={20} /> O meu Desempenho
         </button>
       </header>
@@ -512,14 +509,14 @@ export default function GabariteIngles() {
 
       {viewState === "initial" && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-          <div className="panel" style={{ padding: '25px', background: 'var(--card-bg)' }}>
+          <div className="ui-card ui-card--pad" style={{ padding: '25px', background: 'var(--card-bg)' }}>
             <h2 style={{ fontSize: '1.1rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <FileText size={20} color="var(--primary)" /> Novo Simulado
             </h2>
 
             <div style={{ marginBottom: '15px' }}>
-              <label className="label">Foco de Estudo</label>
-              <select className="select" value={configFocus} onChange={e => setConfigFocus(e.target.value)}>
+              <label className="ui-field__label">Foco de Estudo</label>
+              <select className="ui-input" value={configFocus} onChange={e => setConfigFocus(e.target.value)}>
                 <option value="completo">Completo (Todos os assuntos)</option>
                 <option value="compreensao">Compreensão de Textos (Skimming/Scanning)</option>
                 <option value="vocabulario">Itens Gramaticais e Vocabulário</option>
@@ -528,8 +525,8 @@ export default function GabariteIngles() {
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-              <label className="label">Dificuldade</label>
-              <select className="select" value={configDifficulty} onChange={e => setConfigDifficulty(e.target.value)}>
+              <label className="ui-field__label">Dificuldade</label>
+              <select className="ui-input" value={configDifficulty} onChange={e => setConfigDifficulty(e.target.value)}>
                 <option value="medio">Média (Textos Curtos e Diretos)</option>
                 <option value="facil">Fácil</option>
                 <option value="dificil">Difícil (Artigos Acadêmicos, Vocabulário Denso)</option>
@@ -538,15 +535,15 @@ export default function GabariteIngles() {
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-              <label className="label">Formato da Questão</label>
-              <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)}>
+              <label className="ui-field__label">Formato da Questão</label>
+              <select className="ui-input" value={configFormato} onChange={e => setConfigFormato(e.target.value)}>
                 <option value="Certo/Errado">Certo / Errado (Padrão CESPE)</option>
                 <option value="Múltipla Escolha">Múltipla Escolha (A, B, C, D, E)</option>
               </select>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
-              <label className="label">Quantidade de Questões</label>
+              <label className="ui-field__label">Quantidade de Questões</label>
               <div style={{ display: 'flex', gap: '10px' }}>
                 {[5, 10, 15, 20].map(val => (
                   <button 
@@ -555,7 +552,7 @@ export default function GabariteIngles() {
                     style={{ flex: 1, padding: '8px 0', borderRadius: '8px', fontWeight: 'bold', 
                              border: configAmount === val ? '2px solid var(--primary)' : '1px solid var(--border)',
                              background: configAmount === val ? 'var(--primary-light)' : 'transparent',
-                             color: configAmount === val ? 'var(--primary)' : 'var(--text-secondary)' }}
+                             color: configAmount === val ? 'var(--primary)' : 'var(--fg-2)' }}
                   >
                     {val}
                   </button>
@@ -565,45 +562,45 @@ export default function GabariteIngles() {
 
             <div style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input type="checkbox" id="textMode" checked={configTextBase} onChange={e => setConfigTextBase(e.target.checked)} style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }} />
-              <label htmlFor="textMode" style={{ fontSize: '0.95rem', color: 'var(--text-main)', cursor: 'pointer', margin: 0 }}>
+              <label htmlFor="textMode" style={{ fontSize: '0.95rem', color: 'var(--fg)', cursor: 'pointer', margin: 0 }}>
                 Incluir texto base (Sempre recomendado em Inglês)
               </label>
             </div>
 
             <div style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input type="checkbox" id="examMode" checked={configExamMode} onChange={e => setConfigExamMode(e.target.checked)} style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }} />
-              <label htmlFor="examMode" style={{ fontSize: '0.95rem', color: 'var(--text-main)', cursor: 'pointer', margin: 0 }}>
+              <label htmlFor="examMode" style={{ fontSize: '0.95rem', color: 'var(--fg)', cursor: 'pointer', margin: 0 }}>
                 Modo Prova (Respostas ocultas até o fim)
               </label>
             </div>
 
-            <button onClick={generateExam} className="btn primary" style={{ width: '100%', padding: '15px', fontSize: '1.05rem' }}>
+            <button onClick={generateExam} className="ui-btn ui-btn--primary" style={{ width: '100%', padding: '15px', fontSize: '1.05rem' }}>
               <Sparkles size={20} /> Gerar Simulado com IA
             </button>
-            <button onClick={handleShowTheory} className="btn" style={{ width: '100%', padding: '12px', marginTop: '10px', fontSize: '0.95rem' }}>
+            <button onClick={handleShowTheory} className="ui-btn" style={{ width: '100%', padding: '12px', marginTop: '10px', fontSize: '0.95rem' }}>
               <BookOpenCheck size={18} /> Resumo Teórico do Foco
             </button>
             
             {error && <div style={{ color: 'var(--error-text)', background: 'var(--error-bg)', padding: '12px', borderRadius: '8px', marginTop: '15px', textAlign: 'center', fontWeight: 'bold' }}>{error}</div>}
           </div>
 
-          <div className="panel" style={{ padding: '20px', background: 'var(--card-bg)' }}>
-            <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Aproveitamento Inglês</h3>
+          <div className="ui-card ui-card--pad" style={{ padding: '20px', background: 'var(--card-bg)' }}>
+            <h3 style={{ fontSize: '0.85rem', color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '15px', textAlign: 'center' }}>Aproveitamento Inglês</h3>
             <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '15px' }}>
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)', margin: 0 }}>{stats.correct}</p>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Acertos</p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--fg-3)', margin: 0 }}>Acertos</p>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <p style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)', margin: 0 }}>{stats.wrong}</p>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Erros</p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--fg-3)', margin: 0 }}>Erros</p>
               </div>
             </div>
             <div>
               <div style={{ width: '100%', height: '8px', background: 'var(--hover-bg)', borderRadius: '4px', overflow: 'hidden' }}>
                 <div style={{ height: '100%', background: 'var(--primary)', width: `${stats.total > 0 ? (stats.correct / stats.total) * 100 : 0}%`, transition: 'width 0.5s' }}></div>
               </div>
-              <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+              <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'var(--fg-2)', marginTop: '8px' }}>
                 {stats.total > 0 ? `${Math.round((stats.correct / stats.total) * 100)}% de precisão` : 'Nenhum simulado feito'}
               </p>
             </div>
@@ -612,9 +609,9 @@ export default function GabariteIngles() {
       )}
 
       {viewState === "loading" && (
-        <div className="panel" style={{ textAlign: 'center', padding: '50px 20px' }}>
+        <div className="ui-card ui-card--pad" style={{ textAlign: 'center', padding: '50px 20px' }}>
           <Bot size={48} color="var(--primary)" className="bounce" style={{ margin: '0 auto 20px auto' }} />
-          <h2 style={{ color: 'var(--text-main)', marginBottom: '10px' }}>Processando Inteligência Artificial</h2>
+          <h2 style={{ color: 'var(--fg)', marginBottom: '10px' }}>Processando Inteligência Artificial</h2>
           <p style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '20px', fontWeight: 'bold' }}>
             <Cpu className="spin" size={20} /> {loadingMsg}
           </p>
@@ -628,219 +625,74 @@ export default function GabariteIngles() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold' }}>
                 <BookOpenCheck size={20} /> Modo Prova Ativado
               </div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Respostas ocultas. Finalize para corrigir.</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--fg-2)' }}>Respostas ocultas. Finalize para corrigir.</span>
             </div>
           )}
 
           {currentData.questoes.map((q, index) => {
-            const uAns = userAnswers[q.id];
-            const showExp = isExamFinished || (!configExamMode && uAns);
-            const isCorrect = uAns === q.gabarito;
-
-            return (
-              <React.Fragment key={q.id}>
-                {q.textoVinculado && (
-                  <div className="panel" style={{ background: 'var(--card-bg)', borderLeft: '4px solid var(--primary)', padding: '20px', position: 'relative' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold', marginBottom: '10px' }}>
-                      <AlignLeft size={20} /> Texto Base <span style={{fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 'normal'}}>(Clique em qualquer palavra para traduzir)</span>
-                    </div>
-                    <div className="markdown-format" style={{ fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.6' }}>
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          ...componentesMarkdown,
-                          // Parágrafos e listas são os contêineres reais do texto: é neles
-                          // que cada palavra vira clicável para tradução.
-                          p: ({node, ...props}) => (
-                            <p style={{ marginBottom: "1em" }}>
-                              <InteractiveText onWordClick={handleWordClick}>{props.children}</InteractiveText>
-                            </p>
-                          ),
-                          li: ({node, ...props}) => (
-                            <li style={{ marginBottom: "0.5em" }}>
-                              <InteractiveText onWordClick={handleWordClick}>{props.children}</InteractiveText>
-                            </li>
-                          )
-                        }}
-                      >
-                        {q.textoVinculado}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                )}
-
-                <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-                  <div style={{ background: 'var(--hover-bg)', padding: '12px 20px', fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                    <span>Questão {index + 1}</span>
-                    <span>{q.assunto}</span>
-                  </div>
-                  <div style={{ padding: '20px' }}>
-                    <div style={{ fontSize: '1.05rem', color: 'var(--text-main)', lineHeight: '1.5', marginBottom: '25px', fontWeight: '500' }}>
-                      {q.enunciado}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '15px', flexDirection: q.alternativas ? 'column' : 'row' }}>
-                      {q.alternativas && q.alternativas.length > 0 ? (
-                        q.alternativas.map((alt, altIdx) => {
-                          const letra = alt.charAt(0).toUpperCase();
-                          const isCorrectAlt = q.gabarito.toUpperCase() === letra;
-                          return (
-                            <button 
-                              key={altIdx} 
-                              onClick={() => handleAnswer(q.id, letra)}
-                              disabled={showExp && !configExamMode}
-                              style={{ 
-                                padding: '12px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.95rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
-                                border: '2px solid',
-                                borderColor: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                background: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary-light)') : 'transparent',
-                                color: uAns === letra && !showExp ? 'var(--primary)' : (showExp && uAns === letra ? 'inherit' : 'var(--text-secondary)'),
-                                opacity: (showExp && uAns !== letra && !isCorrectAlt) ? 0.5 : 1
-                              }}
-                            >
-                              {alt}
-                              {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)"/>}
-                            </button>
-                          )
-                        })
-                      ) : (
-                        <>
-                          <button 
-                            onClick={() => handleAnswer(q.id, 'C')}
-                            disabled={showExp && !configExamMode}
-                            style={{ flex: 1, padding: '15px', borderRadius: '12px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                              border: '2px solid',
-                              borderColor: uAns === 'C' ? (showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                              background: uAns === 'C' ? (showExp ? (isCorrect ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                              color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
-                              opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
-                            }}
-                          >
-                            CERTO
-                            {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
-                          </button>
-                          <button 
-                            onClick={() => handleAnswer(q.id, 'E')}
-                            disabled={showExp && !configExamMode}
-                            style={{ flex: 1, padding: '15px', borderRadius: '12px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                              border: '2px solid',
-                              borderColor: uAns === 'E' ? (showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                              background: uAns === 'E' ? (showExp ? (isCorrect ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                              color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
-                              opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
-                            }}
-                          >
-                            ERRADO
-                            {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
-                          </button>
-                        </>
-                      )}
-                    </div>
-
-                    {showExp && (
-                      <div className="quiz-explanation" style={{ marginTop: '20px', animation: 'fadeIn 0.3s ease-out' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '8px', color: isCorrect ? 'var(--success-text)' : 'var(--error-text)' }}>
-                          {isCorrect ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                          {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
-                        </div>
-                        <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                          <Md>{q.explicacao}</Md>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </React.Fragment>
-            );
-          })}
+                const uAns = userAnswers[q.id];
+                const showExp = Boolean(isExamFinished || (!configExamMode && uAns));
+                return (
+                  <React.Fragment key={q.id}>
+                    {q.textoVinculado && <TextoBase texto={q.textoVinculado} />}
+                    <QuestaoCard
+                      numero={index + 1}
+                      assunto={q.assunto}
+                      enunciado={q.enunciado}
+                      alternativas={q.alternativas}
+                      gabarito={q.gabarito}
+                      explicacao={q.explicacao}
+                      resposta={uAns}
+                      mostrarGabarito={showExp}
+                      travado={showExp && !configExamMode}
+                      onResponder={(letra) => handleAnswer(q.id, letra)}
+                    renderEnunciado={(t) => <InteractiveText onWordClick={handleWordClick}>{t}</InteractiveText>}
+                    />
+                  </React.Fragment>
+                );
+              })}
 
           {configExamMode && !isExamFinished && (
-            <button onClick={finishExam} className="btn primary" style={{ width: '100%', padding: '15px', fontSize: '1.05rem', margin: '20px 0' }}>
+            <button onClick={finishExam} className="ui-btn ui-btn--primary" style={{ width: '100%', padding: '15px', fontSize: '1.05rem', margin: '20px 0' }}>
               Finalizar Prova e Ver Correção
             </button>
           )}
 
           <div style={{ display: 'flex', gap: '15px', marginTop: '20px' }}>
-            <button onClick={() => setViewState("initial")} className="btn" style={{ flex: 1, padding: '15px' }}>
+            <button onClick={() => setViewState("initial")} className="ui-btn" style={{ flex: 1, padding: '15px' }}>
               Voltar ao Início
             </button>
             
             {showLessonAction && (
-              <button onClick={() => generateLesson(getWrongQuestions())} className="btn primary" style={{ flex: 2, padding: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-                <Wrench size={20} /> Professor IA: Explicar meus erros
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showStatsModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
-            <div style={{ padding: '20px', background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '10px' }}><PieChart size={24} color="var(--primary)" /> Seu Desempenho Global</h2>
-              <button onClick={() => setShowStatsModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            <div style={{ padding: '20px', maxHeight: '60vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', padding: '15px', background: 'var(--hover-bg)', borderRadius: '12px' }}>
-                <div style={{ textAlign: 'center' }}><p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, color: 'var(--text-main)' }}>{stats.total}</p><p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Total</p></div>
-                <div style={{ textAlign: 'center' }}><p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, color: 'var(--success-text)' }}>{stats.correct}</p><p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Certas</p></div>
-                <div style={{ textAlign: 'center' }}><p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, color: 'var(--error-text)' }}>{stats.wrong}</p><p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>Erradas</p></div>
-              </div>
-              <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase' }}>Por Assunto</h3>
-              {Object.entries(stats.topics).length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '20px' }}>Nenhum dado registrado ainda.</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {Object.entries(stats.topics).map(([topic, data]) => {
-                    const tTotal = data.correct + data.wrong;
-                    const pct = Math.round((data.correct / tTotal) * 100);
-                    return (
-                      <div key={topic} style={{ padding: '12px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                          <span style={{ fontWeight: 'bold', color: 'var(--text-main)', fontSize: '0.9rem' }}>{topic}</span>
-                          <div style={{ display: 'flex', gap: '15px', fontSize: '0.9rem' }}>
-                            <span style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>{data.correct}C</span>
-                            <span style={{ color: 'var(--error-text)', fontWeight: 'bold' }}>{data.wrong}E</span>
-                            <span style={{ color: pct >= 70 ? 'var(--success-text)' : pct < 50 ? 'var(--error-text)' : 'var(--text-main)', fontWeight: 'bold' }}>{pct}%</span>
-                          </div>
-                        </div>
-                        <div style={{ width: '100%', height: '6px', background: 'var(--hover-bg)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', background: pct >= 70 ? 'var(--success-text)' : pct < 50 ? 'var(--error-text)' : 'var(--primary)', width: `${pct}%` }}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <PainelErros
+                  titulo="Professor de Inglês"
+                  descricao={`Você errou ${wrongCount} questão(ões). Quer uma explicação focada em vocabulário e compreensão do que errou?`}
+                  rotuloBotao="Gerar explicação detalhada"
+                  onGerar={() => generateLesson(getWrongQuestions())}
+                />
               )}
-            </div>
-            <div style={{ padding: '15px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'center' }}>
-               <button onClick={resetStats} className="btn outline" style={{ color: 'var(--error-text)', borderColor: 'var(--error-text)', width: '100%' }}>Zerar Histórico</button>
-            </div>
           </div>
         </div>
       )}
 
-      {showLessonModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out', border: '2px solid #f59e0b' }}>
-            <div style={{ background: '#f59e0b', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <GraduationCap size={24} /> Resumo / Correção
-              </h2>
-              <button onClick={() => setShowLessonModal(false)} style={{ background: 'none', border: 'none', color: '#fef3c7', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
-              <div className="markdown-format" style={{ fontSize: '1rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <Md>{lessonContent}</Md>
-              </div>
-            </div>
-            <div style={{ padding: '15px 20px', borderTop: '1px solid var(--border)', background: 'var(--hover-bg)', textAlign: 'right' }}>
-              <button onClick={() => setShowLessonModal(false)} className="btn primary">Entendi, fechar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <HistoricoModal
+        aberto={showStatsModal}
+        titulo="Histórico de Língua Inglesa"
+        materia="Língua Inglesa"
+        stats={stats}
+        onFechar={() => setShowStatsModal(false)}
+        onLimpar={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); }}
+      />
+
+      <Modal
+        open={showLessonModal}
+        onClose={() => setShowLessonModal(false)}
+        title="Explicação em Língua Inglesa"
+        subtitle="Gerada a partir das questões que você errou."
+        wide
+      >
+        <Md>{lessonContent}</Md>
+      </Modal>
 
       {/* ========================================== */}
       {/* PASSO E: TOOLTIP FLUTUANTE DE TRADUÇÃO     */}
@@ -870,14 +722,14 @@ export default function GabariteIngles() {
             <strong style={{ color: 'var(--primary)' }}>{clickedWord}</strong>
             <button 
               onClick={() => setClickedWord(null)} 
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-3)', padding: 0, fontSize: '0.8rem', display: 'flex', alignItems: 'center' }}
             >
               <X size={14} />
             </button>
           </div>
-          <div style={{ color: 'var(--text-main)', marginTop: '4px' }}>
+          <div style={{ color: 'var(--fg)', marginTop: '4px' }}>
             {loadingTranslation ? (
-              <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Traduzindo...</span>
+              <span style={{ color: 'var(--fg-3)', fontStyle: 'italic' }}>Traduzindo...</span>
             ) : (
               <span style={{ fontWeight: '500' }}>{translation}</span>
             )}
@@ -900,21 +752,7 @@ export default function GabariteIngles() {
         />
       </Modal>
 
-      <ConfirmDialog
-        open={confirmarLimpeza}
-        title="Limpar o histórico de Língua Inglesa"
-        message={`Apagar os ${stats.total} item(ns) já julgados e o desempenho por tópico?`}
-        detail="O histórico fica guardado apenas neste navegador e não pode ser recuperado depois."
-        confirmLabel="Limpar histórico"
-        onConfirm={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); setConfirmarLimpeza(false); }}
-        onCancel={() => setConfirmarLimpeza(false)}
-      />
-
-      {aviso && (
-        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg, 0 12px 32px rgba(0,0,0,.18))', borderRadius: '10px' }}>
-          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
-        </div>
-      )}
+      <Toast aviso={aviso} onFechar={() => setAviso(null)} />
 
     </div>
   );

@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import {
-  Button, Badge, Input, EmptyState, Skeleton, PageHeader, Modal, ConfirmDialog, Notice,
+  Button, Badge, Input, EmptyState, Skeleton, PageHeader, Modal, ConfirmDialog, Notice, Tooltip,
 } from "../components/ui";
 import "./GerenciarAulas.css";
 
@@ -385,46 +385,55 @@ export default function GerenciarAulas() {
     return lista;
   }, [totalPages, pagina]);
 
+  /* Cinco botões só de ícone. O atributo title do HTML não aparece no
+     toque e some no foco por teclado; o Tooltip aparece nos dois. O
+     aria-label continua sendo o que o leitor de tela anuncia. */
   const AcoesDaAula = ({ plan }) => (
     <div className="ga__actions">
-      <Link className="ga__icon-btn" to={`/aula/${plan.id}`} title="Abrir a aula" aria-label={`Abrir ${plan.title}`}>
-        <Eye size={16} />
-      </Link>
-      <button
-        className="ga__icon-btn"
-        onClick={() => handleDownloadPlan(plan)}
-        disabled={downloadingId === plan.id}
-        title="Baixar JSON"
-        aria-label={`Baixar ${plan.title} em JSON`}
-      >
-        {downloadingId === plan.id ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
-      </button>
-      {plan.visibility === "private" && (
+      <Tooltip texto="Abrir a aula">
+        <Link className="ga__icon-btn" to={`/aula/${plan.id}`} aria-label={`Abrir ${plan.title}`}>
+          <Eye size={16} />
+        </Link>
+      </Tooltip>
+      <Tooltip texto="Baixar JSON">
         <button
-          className="ga__icon-btn ga__icon-btn--accent"
-          onClick={() => handleOpenShare(plan)}
-          title="Gerenciar quem tem acesso"
-          aria-label={`Gerenciar acessos de ${plan.title}`}
+          className="ga__icon-btn"
+          onClick={() => handleDownloadPlan(plan)}
+          disabled={downloadingId === plan.id}
+          aria-label={`Baixar ${plan.title} em JSON`}
         >
-          <UserPlus size={16} />
+          {downloadingId === plan.id ? <RefreshCw size={16} className="spin" /> : <Download size={16} />}
         </button>
+      </Tooltip>
+      {plan.visibility === "private" && (
+        <Tooltip texto="Gerenciar quem tem acesso">
+          <button
+            className="ga__icon-btn ga__icon-btn--accent"
+            onClick={() => handleOpenShare(plan)}
+            aria-label={`Gerenciar acessos de ${plan.title}`}
+          >
+            <UserPlus size={16} />
+          </button>
+        </Tooltip>
       )}
-      <button
-        className="ga__icon-btn"
-        onClick={() => handleOpenEdit(plan)}
-        title="Editar"
-        aria-label={`Editar ${plan.title}`}
-      >
-        <Pencil size={16} />
-      </button>
-      <button
-        className="ga__icon-btn ga__icon-btn--danger"
-        onClick={() => setConfirmacao({ tipo: "excluir", plan })}
-        title="Excluir"
-        aria-label={`Excluir ${plan.title}`}
-      >
-        <Trash2 size={16} />
-      </button>
+      <Tooltip texto="Editar">
+        <button
+          className="ga__icon-btn"
+          onClick={() => handleOpenEdit(plan)}
+          aria-label={`Editar ${plan.title}`}
+        >
+          <Pencil size={16} />
+        </button>
+      </Tooltip>
+      <Tooltip texto="Excluir">
+        <button
+          className="ga__icon-btn ga__icon-btn--danger"
+          onClick={() => setConfirmacao({ tipo: "excluir", plan })}
+          aria-label={`Excluir ${plan.title}`}
+        >
+          <Trash2 size={16} />
+        </button>
+      </Tooltip>
     </div>
   );
 

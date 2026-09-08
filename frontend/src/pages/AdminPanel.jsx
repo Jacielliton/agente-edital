@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Trash2, RefreshCw, UserCog, Shield, Pencil, Plus, Search, Ban, CheckCircle2,
-  ShieldOff, FileText, DollarSign, Settings2, Ticket, Users,
+  Trash2, RefreshCw, Shield, Pencil, Plus, Search, Ban, CheckCircle2, ShieldOff, FileText, DollarSign, Settings2, Ticket, Users, UserCog,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   Button, Badge, Input, ProgressBar, StatCard, EmptyState, Skeleton, PageHeader,
-  Modal, ConfirmDialog, Notice,
+  Modal, ConfirmDialog, Notice, Tabs,
 } from "../components/ui";
 import "./AdminPanel.css";
 
@@ -572,19 +571,14 @@ export default function AdminPanel() {
 
       {aviso && <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>}
 
-      <div className="adm__tabs" role="tablist">
-        {ABAS.map(({ id, rotulo, icone: Icone }) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={adminTab === id}
-            className={`adm__tab${adminTab === id ? " is-on" : ""}`}
-            onClick={() => setAdminTab(id)}
-          >
-            <Icone size={16} /> {rotulo}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        idBase="adm"
+        aria="Seções da administração"
+        variante="linha"
+        itens={ABAS}
+        ativo={adminTab}
+        onTrocar={setAdminTab}
+      />
 
       {/* =========================== USUÁRIOS =========================== */}
       {adminTab === "users" && (
@@ -1068,42 +1062,27 @@ export default function AdminPanel() {
           <b>{brl(selectedUserForCommission?.commission_balance)}</b>
         </div>
 
-        <div className="adm__tabs" role="tablist">
-          <button
-            role="tab"
-            aria-selected={commissionTab === "history"}
-            className={`adm__tab${commissionTab === "history" ? " is-on" : ""}`}
-            onClick={() => setCommissionTab("history")}
-          >
-            <FileText size={15} /> Extrato
-          </button>
-          <button
-            role="tab"
-            aria-selected={commissionTab === "pay"}
-            className={`adm__tab${commissionTab === "pay" ? " is-on" : ""}`}
-            onClick={() => {
-              setCommissionTab("pay");
+        <Tabs
+          idBase="adm-comissao"
+          aria="Comissão do usuário"
+          variante="linha"
+          ativo={commissionTab}
+          itens={[
+            { id: "history", rotulo: "Extrato", icone: FileText },
+            { id: "pay", rotulo: "Registrar pagamento", icone: DollarSign },
+            { id: "edit", rotulo: "Corrigir saldo", icone: Settings2 },
+          ]}
+          onTrocar={(id) => {
+            setCommissionTab(id);
+            /* Entrar em "pagar" ou "corrigir" pré-preenche com o saldo e
+               limpa o que sobrou da tentativa anterior. */
+            if (id !== "history") {
               setActionAmount(num(selectedUserForCommission?.commission_balance).toFixed(2));
               setActionDesc("");
               setErroComm("");
-            }}
-          >
-            <DollarSign size={15} /> Registrar pagamento
-          </button>
-          <button
-            role="tab"
-            aria-selected={commissionTab === "edit"}
-            className={`adm__tab${commissionTab === "edit" ? " is-on" : ""}`}
-            onClick={() => {
-              setCommissionTab("edit");
-              setActionAmount(num(selectedUserForCommission?.commission_balance).toFixed(2));
-              setActionDesc("");
-              setErroComm("");
-            }}
-          >
-            <Settings2 size={15} /> Corrigir saldo
-          </button>
-        </div>
+            }
+          }}
+        />
 
         {erroComm && <Notice tone="err" onClose={() => setErroComm("")}>{erroComm}</Notice>}
 

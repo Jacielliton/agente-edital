@@ -60,8 +60,8 @@ export default function OpenRouterCallback() {
       {status === "loading" && (
         <>
           <Loader2 size={56} className="spin" color="var(--primary)" style={{ animation: 'spin 1s linear infinite' }} />
-          <h2 style={{ marginTop: '20px', color: 'var(--heading-color)' }}>Ativando recursos de IA...</h2>
-          <p style={{ color: 'var(--text-secondary)' }}>Conectando a sua conta ao sistema.</p>
+          <h2 style={{ marginTop: '20px', color: 'var(--fg)' }}>Ativando recursos de IA...</h2>
+          <p style={{ color: 'var(--fg-2)' }}>Conectando a sua conta ao sistema.</p>
           <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
         </>
       )}
@@ -81,7 +81,7 @@ export default function OpenRouterCallback() {
           <p style={{ color: 'var(--error-text)', marginBottom: '20px' }}>{errorMsg}</p>
           <button 
             onClick={() => window.location.href = '/dashboard'}
-            style={{ padding: '10px 20px', backgroundColor: 'var(--card-bg)', color: 'var(--text-main)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+            style={{ padding: '10px 20px', backgroundColor: 'var(--card-bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
           >
             Voltar ao Dashboard
           </button>

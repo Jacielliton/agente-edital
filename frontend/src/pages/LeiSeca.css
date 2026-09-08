@@ -1,0 +1,139 @@
+/* ===================== Lei Seca em Lacunas ===================== */
+.ls { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.ls__form { display: flex; flex-direction: column; gap: var(--space-4); }
+.ls__label {
+  display: block; margin-bottom: var(--space-2);
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.ls__textarea {
+  width: 100%; min-height: 240px; resize: vertical;
+  padding: var(--space-4);
+  border: 1px solid var(--control-line); border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--fg);
+  font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.7;
+}
+.ls__textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.ls__contagem { margin-top: calc(var(--space-2) * -1); font-size: var(--text-xs); color: var(--fg-3); }
+
+.ls__intensidades { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.ls__intensidade {
+  flex: 1 1 200px;
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--fg);
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.ls__intensidade:hover { background: var(--surface-3); }
+.ls__intensidade.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.ls__intensidade b { font-size: var(--text-sm); font-weight: 700; }
+.ls__intensidade.is-on b { color: var(--accent); }
+.ls__intensidade span { font-size: var(--text-xs); color: var(--fg-3); line-height: 1.45; }
+
+/* ---------- o texto com as lacunas ---------- */
+.ls__texto {
+  margin: 0;
+  font-size: 16px; line-height: 2.35; color: var(--fg);
+  white-space: pre-wrap; word-break: break-word;
+  max-width: 74ch;
+}
+.ls__lacuna { display: inline-flex; align-items: center; gap: 4px; }
+.ls__campo {
+  padding: 2px 8px;
+  border: none; border-bottom: 2px solid var(--accent);
+  border-radius: 4px 4px 0 0;
+  background: var(--accent-soft); color: var(--fg);
+  font-family: var(--font-mono); font-size: .92em; font-weight: 600;
+  text-align: center;
+}
+.ls__campo:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ls__campo.is-revelado { background: var(--surface-3); border-bottom-color: var(--fg-3); color: var(--fg-2); }
+.ls__campo.is-certo { background: var(--ok-soft); border-bottom-color: var(--ok); color: var(--ok); }
+.ls__campo.is-errado { background: var(--danger-soft); border-bottom-color: var(--danger); color: var(--danger); text-decoration: line-through; }
+.ls__marca--ok { color: var(--ok); }
+.ls__marca--erro { color: var(--danger); }
+.ls__ausente { color: var(--fg-3); }
+
+.ls__acoes { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-5); }
+
+.ls__placar {
+  display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+  margin-top: var(--space-4); padding: var(--space-4);
+  background: var(--surface-3); border-radius: var(--radius-sm);
+}
+.ls__placar.is-cheio { background: var(--ok-soft); }
+.ls__placar b { font-size: var(--text-xl); font-weight: 800; color: var(--fg); }
+.ls__placar.is-cheio b { color: var(--ok); }
+.ls__placar span { font-size: var(--text-sm); color: var(--fg-2); }
+
+/* ---------- revisão item a item ---------- */
+.ls__revisao { display: flex; flex-direction: column; gap: var(--space-3); }
+.ls__item {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.ls__item.is-certo { border-left-color: var(--ok); }
+.ls__item.is-errado { border-left-color: var(--danger); }
+.ls__item-topo { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ls__item-n { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--fg-3); }
+.ls__resposta {
+  font-family: var(--font-mono); font-size: var(--text-sm); font-weight: 700;
+  background: var(--ok-soft); color: var(--ok); padding: 2px 7px; border-radius: 4px;
+}
+.ls__dada { font-size: var(--text-xs); color: var(--fg-3); }
+.ls__dada code {
+  font-family: var(--font-mono); background: var(--danger-soft); color: var(--danger);
+  padding: 1px 5px; border-radius: 4px;
+}
+.ls__porque {
+  display: flex; align-items: flex-start; gap: 7px;
+  margin: var(--space-2) 0 0; font-size: var(--text-sm); color: var(--fg-2); line-height: 1.55;
+}
+.ls__porque svg { flex: none; margin-top: 2px; color: var(--warn); }
+.ls__trocas { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--fg-3); }
+.ls__trocas code {
+  font-family: var(--font-mono); background: var(--surface-3); color: var(--fg-2);
+  padding: 1px 6px; border-radius: 4px; margin-left: 5px;
+}
+
+
+@media (max-width: 640px) {
+  .ls__texto { font-size: 15px; line-height: 2.2; }
+  .ls__acoes .ui-btn { width: 100%; justify-content: center; }
+}
+
+.ls__busca { display: flex; gap: var(--space-2); align-items: flex-end; flex-wrap: wrap; }
+.ls__busca .ui-field { flex: 1 1 320px; }
+
+/* O aviso é permanente de propósito: o valor da ferramenta é a fidelidade ao
+   texto oficial, e um modelo de linguagem escreve de memória. */
+.ls__origem {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--warn-soft);
+  border: 1px solid var(--line); border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+}
+.ls__origem.is-duvida { background: var(--danger-soft); border-left-color: var(--danger); }
+.ls__origem svg { flex: none; margin-top: 1px; color: var(--warn); }
+.ls__origem.is-duvida svg { color: var(--danger); }
+.ls__origem b { display: block; font-size: var(--text-sm); font-weight: 700; color: var(--fg); }
+.ls__origem p { margin: 5px 0 0; font-size: var(--text-sm); color: var(--fg-2); line-height: 1.55; }
+.ls__origem-meta {
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  margin-top: var(--space-2); font-size: var(--text-xs); color: var(--fg-3);
+}
+.ls__origem-meta a {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--accent); font-weight: 700; text-decoration: none;
+}
+.ls__origem-meta a:hover { text-decoration: underline; }
+
+@media (max-width: 560px) {
+  .ls__busca .ui-btn { width: 100%; justify-content: center; }
+}
+

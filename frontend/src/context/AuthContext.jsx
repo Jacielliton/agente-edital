@@ -17,6 +17,21 @@ export const AuthProvider = ({ children }) => {
     
     // Sobrescrevemos o fetch nativo temporariamente para monitorar as respostas
     window.fetch = async (...args) => {
+      /* Encerra a sessão e deixa o MOTIVO para a tela de login mostrar.
+         Antes eram dois alert() nativos — e um alert dispara no instante em que
+         a página vai ser trocada, então o aviso aparecia como popup do sistema
+         e sumia junto com a navegação. O motivo vai no sessionStorage e a tela
+         de login o exibe no mesmo lugar dos outros avisos.
+         A ordem importa: o clear() vem ANTES de gravar o motivo. */
+      const encerrarSessao = (motivo) => {
+        localStorage.removeItem("professor_ai_token");
+        localStorage.removeItem("access_token");
+        sessionStorage.clear();
+        try { sessionStorage.setItem("motivo_saida", motivo); } catch (e) { /* modo privado */ }
+        setUser(null);
+        window.location.href = "/login";
+      };
+
       const response = await originalFetch(...args);
       
       // Se a resposta for 401 (Não Autorizado), verificamos o detalhe do erro
@@ -27,22 +42,9 @@ export const AuthProvider = ({ children }) => {
           const data = await clone.json();
           
           if (data.detail === "CONFLITO_DE_SESSAO") {
-            alert("🔒 Segurança: A sua conta foi conectada noutro dispositivo. Você foi desconectado automaticamente.");
-            
-            // Limpeza implacável de todos os vestígios de sessão
-            localStorage.removeItem("professor_ai_token");
-            localStorage.removeItem("access_token");
-            sessionStorage.clear();
-            
-            setUser(null);
-            window.location.href = "/login"; // Força o redirecionamento
+            encerrarSessao("CONFLITO_DE_SESSAO");
           } else if (data.detail === "CONTA_EXPIRADA") {
-            alert("⚠️ Seu período de acesso expirou. Você foi desconectado.");
-            localStorage.removeItem("professor_ai_token");
-            localStorage.removeItem("access_token");
-            sessionStorage.clear();
-            setUser(null);
-            window.location.href = "/login"; 
+            encerrarSessao("CONTA_EXPIRADA");
           }
         } catch (e) {
           // Se a resposta 401 não tiver JSON ou falhar, ignoramos silenciosamente

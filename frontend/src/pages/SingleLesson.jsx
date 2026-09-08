@@ -61,8 +61,8 @@ export default function SingleLesson() {
 
   if (error) {
     return (
-      <div className="container">
-        <div className="error" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '15px', borderRadius: '8px', marginTop: '20px' }}>
+      <div className="pagina">
+        <div className="ui-notice ui-notice--err" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '15px', borderRadius: '8px', marginTop: '20px' }}>
           <AlertCircle size={20} /> {error}
         </div>
         <Link to="/dashboard" className="ui-btn ui-btn--primary" style={{ marginTop: '20px' }}>Voltar ao Início</Link>
@@ -72,16 +72,16 @@ export default function SingleLesson() {
 
   if (!data) {
     return (
-      <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', color: 'var(--text-secondary)' }}>
+      <div className="pagina" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', color: 'var(--fg-2)' }}>
         <Loader2 size={48} style={{ animation: 'spin 1s linear infinite', marginBottom: '15px', color: 'var(--primary)' }} />
-        <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>Carregando conteúdo da aula...</h3>
+        <h3 style={{ margin: 0, color: 'var(--fg)' }}>Carregando conteúdo da aula...</h3>
         <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   return (
-    <div className="container">
+    <div className="pagina">
       <div style={{ marginBottom: "1.5rem", display: 'flex', alignItems: 'center' }}>
         <Link to="/dashboard" className="ui-btn">
           <ArrowLeft size={16} /> Voltar para Minhas Aulas

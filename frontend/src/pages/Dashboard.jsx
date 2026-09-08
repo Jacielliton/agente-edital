@@ -1,9 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
-  BookOpen, Calendar, ArrowRight, Search, X, ChevronLeft, ChevronRight,
-  TrendingUp, TrendingDown, ChevronDown, ChevronUp, Folder, Target, Globe,
-  Lock, Star, Sparkles, PenTool, AlertTriangle, Minus,
+  BookOpen, Calendar, ArrowRight, Search, X, ChevronLeft, ChevronRight, TrendingUp, ChevronDown, ChevronUp, Folder, Target, Globe, Lock, Star, Sparkles, PenTool, AlertTriangle, TrendingDown, Minus,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {

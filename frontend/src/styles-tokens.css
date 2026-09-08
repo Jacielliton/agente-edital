@@ -1,8 +1,15 @@
 /* =========================================================================
    AgenteIA Edital — Design Tokens
    Fonte única de verdade para cor, espaco, raio, sombra e tipografia.
-   Os nomes "legados" (--primary, --card-bg, --text-main...) sao mantidos
-   como alias para que as telas antigas continuem funcionando sem alteracao.
+   Os nomes "legados" (--primary, --card-bg, --border...) sao alias mantidos
+   porque telas antigas ainda os citam. Nao criar alias novo: o alias so existe
+   para nao quebrar o que ja esta escrito.
+
+   REGRA DE PREFIXO, aprendida na marra:
+     --text-*  e SEMPRE tamanho de fonte (--text-sm, --text-lg)
+     --fg-*    e SEMPRE cor de texto    (--fg, --fg-2, --fg-3)
+   Havia --text-sm (tamanho) e --text-main (cor) convivendo no mesmo prefixo,
+   e nao dava para saber o que um --text-* fazia sem ir ler a definicao.
    ========================================================================= */
 
 :root {
@@ -40,8 +47,10 @@
   --radius-full: 999px;
 
   /* ---------- Layout ---------- */
-  --sidebar-w: 232px;
-  --topbar-h: 60px;
+  /* Em rem, nao em px: com o controle de tamanho da letra ligado, uma
+     barra de 232px fixos ficaria estreita demais para o proprio texto. */
+  --sidebar-w: 14.5rem;  /* 232px no padrao */
+  --topbar-h: 3.75rem;   /* 60px no padrao */
   --content-max: 1280px;
 
   /* ---------- Paleta base (tema claro) ---------- */
@@ -50,10 +59,15 @@
   --accent-soft: #EBF1FF;
   --accent-fg: #FFFFFF;
 
-  --ok: #12855F;
+  --ok: #117C59;
   --ok-soft: #E4F5EE;
-  --warn: #B4720B;
+  --warn: #9D630A;
   --warn-soft: #FDF3E2;
+  /* Marca-texto e destaque: o papel que faltava e por isso vivia cravado
+     em #fef08a / #f59e0b nas telas, sem trocar no tema escuro. */
+  --highlight: #FDE68A;
+  --highlight-strong: #B4720B;
+  --highlight-fg: #3B2A06;
   --danger: #C2373A;
   --danger-soft: #FDEDED;
 
@@ -70,10 +84,22 @@
   --sidebar-line: rgba(255, 255, 255, 0.09);
 
   --fg: #0C1220;      /* texto principal */
-  --fg-2: #525E72;    /* texto secundario */
-  --fg-3: #8E99AB;    /* texto de apoio */
-  --line: #E5E9F0;    /* bordas */
-  --line-strong: #D3DAE5;
+  --fg-2: #3E4757;    /* texto secundario */
+  /* #8E99AB dava 2,66:1 sobre o cartao — abaixo do minimo ate para texto
+     grande, e e a cor de toda a metainformacao do site (datas, contagens,
+     rotulos). Descer so o fg-3 o colava no fg-2, entao a escala moveu junto. */
+  --fg-3: #636E7F;    /* texto de apoio */
+  /* ---- Escala de borda, em tres niveis ----
+     A borda antiga (#E5E9F0) dava 1,12:1 sobre o fundo da pagina: o cartao
+     praticamente nao tinha aresta. Subiu, mas nao ate 3:1 — separacao
+     decorativa a 3:1 fica com cara de tabela. Os 3:1 da WCAG 1.4.11 valem
+     para o CONTORNO DE CONTROLE (campo, botao, caixa), que e o que o usuario
+     precisa achar; para isso existe o --control-line. */
+  --line: #C4CDDD;         /* 1,60:1 — separacao decorativa: cartao, divisor */
+  --line-strong: #A0AFC7;  /* 2,22:1 — enfase: hover, tracejado, badge */
+  --control-line: #778CAE; /* 3,01:1 ate sobre --surface-3, o fundo mais claro
+                              onde um controle aparece — contorno de controle
+                              (WCAG 1.4.11) */
 
   --shadow-1: 0 1px 2px rgba(12, 18, 32, .05);
   --shadow-2: 0 1px 3px rgba(12, 18, 32, .06), 0 8px 20px -12px rgba(12, 18, 32, .22);
@@ -83,25 +109,15 @@
 
   /* ---------- Alias legados (nao remover) ---------- */
   --primary: var(--accent);
-  --primary-hover: var(--accent-strong);
   --primary-light: var(--accent-soft);
   --bg: var(--surface);
   --card-bg: var(--surface-2);
-  --header-bg: var(--surface-2);
-  --input-bg: var(--surface-2);
   --hover-bg: var(--surface-3);
-  --text-main: var(--fg);
-  --text-secondary: var(--fg-2);
-  --text-muted: var(--fg-3);
-  --heading-color: var(--fg);
   --border: var(--line);
   --success-bg: var(--ok-soft);
   --success-text: var(--ok);
   --error-bg: var(--danger-soft);
   --error-text: var(--danger);
-  --error-border: var(--danger);
-  --warning-bg: var(--warn-soft);
-  --warning-text: var(--warn);
   --radius: var(--radius-md);
   --shadow-sm: var(--shadow-1);
   --shadow-md: var(--shadow-2);
@@ -119,6 +135,9 @@ html.dark {
   --ok-soft: rgba(63, 207, 142, .14);
   --warn: #E9A13B;
   --warn-soft: rgba(233, 161, 59, .14);
+  --highlight: #7A5B12;
+  --highlight-strong: #E9A13B;
+  --highlight-fg: #FFF3D6;
   --danger: #F0666A;
   --danger-soft: rgba(240, 102, 106, .14);
 
@@ -136,9 +155,10 @@ html.dark {
 
   --fg: #E9EDF4;
   --fg-2: #A3AFC2;
-  --fg-3: #6F7C91;
-  --line: #222E42;
-  --line-strong: #31405A;
+  --fg-3: #828D9F;
+  --line: #2E3F5A;         /* 1,61:1 */
+  --line-strong: #3F5375;  /* 2,20:1 */
+  --control-line: #556F9C; /* 3,00:1 sobre --surface-3 */
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
   --shadow-2: 0 1px 3px rgba(0, 0, 0, .45), 0 10px 24px -14px rgba(0, 0, 0, .80);
@@ -146,5 +166,4 @@ html.dark {
 
   --ring: 0 0 0 3px rgba(76, 130, 255, .28);
 
-  --heading-color: var(--fg);
 }

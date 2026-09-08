@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-  PenTool, Target, RefreshCw, Send, CheckCircle, 
-  Wand2, Save, BookOpen, FileText, CheckSquare, 
-  MessageSquare, AlertCircle, LayoutTemplate, Database,
-  Timer, ShieldAlert, Edit3, ArrowDown, RotateCcw
+import {
+  Target, RefreshCw, Send, CheckCircle, Wand2, Save, BookOpen, FileText, CheckSquare, MessageSquare, LayoutTemplate, Database, Timer, ShieldAlert, Edit3, ArrowDown, RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import {
+  Button, Card, CardHead, CardBody, Input, PageHeader, Notice, Toast, EmptyState, Tabs, TabPanel,
+} from "../components/ui";
 // Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
 import Md from "../components/Markdown";
+import "./TreinoDiscursiva.css";
 
 const getAuthToken = () => {
   const storages = [localStorage, sessionStorage];
@@ -118,6 +119,7 @@ export default function TreinoDiscursiva() {
   const [loading, setLoading] = useState(false);
   const [loadingCorrecao, setLoadingCorrecao] = useState(false);
   const [error, setError] = useState(null);
+  const [aviso, setAviso] = useState(null);
 
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
@@ -193,7 +195,7 @@ export default function TreinoDiscursiva() {
   };
 
   const handleAnalisarEdital = async () => {
-    if (!editalTrecho.trim()) return alert("Cole o trecho do conteúdo programático no campo primeiro.");
+    if (!editalTrecho.trim()) return setAviso({ tone: "warn", texto: "Cole o trecho do conteúdo programático no campo primeiro." });
     
     setIsExtracting(true);
     setError(null);
@@ -245,7 +247,7 @@ export default function TreinoDiscursiva() {
       interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     } else if (timeLeft === 0 && prova && isModoPressao && !correcao && !loadingCorrecao) {
       setIsModoPressao(false); // <-- FIX: Desarma o modo pressão para evitar loop de alerts
-      alert("TEMPO ESGOTADO! Sua prova será entregue automaticamente.");
+      setAviso({ tone: "warn", texto: "Tempo esgotado. A prova foi entregue automaticamente." });
       handleCorrigir();
     }
     return () => clearInterval(interval);
@@ -271,8 +273,8 @@ export default function TreinoDiscursiva() {
 
   const handleGerarProva = async () => {
     // 1. Nova validação condicional
-    if (tipoProva !== "Personalizado" && (!area || !topicos)) return alert("Por favor, preencha a Disciplina e o Tópico.");
-    if (tipoProva === "Personalizado" && !editalTrecho) return alert("Por favor, cole o trecho do conteúdo programático do edital na Etapa 2.");
+    if (tipoProva !== "Personalizado" && (!area || !topicos)) return setAviso({ tone: "warn", texto: "Preencha a disciplina e o tópico antes de gerar." });
+    if (tipoProva === "Personalizado" && !editalTrecho) return setAviso({ tone: "warn", texto: "Cole o trecho do conteúdo programático do edital na etapa 2." });
     
     setLoading(true); setError(null); setCorrecao(null); setProva(null); setResposta("");
     setDraftTese(""); setDraftArgs(""); setDraftConclusao("");
@@ -324,7 +326,7 @@ export default function TreinoDiscursiva() {
     }
 
     if (textoFinal.trim().split(/\s+/).filter(w => w.length > 0).length < 5) {
-      return alert("Escreva ao menos algumas palavras antes de enviar.");
+      return setAviso({ tone: "warn", texto: "Escreva ao menos algumas palavras antes de entregar." });
     }
     
     setLoadingCorrecao(true); setError(null);
@@ -381,453 +383,397 @@ export default function TreinoDiscursiva() {
   };
 
   return (
-    <div className="container" style={{ padding: '2rem 1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      
-      <header className="header" style={{ marginBottom: '2rem', textAlign: 'left' }}>
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 10px 0' }}>
-          <PenTool size={32} color="var(--primary)" /> Simulador de Discursivas
-        </h1>
-        <p style={{ margin: 0 }}>Evolua a sua escrita gradativamente. Comece com textos curtos e chegue até peças complexas.</p>
-      </header>
+    <div className="td">
+      <PageHeader
+        eyebrow="Ferramentas"
+        title="Simulador de discursivas"
+        description="Evolua a escrita por degraus: comece por textos curtos e chegue às peças completas, sempre no padrão da sua banca."
+        actions={prova && !correcao && (
+          <Button onClick={() => setProva(null)}>Abandonar a prova</Button>
+        )}
+      />
 
-      {/* TELA DE CONFIGURAÇÃO (WIZARD VISUAL) */}
+      {/* ---------------------------------------------- configuração */}
       {!prova && !loading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
-          
-          <div className="panel" style={{ padding: '25px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '10px' }}>
-              <h3 style={{ margin: 0, color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem' }}>
-                <span style={{ background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>1</span>
-                Estratégia de Treino
-              </h3>
-              <button onClick={handleSavePrefs} className="btn small" style={{ background: 'var(--success-bg)', color: 'var(--success-text)', borderColor: 'var(--success-text)' }}>
-                {showSavedFeedback ? <><CheckCircle size={14} /> Salvo!</> : <><Save size={14} /> Salvar Padrão</>}
-              </button>
-            </div>
+        <>
+          <Card>
+            <CardHead
+              title={<span className="td__passo"><b>1</b> Estratégia de treino</span>}
+              action={
+                <Button size="sm" onClick={handleSavePrefs} icon={showSavedFeedback ? <CheckCircle size={14} /> : <Save size={14} />}>
+                  {showSavedFeedback ? "Salvo" : "Salvar como padrão"}
+                </Button>
+              }
+            />
+            <CardBody className="td__form">
+              <div className="td__linha">
+                <label className="ui-field">
+                  <span className="ui-field__label">Banca</span>
+                  <select className="ui-input" value={banca} onChange={(e) => setBanca(e.target.value)}>
+                    <option value="CEBRASPE">CEBRASPE / CESPE</option>
+                    <option value="FGV">FGV</option>
+                    <option value="FCC">FCC</option>
+                    <option value="VUNESP">VUNESP</option>
+                    <option value="IDECAN">IDECAN</option>
+                  </select>
+                </label>
+                <Input label="Cargo (opcional)" value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="ex: Analista de TI" />
+                <label className="ui-field">
+                  <span className="ui-field__label">Dificuldade</span>
+                  <select className="ui-input" value={nivel} onChange={(e) => setNivel(e.target.value)}>
+                    <option value="Iniciante">Iniciante</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Avançado">Avançado</option>
+                    <option value="Expert">Expert</option>
+                  </select>
+                </label>
+              </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px' }}>
-              <div>
-                <label className="label">Banca</label>
-                <select value={banca} onChange={e => setBanca(e.target.value)} className="select">
-                  <option value="CEBRASPE">CEBRASPE / CESPE</option>
-                  <option value="FGV">FGV</option>
-                  <option value="FCC">FCC</option>
-                  <option value="VUNESP">VUNESP</option>
-                  <option value="IDECAN">IDECAN</option>
+              <label className="ui-field">
+                <span className="ui-field__label">Formato do treino</span>
+                <select className="ui-input" value={tipoProva} onChange={(e) => setTipoProva(e.target.value)}>
+                  <optgroup label="Nível 1 — iniciação">
+                    <option value="Paráfrase de Texto">Paráfrase — explicar com as próprias palavras</option>
+                    <option value="Expansão de Ideia">Expansão de ideia — aprofundar um conceito</option>
+                  </optgroup>
+                  <optgroup label="Nível 2 — intermediário">
+                    <option value="Reescrita de Parágrafo">Reescrita avançada — corrigir e melhorar</option>
+                    <option value="Questão Curta (5 a 10 linhas)">Questão curta — 5 a 10 linhas</option>
+                  </optgroup>
+                  <optgroup label="Nível 3 — simulação completa">
+                    <option value="Questão Discursiva (Estudo de Caso)">Questão discursiva — estudo de caso</option>
+                    <option value="Redação (Atualidades/Temas Gerais)">Redação — atualidades e impactos sociais</option>
+                    <option value="Peça Prático-Profissional">Peça prático-profissional</option>
+                  </optgroup>
+                  <optgroup label="Modo avançado">
+                    <option value="Personalizado">Personalizado — colar trecho do edital</option>
+                  </optgroup>
                 </select>
-              </div>
-              <div>
-                <label className="label">Cargo (Opcional)</label>
-                <input type="text" value={cargo} onChange={e => setCargo(e.target.value)} className="input" placeholder="Ex: Analista de TI..." />
-              </div>
-              <div>
-                <label className="label">Dificuldade</label>
-                <select value={nivel} onChange={e => setNivel(e.target.value)} className="select">
-                  <option value="Iniciante">Iniciante</option>
-                  <option value="Normal">Normal</option>
-                  <option value="Avançado">Avançado</option>
-                  <option value="Expert">Expert</option>
-                </select>
-              </div>
-            </div>
+              </label>
 
-            <label className="label" style={{ marginBottom: '10px' }}>Formato do Treino</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
-               <select value={tipoProva} onChange={e => setTipoProva(e.target.value)} className="select" style={{ width: '100%' }}>
-                  <optgroup label="Nível 1: Iniciação (Micro-treinos)">
-                    <option value="Paráfrase de Texto">Paráfrase (Explicar com próprias palavras)</option>
-                    <option value="Expansão de Ideia">Expansão de Ideia (Aprofundar um conceito)</option>
-                  </optgroup>
-                  <optgroup label="Nível 2: Intermediário">
-                    <option value="Reescrita de Parágrafo">Reescrita Avançada (Correção e Melhoria)</option>
-                    <option value="Questão Curta (5 a 10 linhas)">Questão Curta (5 a 10 linhas)</option>
-                  </optgroup>
-                  <optgroup label="Nível 3: Simulação Completa">
-                    <option value="Questão Discursiva (Estudo de Caso)">Questão Discursiva (Estudo de Caso)</option>
-                    <option value="Redação (Atualidades/Temas Gerais)">Redação (Atualidades e Impactos Sociais)</option>
-                    <option value="Peça Prático-Profissional">Peça Prático-Profissional</option>
-                  </optgroup>
-                  <optgroup label="Modo Avançado">
-                    <option value="Personalizado">Personalizado (Colar Trecho do Edital)</option>
-                  </optgroup>
-              </select>
-
-              {/* RENDERIZAÇÃO CONDICIONAL PARA O EDITAL */}
               {tipoProva === "Personalizado" && (
-                <div style={{ animation: 'slideUp 0.3s ease-out' }}>
-                  <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <LayoutTemplate size={16} /> Regras do Edital para a Prova Discursiva
-                  </label>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                    Cole aqui como será a prova (ex: linhas, pontuação, formato e critérios de correção).
-                  </p>
-                  <textarea 
-                    value={editalRegrasProva} 
-                    onChange={e => setEditalRegrasProva(e.target.value)} 
-                    className="textarea" 
-                    style={{ minHeight: '120px' }}
-                    placeholder="Ex: 9 DA PROVA DISCURSIVA. 9.1 valerá 40,00 pontos e consistirá de redação técnica de até 60 linhas..." 
+                <div className="td__campo">
+                  <span className="ui-field__label"><LayoutTemplate size={14} /> Regras do edital para a discursiva</span>
+                  <p className="td__ajuda">Cole como a prova será cobrada: linhas, pontuação, formato e critérios de correção.</p>
+                  <textarea
+                    className="td__textarea"
+                    value={editalRegrasProva}
+                    onChange={(e) => setEditalRegrasProva(e.target.value)}
+                    rows={5}
+                    placeholder="ex: 9 DA PROVA DISCURSIVA. 9.1 valerá 40,00 pontos e consistirá de redação técnica de até 60 linhas…"
                   />
                 </div>
               )}
-            </div>
 
-            <div style={{ background: isModoPressao ? 'var(--error-bg)' : 'var(--hover-bg)', border: `1px solid ${isModoPressao ? 'var(--error-text)' : 'var(--border)'}`, padding: '15px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setIsModoPressao(!isModoPressao)}>
-              <div>
-                <strong style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isModoPressao ? 'var(--error-text)' : 'var(--text-main)' }}>
-                  <ShieldAlert size={18} /> Modo Pressão Real
-                </strong>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Ativa temporizador rigoroso, desabilita corretor ortográfico e impede colar textos externos.
-                </span>
+              <div
+                className={`td__pressao${isModoPressao ? " is-on" : ""}`}
+                role="switch"
+                aria-checked={isModoPressao}
+                tabIndex={0}
+                onClick={() => setIsModoPressao(!isModoPressao)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setIsModoPressao(!isModoPressao); } }}
+              >
+                <div>
+                  <b><ShieldAlert size={17} /> Modo pressão real</b>
+                  <span>Liga o cronômetro, desativa o corretor ortográfico e bloqueia colar texto de fora.</span>
+                </div>
+                <span className="td__switch" aria-hidden="true"><i /></span>
               </div>
-              <div style={{ width: '40px', height: '24px', background: isModoPressao ? 'var(--error-text)' : 'var(--text-muted)', borderRadius: '12px', position: 'relative' }}>
-                <div style={{ width: '18px', height: '18px', background: 'white', borderRadius: '50%', position: 'absolute', top: '3px', left: isModoPressao ? '19px' : '3px', transition: 'left 0.2s' }} />
-              </div>
-            </div>
-          </div>
-          
-          <div className="panel" style={{ padding: '25px' }}>
-            <h3 style={{ margin: '0 0 20px 0', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem' }}>
-              <span style={{ background: 'var(--primary)', color: 'white', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>2</span>
-              Definição do Tema
-            </h3>
+            </CardBody>
+          </Card>
 
-            {tipoProva === "Personalizado" ? (
-              
-              /* ====== MODO PERSONALIZADO ====== */
-              <div style={{ animation: 'slideUp 0.3s ease-out', marginBottom: '20px' }}>
-                <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Database size={16} /> Conteúdo Programático Específico
-                </label>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                  Cole aqui a parte do edital com as disciplinas e assuntos exigidos para o seu cargo. A IA usará essas informações para elaborar o contexto da prova e sortear a cobrança.
-                </p>
-                <textarea 
-                  value={editalTrecho} 
-                  onChange={e => setEditalTrecho(e.target.value)} 
-                  className="textarea" 
-                  style={{ minHeight: '150px' }}
-                  placeholder="Ex: CARGO 10: ANALISTA... ENGENHARIA DE DADOS: 1 Dado, informação... 2 Modelagem..." 
-                />
-              </div>
-
-            ) : (
-
-              /* ====== MODO NORMAL ====== */
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-                  <div>
-                    <label className="label">Disciplina</label>
-                    <input type="text" value={area} onChange={e => setArea(e.target.value)} className="input" placeholder="Ex: Direito Constitucional, TI..." />
+          <Card>
+            <CardHead title={<span className="td__passo"><b>2</b> Definição do tema</span>} />
+            <CardBody className="td__form">
+              {tipoProva === "Personalizado" ? (
+                <div className="td__campo">
+                  <span className="ui-field__label"><Database size={14} /> Conteúdo programático do seu cargo</span>
+                  <p className="td__ajuda">
+                    Cole a parte do edital com as disciplinas e assuntos exigidos. A IA usa isso para montar o
+                    cenário e sortear o que será cobrado.
+                  </p>
+                  <textarea
+                    className="td__textarea"
+                    value={editalTrecho}
+                    onChange={(e) => setEditalTrecho(e.target.value)}
+                    rows={7}
+                    placeholder="ex: CARGO 10: ANALISTA — ENGENHARIA DE DADOS: 1 Dado, informação… 2 Modelagem…"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="td__linha">
+                    <Input label="Disciplina" value={area} onChange={(e) => setArea(e.target.value)} placeholder="ex: Direito Constitucional" />
+                    <Input label="Tópico específico" value={topicos} onChange={(e) => setTopicos(e.target.value)} placeholder="ex: Direitos fundamentais" />
                   </div>
-                  <div>
-                    <label className="label">Tópico Específico</label>
-                    <input type="text" value={topicos} onChange={e => setTopicos(e.target.value)} className="input" placeholder="Ex: Direitos Fundamentais..." />
+
+                  {(tipoProva.includes("Estudo de Caso") || tipoProva.includes("Peça")) && (
+                    <div className="td__opcional">
+                      <span className="ui-field__label">
+                        <Database size={14} /> Análise do edital <span className="td__tag">opcional</span>
+                      </span>
+                      <p className="td__ajuda">
+                        Cole o bloco do edital para a IA extrair os detalhes e moldar o caso com mais precisão.
+                      </p>
+                      <textarea
+                        className="td__textarea"
+                        value={editalTrecho}
+                        onChange={(e) => setEditalTrecho(e.target.value)}
+                        rows={4}
+                        placeholder="ex: DIREITO PENAL: 1 Princípios básicos. 2 Aplicação da lei penal…"
+                      />
+                      <Button
+                        onClick={handleAnalisarEdital}
+                        disabled={isExtracting || !editalTrecho.trim()}
+                        icon={isExtracting ? <RefreshCw size={15} className="spin" /> : <Wand2 size={15} />}
+                        block
+                      >
+                        {isExtracting ? "Analisando o texto…" : "Preencher disciplina e tópicos automaticamente"}
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleGerarProva}
+                disabled={tipoProva === "Personalizado" ? !editalTrecho : !area || !topicos}
+                icon={<RefreshCw size={16} />}
+                block
+              >
+                Gerar treino inédito
+              </Button>
+
+              {error && <Notice tone="err" onClose={() => setError(null)}>{error}</Notice>}
+            </CardBody>
+          </Card>
+        </>
+      )}
+
+      {/* ---------------------------------------------- gerando */}
+      {loading && (
+        <Card>
+          <CardBody className="td__carregando">
+            <RefreshCw size={40} className="spin" />
+            <h2>Elaborando o cenário…</h2>
+            <p>{banca} · nível {nivel} · {tipoProva}</p>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* ---------------------------------------------- prova */}
+      {prova && !correcao && (
+        <>
+          {isModoPressao && (
+            <div className={`td__cronometro${timeLeft < 60 ? " is-critico" : ""}`}>
+              <span><Timer size={20} /> Tempo restante</span>
+              <b>{formatTime(timeLeft)}</b>
+            </div>
+          )}
+
+          <div className="td__prova">
+            <Card>
+              <CardHead title={<span className="td__passo"><BookOpen size={16} /> Caderno de prova</span>} />
+              <CardBody className="td__caderno">
+                <section>
+                  <h4>Texto motivador</h4>
+                  <Md>{safeString(prova.texto_motivador)}</Md>
+                </section>
+
+                <section className="td__comando">
+                  <h4>Comando da questão</h4>
+                  <Md>{safeString(prova.comando)}</Md>
+                </section>
+
+                {safeArray(prova.aspectos).length > 0 && (
+                  <section>
+                    <h4>Aspectos avaliados obrigatoriamente</h4>
+                    <ul className="td__aspectos">
+                      {safeArray(prova.aspectos).map((asp, i) => (
+                        <li key={i}>
+                          <span>{safeString(asp.aspecto)}</span>
+                          <b>{safeString(asp.valor_maximo)} pts</b>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </CardBody>
+            </Card>
+
+            <div className="td__editor">
+              {maxLinhas > 15 && (
+                <Button size="sm" onClick={() => setUseDraftMode(!useDraftMode)} icon={<Edit3 size={14} />}>
+                  {useDraftMode ? "Ir direto ao texto definitivo" : "Abrir esqueleto guiado"}
+                </Button>
+              )}
+
+              {useDraftMode ? (
+                <>
+                  <div className="td__bloco">
+                    <span className="ui-field__label">1. Tópico frasal — a tese</span>
+                    <textarea className="td__textarea" value={draftTese} onChange={(e) => setDraftTese(e.target.value)} rows={3}
+                      placeholder="Apresente o conceito principal de forma direta." />
+                  </div>
+                  <div className="td__bloco">
+                    <span className="ui-field__label">2. Desenvolvimento — fundamentação e exemplos</span>
+                    <textarea className="td__textarea" value={draftArgs} onChange={(e) => setDraftArgs(e.target.value)} rows={6}
+                      placeholder="Responda aos aspectos exigidos, usando conectivos." />
+                  </div>
+                  <div className="td__bloco">
+                    <span className="ui-field__label">3. Conclusão — fechamento</span>
+                    <textarea className="td__textarea" value={draftConclusao} onChange={(e) => setDraftConclusao(e.target.value)} rows={3}
+                      placeholder="Conclua a ideia ou proponha uma solução." />
+                  </div>
+                  <Button onClick={handleUnirRascunho} icon={<ArrowDown size={15} />} block>
+                    Unir os blocos e revisar o texto definitivo
+                  </Button>
+                </>
+              ) : (
+                <div className="td__folha">
+                  <textarea
+                    className={`td__textarea td__resposta${excedeuLinhas ? " is-excedido" : ""}`}
+                    value={resposta}
+                    onChange={(e) => setResposta(e.target.value)}
+                    disabled={loadingCorrecao}
+                    placeholder={placeholderDinamico}
+                    spellCheck={!isModoPressao}
+                    onPaste={(e) => {
+                      if (isModoPressao) {
+                        e.preventDefault();
+                        setAviso({ tone: "warn", texto: "Modo pressão: colar texto de fora está bloqueado." });
+                      }
+                    }}
+                  />
+                  <div className="td__contador">
+                    <span>Meta: cerca de {maxLinhas} linhas</span>
+                    <b className={excedeuLinhas ? "is-excedido" : palavrasCount >= minPalavrasRecomendado ? "is-ok" : ""}>
+                      {linhasEstimadas} linha(s) · {palavrasCount} palavra(s)
+                    </b>
                   </div>
                 </div>
+              )}
 
-                {(tipoProva.includes("Estudo de Caso") || tipoProva.includes("Peça")) && (
-                  <div style={{ background: 'var(--hover-bg)', padding: '20px', borderRadius: '8px', border: '1px dashed var(--border)', marginBottom: '20px', animation: 'slideUp 0.3s ease-out' }}>
-                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Database size={16} /> Análise Inteligente do Edital <span style={{ color: 'var(--text-muted)', textTransform: 'none', fontWeight: 'normal' }}>(Opcional)</span>
-                    </label>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Cole o bloco do edital abaixo para a IA extrair detalhes complexos e moldar o caso prático com maior precisão.</p>
-                    <textarea 
-                      value={editalTrecho} 
-                      onChange={e => setEditalTrecho(e.target.value)} 
-                      className="textarea" 
-                      style={{ minHeight: '100px', marginBottom: '10px' }}
-                      placeholder="Ex: DIREITO PENAL: 1 Princípios básicos. 2 Aplicação da lei penal..." 
-                    />
-                    <button 
-                      onClick={handleAnalisarEdital} 
-                      disabled={isExtracting || !editalTrecho.trim()} 
-                      className="btn" 
-                      style={{ width: '100%', background: 'var(--card-bg)' }}
-                    >
-                      {isExtracting ? <RefreshCw className="spin" size={18} /> : <Wand2 size={18} color="var(--primary)" />}
-                      {isExtracting ? "A analisar texto..." : "Preencher Disciplina e Tópicos Automaticamente"}
-                    </button>
-                  </div>
+              <div className="td__acoes">
+                <Button onClick={() => setProva(null)}>Abandonar</Button>
+                <Button
+                  variant="primary"
+                  onClick={handleCorrigir}
+                  disabled={loadingCorrecao || (palavrasCount < 5 && !useDraftMode)}
+                  icon={loadingCorrecao ? <RefreshCw size={16} className="spin" /> : <Send size={16} />}
+                >
+                  {loadingCorrecao ? "Avaliando…" : "Entregar prova"}
+                </Button>
+              </div>
+
+              {error && <Notice tone="err" onClose={() => setError(null)}>{error}</Notice>}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ---------------------------------------------- correção */}
+      {correcao && (
+        <Card>
+          <div className="td__nota">
+            <CheckCircle size={28} />
+            <div>
+              <b>Nota final: {correcao.nota_final_calculada?.toFixed(1)} / 20,0</b>
+              <span>Avaliação concluída</span>
+            </div>
+          </div>
+
+          <Tabs
+            idBase="td-correcao"
+            aria="Resultado da correção"
+            ativo={activeTab}
+            onTrocar={setActiveTab}
+            itens={[
+              { id: "geral", rotulo: "Visão geral", icone: LayoutTemplate },
+              { id: "espelho", rotulo: "Espelho de correção", icone: CheckSquare },
+              { id: "sintaxe", rotulo: "Análise sintática", icone: FileText },
+            ]}
+          />
+
+          {/* Um painel só, trocando de id junto com a aba: é sempre um
+              conteúdo de cada vez, e o aria-labelledby acompanha. */}
+          <TabPanel id={activeTab} idBase="td-correcao" className="ui-card__body td__resultado">
+            {activeTab === "geral" && (
+              <>
+                <section className="td__parecer">
+                  <h4><MessageSquare size={17} /> Parecer da banca</h4>
+                  <Md>{safeString(correcao.feedback_geral)}</Md>
+                </section>
+                {correcao.dica_estudo && (
+                  <section className="td__plano">
+                    <h4><Target size={17} /> Plano de ação</h4>
+                    <Md>{safeString(correcao.dica_estudo)}</Md>
+                  </section>
                 )}
               </>
             )}
 
-            <button onClick={handleGerarProva} disabled={(tipoProva === "Personalizado" ? !editalTrecho : (!area || !topicos))} className="btn primary" style={{ width: '100%', padding: '15px', fontSize: '1.1rem', marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-              <RefreshCw size={20} /> Gerar Treino Inédito
-            </button>
-            {error && <div className="error" style={{ marginTop: '15px' }}>{error}</div>}
-          </div>
-        </div>
-      )}
-
-      {/* ESTADO DE CARREGAMENTO */}
-      {loading && (
-        <div className="panel" style={{ textAlign: 'center', padding: '60px 20px' }}>
-          <RefreshCw size={48} className="spin" color="var(--primary)" style={{ margin: '0 auto 20px auto' }} />
-          <h2 style={{ color: 'var(--heading-color)', margin: '0 0 10px 0' }}>Elaborando o Cenário...</h2>
-          <p style={{ color: 'var(--text-secondary)' }}>Configurando: {banca} • Nível {nivel} • {tipoProva}</p>
-        </div>
-      )}
-
-      {/* AMBIENTE DE PROVA (SPLIT VIEW) */}
-      {prova && !correcao && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          
-          {isModoPressao && (
-            <div style={{ background: 'var(--error-bg)', color: 'var(--error-text)', padding: '15px 20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid var(--error-text)', fontWeight: 'bold' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Timer size={24} className={timeLeft < 60 ? "pulse" : ""} />
-                <span>Tempo Restante (Modo Pressão):</span>
-              </div>
-              <div style={{ fontSize: '1.5rem', fontFamily: 'monospace' }}>
-                {formatTime(timeLeft)}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px', alignItems: 'stretch' }}>
-            
-            <div className="panel" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
-              <div style={{ background: 'var(--hover-bg)', padding: '15px 20px', borderBottom: '1px solid var(--border)' }}>
-                <h3 style={{ margin: 0, color: 'var(--heading-color)', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <BookOpen size={18} /> Caderno de Prova
-                </h3>
-              </div>
-              <div className="md" style={{ padding: '20px', overflowY: 'auto', maxHeight: 'calc(100vh - 250px)' }}>
-                <div style={{ marginBottom: '25px' }}>
-                  <strong style={{ color: 'var(--text-main)', display: 'block', marginBottom: '10px' }}>Texto Motivador</strong>
-                  <Md>{safeString(prova.texto_motivador)}</Md>
-                </div>
-                <div style={{ background: 'var(--primary-light)', padding: '15px', borderRadius: '8px', borderLeft: '4px solid var(--primary)', marginBottom: '25px' }}>
-                  <strong style={{ color: 'var(--primary)', display: 'block', marginBottom: '5px' }}>Comando:</strong>
-                  <Md>{safeString(prova.comando)}</Md>
-                </div>
-                {safeArray(prova.aspectos).length > 0 && (
-                  <div>
-                    <strong style={{ color: 'var(--text-main)' }}>Abordagem Obrigatória</strong>
-                    <ul className="list" style={{ marginTop: '10px' }}>
-                      {safeArray(prova.aspectos).map((asp, i) => (
-                        <li key={i} style={{ marginBottom: '12px', fontSize: '0.95rem' }}>
-                          {safeString(asp.aspecto)} <strong style={{ color: 'var(--error-text)' }}>({safeString(asp.valor_maximo)} pts)</strong>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              
-              {maxLinhas > 15 && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={() => setUseDraftMode(!useDraftMode)} className="btn small" style={{ background: 'var(--hover-bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Edit3 size={14} /> {useDraftMode ? "Ir direto para Texto Definitivo" : "Abrir Esqueleto Guiado (Rascunho)"}
-                  </button>
-                </div>
-              )}
-
-              {useDraftMode ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', flex: 1 }}>
-                  <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '12px', border: '1px dashed var(--primary)' }}>
-                    <label className="label" style={{ color: 'var(--primary)' }}>1. Tópico Frasal (A tese / Introdução)</label>
-                    <textarea value={draftTese} onChange={e => setDraftTese(e.target.value)} className="textarea" style={{ minHeight: '80px', background: 'var(--bg)' }} placeholder="Apresente o conceito principal de forma direta..." />
-                  </div>
-                  <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '12px', border: '1px dashed var(--primary)' }}>
-                    <label className="label" style={{ color: 'var(--primary)' }}>2. Desenvolvimento (Fundamentação e Exemplos)</label>
-                    <textarea value={draftArgs} onChange={e => setDraftArgs(e.target.value)} className="textarea" style={{ minHeight: '150px', background: 'var(--bg)' }} placeholder="Responda aos aspectos exigidos, usando conectivos..." />
-                  </div>
-                  <div style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '12px', border: '1px dashed var(--primary)' }}>
-                    <label className="label" style={{ color: 'var(--primary)' }}>3. Conclusão (Fechamento)</label>
-                    <textarea value={draftConclusao} onChange={e => setDraftConclusao(e.target.value)} className="textarea" style={{ minHeight: '80px', background: 'var(--bg)' }} placeholder="Conclua a ideia ou proponha solução..." />
-                  </div>
-                  <button onClick={handleUnirRascunho} className="btn" style={{ background: 'var(--primary-light)', color: 'var(--primary)', borderColor: 'var(--primary)', padding: '15px', display: 'flex', justifyContent: 'center', gap: '10px', fontWeight: 'bold' }}>
-                    <ArrowDown size={18} /> Unir blocos e Revisar Texto Definitivo
-                  </button>
-                </div>
-              ) : (
-                <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
-                  <textarea 
-                    value={resposta}
-                    onChange={e => setResposta(e.target.value)}
-                    disabled={loadingCorrecao}
-                    placeholder={placeholderDinamico}
-                    className="textarea"
-                    spellCheck={!isModoPressao} 
-                    onPaste={(e) => { if(isModoPressao) { e.preventDefault(); alert("Modo Pressão: Colar bloqueado!"); } }}
-                    style={{ 
-                      flex: 1, paddingBottom: '60px', borderRadius: '12px',
-                      minHeight: '400px', resize: 'none',
-                      borderColor: excedeuLinhas ? 'var(--error-text)' : 'var(--border)'
-                    }}
-                  />
-                  
-                  <div style={{ 
-                    position: 'absolute', bottom: '15px', right: '15px', left: '15px',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    background: 'var(--card-bg)', padding: '10px 15px', borderRadius: '8px',
-                    border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)'
-                  }}>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Meta: ~{maxLinhas} linhas</span>
-                    <span style={{ 
-                      fontSize: '0.9rem', fontWeight: '700',
-                      color: excedeuLinhas ? 'var(--error-text)' : (palavrasCount >= minPalavrasRecomendado ? 'var(--success-text)' : 'var(--text-main)')
-                    }}>
-                      {linhasEstimadas} linhas ({palavrasCount} pal.)
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={() => setProva(null)} className="btn" style={{ flex: 1 }}>Abandonar</button>
-                <button onClick={handleCorrigir} disabled={loadingCorrecao || (palavrasCount < 5 && !useDraftMode)} className="btn primary" style={{ flex: 2 }}>
-                  {loadingCorrecao ? <RefreshCw size={20} className="spin" /> : <Send size={20} />}
-                  {loadingCorrecao ? "Avaliando..." : "Entregar Prova"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* RESULTADO DA CORREÇÃO (TABS) */}
-      {correcao && (
-        <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-          
-          <div style={{ background: 'var(--success-bg)', padding: '20px 25px', borderBottom: '1px solid var(--success-text)', display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <CheckCircle size={32} color="var(--success-text)" />
-            <div>
-              <h2 style={{ margin: 0, color: 'var(--success-text)', fontSize: '1.75rem' }}>Nota Final: {correcao.nota_final_calculada?.toFixed(1)} / 20.0</h2>
-              <span style={{ color: 'var(--success-text)', opacity: 0.8, fontSize: '0.9rem' }}>Avaliação concluída pela IA</span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: 'var(--hover-bg)', overflowX: 'auto' }}>
-            <button 
-              onClick={() => setActiveTab("geral")} 
-              style={{ padding: '15px 25px', border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: '600', fontSize: '0.95rem', borderBottom: activeTab === "geral" ? '3px solid var(--primary)' : '3px solid transparent', color: activeTab === "geral" ? 'var(--primary)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}
-            >
-              <LayoutTemplate size={18} /> Visão Geral
-            </button>
-            <button 
-              onClick={() => setActiveTab("espelho")} 
-              style={{ padding: '15px 25px', border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: '600', fontSize: '0.95rem', borderBottom: activeTab === "espelho" ? '3px solid var(--primary)' : '3px solid transparent', color: activeTab === "espelho" ? 'var(--primary)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}
-            >
-              <CheckSquare size={18} /> Espelho de Correção
-            </button>
-            <button 
-              onClick={() => setActiveTab("sintaxe")} 
-              style={{ padding: '15px 25px', border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: '600', fontSize: '0.95rem', borderBottom: activeTab === "sintaxe" ? '3px solid var(--primary)' : '3px solid transparent', color: activeTab === "sintaxe" ? 'var(--primary)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}
-            >
-              <FileText size={18} /> Análise Sintática
-            </button>
-          </div>
-
-          <div style={{ padding: '30px' }}>
-            
-            {activeTab === "geral" && (
-              <div className="md" style={{ animation: 'slideUp 0.3s ease-out' }}>
-                <div style={{ background: 'var(--bg)', padding: '20px', borderRadius: '10px', borderLeft: '4px solid var(--primary)', marginBottom: '25px' }}>
-                  <h4 style={{ margin: '0 0 10px 0', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <MessageSquare size={20} /> Parecer da Banca
-                  </h4>
-                  <Md>{safeString(correcao.feedback_geral)}</Md>
-                </div>
-
-                {correcao.dica_estudo && (
-                  <div style={{ padding: '20px', background: 'var(--primary-light)', borderRadius: '10px', border: '1px solid var(--primary)', boxShadow: 'var(--shadow-sm)' }}>
-                    <h4 style={{ margin: '0 0 10px 0', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Target size={20} /> Plano de Ação / Dica de Estudo
-                    </h4>
-                    <Md>{safeString(correcao.dica_estudo)}</Md>
-                  </div>
-                )}
-              </div>
-            )}
-
             {activeTab === "espelho" && (
-              <div className="md" style={{ animation: 'slideUp 0.3s ease-out' }}>
-                {safeArray(correcao.avaliacoes_aspectos).map((av, k) => (
-                  <div key={k} style={{ marginBottom: '25px', background: 'var(--card-bg)', padding: '20px', borderRadius: '10px', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '15px' }}>
-                      <div style={{ fontWeight: '700', color: 'var(--heading-color)', fontSize: '1.05rem', flex: 1 }}>{safeString(av.aspecto)}</div>
-                      <div style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.15rem', background: 'var(--primary-light)', padding: '4px 12px', borderRadius: '999px' }}>
-                        Nota: {safeString(av.nota_atribuida)}
-                      </div>
+              safeArray(correcao.avaliacoes_aspectos).length === 0 ? (
+                <EmptyState icon={<CheckSquare size={20} />} title="Sem espelho detalhado"
+                  description="A correção não devolveu a avaliação aspecto a aspecto desta vez." />
+              ) : (
+                safeArray(correcao.avaliacoes_aspectos).map((av, k) => (
+                  <section key={k} className="td__aspecto">
+                    <header>
+                      <b>{safeString(av.aspecto)}</b>
+                      <span className="td__aspecto-nota">{safeString(av.nota_atribuida)}</span>
+                    </header>
+                    <div className="td__aspecto-analise">
+                      <span className="ui-field__label">Análise do seu texto</span>
+                      <Md>{safeString(av.comentario)}</Md>
                     </div>
-                    
-                    <div style={{ marginBottom: '20px', color: 'var(--text-secondary)' }}>
-                      <strong style={{ color: 'var(--text-main)', fontSize: '0.9rem', textTransform: 'uppercase' }}>Análise do seu texto:</strong>
-                      <div style={{ marginTop: '8px' }}><Md>{safeString(av.comentario)}</Md></div>
-                    </div>
-
                     {av.padrao_esperado && (
-                      <div style={{ background: 'var(--success-bg)', border: '1px dashed var(--success-text)', padding: '15px', borderRadius: '8px' }}>
-                        <strong style={{ color: 'var(--success-text)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                          💡 O que era esperado (Espelho Ideal):
-                        </strong>
-                        <div style={{ color: 'var(--text-main)', fontSize: '0.95em' }}>
-                          <Md>{safeString(av.padrao_esperado)}</Md>
-                        </div>
+                      <div className="td__espelho">
+                        <b>Como a resposta perfeita seria</b>
+                        <Md>{safeString(av.padrao_esperado)}</Md>
                       </div>
                     )}
-                  </div>
-                ))}
-              </div>
+                  </section>
+                ))
+              )
             )}
 
-            {/* ABA SINTAXE REVISADA COM COMPATIBILIDADE VISUAL DE ERROS */}
             {activeTab === "sintaxe" && (
-              <div className="md" style={{ animation: 'slideUp 0.3s ease-out' }}>
-                <div style={{ background: 'var(--error-bg)', padding: '25px', borderRadius: '10px', border: '1px solid var(--error-text)' }}>
-                  <h4 style={{ margin: '0 0 15px 0', color: 'var(--error-text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertCircle size={20} /> Erros Gramaticais e Coesão
-                  </h4>
-                  
-                  {safeArray(correcao.analise_sintatica).length === 0 ? (
-                     correcao.erros_gramaticais ? (
-                        <div style={{ color: 'var(--text-main)' }}>
-                          <Md>{safeString(correcao.erros_gramaticais)}</Md>
-                        </div>
-                     ) : (
-                        <div style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>Nenhum erro gramatical grave encontrado. Parabéns!</div>
-                     )
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                      {safeArray(correcao.analise_sintatica).map((erro, index) => (
-                        <div key={index} style={{ background: 'var(--card-bg)', padding: '15px', borderRadius: '8px', borderLeft: '4px solid var(--error-text)', boxShadow: 'var(--shadow-sm)' }}>
-                          <div style={{ textDecoration: 'line-through', color: 'var(--error-text)', marginBottom: '5px' }}>
-                            "{safeString(erro.trecho_original)}"
-                          </div>
-                          <div style={{ color: 'var(--success-text)', fontWeight: 'bold', marginBottom: '5px' }}>
-                            Sugestão: "{safeString(erro.correcao)}"
-                          </div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                            <strong>Motivo:</strong> {safeString(erro.motivo)}
-                          </div>
-                        </div>
-                      ))}
+              safeArray(correcao.analise_sintatica).length === 0 ? (
+                correcao.erros_gramaticais ? (
+                  <section className="td__gramatica"><Md>{safeString(correcao.erros_gramaticais)}</Md></section>
+                ) : (
+                  <div className="td__limpo"><CheckCircle size={19} /> Nenhum desvio gramatical grave encontrado.</div>
+                )
+              ) : (
+                <div className="td__desvios">
+                  {safeArray(correcao.analise_sintatica).map((erro, i) => (
+                    <div key={i} className="td__desvio">
+                      <s>{safeString(erro.trecho_original)}</s>
+                      <b>{safeString(erro.correcao)}</b>
+                      <span>{safeString(erro.motivo)}</span>
                     </div>
-                  )}
+                  ))}
                 </div>
-              </div>
+              )
             )}
 
-            {/* BOTÕES DE AÇÃO: CICLO DE REFAÇÃO */}
-            <div style={{ marginTop: '35px', paddingTop: '20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-              <button onClick={handleRefazerProva} className="btn" style={{ flex: 1, padding: '15px', fontSize: '1.05rem', color: 'var(--primary)', borderColor: 'var(--primary)', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                <RotateCcw size={18} /> Reescrever com base no Feedback
-              </button>
-              <button onClick={() => { setCorrecao(null); setProva(null); }} className="btn primary" style={{ flex: 1, padding: '15px', fontSize: '1.05rem' }}>
-                Concluir e Gerar Novo Treino
-              </button>
+            <div className="td__acoes td__acoes--fim">
+              <Button onClick={handleRefazerProva} icon={<RotateCcw size={15} />}>
+                Reescrever com base no parecer
+              </Button>
+              <Button variant="primary" onClick={() => { setCorrecao(null); setProva(null); }}>
+                Concluir e gerar novo treino
+              </Button>
             </div>
-          </div>
-        </div>
+          </TabPanel>
+        </Card>
       )}
+
+      <Toast aviso={aviso} onFechar={() => setAviso(null)} />
     </div>
   );
 }

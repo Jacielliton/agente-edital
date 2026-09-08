@@ -48,3 +48,69 @@
   text-align: left;
 }
 .md-table th { background: var(--surface-3); font-weight: 700; }
+
+/* --- Tipografia do markdown longo (aula, parecer, comentário) ---
+   Vinha do App.css legado. Mantida como estava para não mexer na
+   leitura das aulas já geradas. */
+/* --- Markdown Styles --- */
+.md {
+  color: var(--fg-2);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.md p {
+  margin-bottom: 1rem;
+}
+
+.md strong {
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.md ul {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.md li {
+  margin-bottom: 0.5rem;
+}
+
+.md h3, .md h4 {
+  color: var(--fg);
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Força o negrito que o Tailwind/Reset remove por padrão */
+.markdown-format strong,
+.markdown-format b {
+  font-weight: 800 !important; 
+  color: var(--fg) !important;
+}
+
+/* Força o itálico */
+.markdown-format em,
+.markdown-format i {
+  font-style: italic !important;
+}
+
+/* Garante que as listas tenham as "bolinhas" (bullets) normais */
+.markdown-format ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin-bottom: 1rem !important;
+}
+
+/* Garante que as listas numéricas fiquem corretas */
+.markdown-format ol {
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin-bottom: 1rem !important;
+}
+
+/* Espaçamento correto entre parágrafos de texto */
+.markdown-format p {
+  margin-bottom: 0.75rem !important;
+}

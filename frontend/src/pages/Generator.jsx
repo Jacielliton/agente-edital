@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import LessonContent from "../components/LessonContent";
-import { Modal, Notice } from "../components/ui";
+import {
+  Button, Card, CardHead, CardBody, Input, PageHeader, ProgressBar, Modal, Notice, Toast,
+} from "../components/ui";
+import { Sparkles, Download, Upload, Save } from "lucide-react";
 import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
+import "./Generator.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000"; 
 
@@ -357,11 +361,12 @@ export default function Generator() {
   };
 
   return (
-    <div className="container">
-      <header className="header">
-        <h1 style={{ color: 'var(--heading-color)', margin: '0 0 10px 0' }}>Gerador de Aulas AI</h1>
-        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Transforme editais secos em conteúdos didáticos e simulados incríveis.</p>
-      </header>
+    <div className="gen">
+      <PageHeader
+        eyebrow="Gestão"
+        title="Gerador de aulas"
+        description="Cole o conteúdo programático do seu edital. A plataforma devolve a aula explicada, as questões no padrão da banca e a discursiva do módulo."
+      />
 
       <AiKeyBar
         userApiKey={userApiKey}
@@ -370,188 +375,141 @@ export default function Generator() {
         label="IA que gera as aulas"
       />
 
-      <section className="panel" style={{ padding: '25px' }}>
-        <div className="row">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
-            <label className="label" style={{ margin: 0 }}>Assunto / Edital</label>
-            <span style={{ fontSize: '0.8rem', color: text.length > 50 ? 'var(--success-text)' : 'var(--text-muted)' }}>
-              {text.length} caracteres
-            </span>
-          </div>
-          <textarea
-            className="textarea"
-            value={text}
-            onChange={handleTextChange}
-            disabled={loading}
-            placeholder="Cole aqui o trecho do edital, lei ou conteúdo programático..."
-            style={{ minHeight: '180px', backgroundColor: 'var(--input-bg)' }}
-          />
-        </div>
-
-        {/* A banca precisa ser conhecida ANTES da geração: é ela que define o
-            estilo do enunciado, das alternativas e da pegadinha. */}
-        <div className="row" style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 150px' }}>
-            <label className="label">Banca *</label>
-            <input className="input" placeholder="Ex: CEBRASPE, FGV, FCC" value={saveBanca} onChange={e => setSaveBanca(e.target.value)} disabled={loading} />
-          </div>
-          <div style={{ flex: '2 1 200px' }}>
-            <label className="label">Concurso *</label>
-            <input className="input" placeholder="Ex: DATAPREV, Polícia Federal" value={saveConcurso} onChange={e => setSaveConcurso(e.target.value)} disabled={loading} />
-          </div>
-          <div style={{ flex: '1 1 150px' }}>
-            <label className="label">Cargo</label>
-            <input className="input" placeholder="Ex: Analista de TI" value={saveCargo} onChange={e => setSaveCargo(e.target.value)} disabled={loading} />
-          </div>
-          <div style={{ flex: '0 1 110px' }}>
-            <label className="label">Ano *</label>
-            <input className="input" placeholder="2026" value={saveAno} onChange={e => setSaveAno(e.target.value)} disabled={loading} />
-          </div>
-        </div>
-
-        <div className="row" style={{ display: 'flex', gap: '15px', marginTop: '15px', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1 }}>
-            <label className="label">Nível das Questões</label>
-            <select 
-              className="select" 
-              value={questionLevel} 
-              onChange={(e) => setQuestionLevel(e.target.value)}
+      <Card>
+        <CardHead title="O que gerar" />
+        <CardBody className="gen__form">
+          <div className="gen__campo">
+            <div className="gen__campo-topo">
+              <span className="ui-field__label">Assunto ou trecho do edital</span>
+              <span className={`gen__contagem${text.length > 50 ? " is-ok" : ""}`}>{text.length} caracteres</span>
+            </div>
+            <textarea
+              className="gen__textarea"
+              value={text}
+              onChange={handleTextChange}
               disabled={loading}
-            >
-              <option value="Iniciante">Iniciante</option>
-              <option value="Normal">Normal</option>
-              <option value="Avançado">Avançado</option>
-              <option value="Expert">Expert</option>
-            </select>
-          </div>
-          <div style={{ flex: 1 }}>
-            <label className="label">Formato das Questões</label>
-            <select 
-              className="select" 
-              value={questionFormat} 
-              onChange={(e) => setQuestionFormat(e.target.value)}
-              disabled={loading}
-            >
-              <option value="Múltipla Escolha">Múltipla Escolha (A a E)</option>
-              <option value="Certo/Errado">Certo / Errado</option>
-            </select>
-          </div>
-          <div style={{ flex: '0 1 160px' }}>
-            <label className="label">Questões por módulo</label>
-            <input
-              className="input"
-              type="number"
-              min="3"
-              max="20"
-              value={qtdQuestoes}
-              onChange={(e) => setQtdQuestoes(e.target.value)}
-              disabled={loading}
+              rows={8}
+              placeholder="Cole aqui o trecho do edital, da lei ou o conteúdo programático…"
             />
           </div>
-        </div>
 
-        {/* FEEDBACK VISUAL DE CARREGAMENTO */}
-        {loading && (
-          <div style={{ marginTop: '20px', background: 'var(--bg)', padding: '20px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--primary)', gap: '15px' }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status}</span>
-              <span style={{ flex: 'none' }}>{progress}%</span>
-            </div>
-            <div style={{ width: '100%', backgroundColor: 'var(--border)', height: '10px', borderRadius: '5px', overflow: 'hidden' }}>
-              <div style={{ width: `${progress}%`, backgroundColor: 'var(--primary)', height: '100%', transition: 'width 0.5s ease-out' }}></div>
-            </div>
-            {estrutura && (
-              <p style={{ margin: '10px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Cada módulo é gerado numa chamada própria. Você pode acompanhar o resultado aparecendo abaixo conforme fica pronto.
-              </p>
-            )}
+          {/* A banca precisa ser conhecida ANTES da geração: é ela que define o
+              estilo do enunciado, das alternativas e da pegadinha. */}
+          <div className="gen__linha">
+            <Input label="Banca *" value={saveBanca} onChange={(e) => setSaveBanca(e.target.value)}
+              disabled={loading} placeholder="ex: CEBRASPE, FGV, FCC" />
+            <Input label="Concurso *" value={saveConcurso} onChange={(e) => setSaveConcurso(e.target.value)}
+              disabled={loading} placeholder="ex: DATAPREV, Polícia Federal" />
+            <Input label="Cargo" value={saveCargo} onChange={(e) => setSaveCargo(e.target.value)}
+              disabled={loading} placeholder="ex: Analista de TI" />
+            <Input label="Ano *" value={saveAno} onChange={(e) => setSaveAno(e.target.value)}
+              disabled={loading} placeholder="2026" className="gen__estreito" />
           </div>
-        )}
 
-        <div className="actions" style={{ marginTop: '25px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button className="btn primary" onClick={run} disabled={loading || text.trim().length < 10} style={{ flex: '1 1 200px', padding: '12px', fontSize: '1.05rem' }}>
-            {loading ? "A processar..." : "✨ Gerar Material Completo"}
-          </button>
+          <div className="gen__linha">
+            <label className="ui-field">
+              <span className="ui-field__label">Nível das questões</span>
+              <select className="ui-input" value={questionLevel} disabled={loading}
+                onChange={(e) => setQuestionLevel(e.target.value)}>
+                <option value="Iniciante">Iniciante</option>
+                <option value="Normal">Normal</option>
+                <option value="Avançado">Avançado</option>
+                <option value="Expert">Expert</option>
+              </select>
+            </label>
+            <label className="ui-field">
+              <span className="ui-field__label">Formato das questões</span>
+              <select className="ui-input" value={questionFormat} disabled={loading}
+                onChange={(e) => setQuestionFormat(e.target.value)}>
+                <option value="Múltipla Escolha">Múltipla escolha (A a E)</option>
+                <option value="Certo/Errado">Certo / Errado</option>
+              </select>
+            </label>
+            <Input label="Questões por módulo" type="number" min="3" max="20" value={qtdQuestoes}
+              onChange={(e) => setQtdQuestoes(e.target.value)} disabled={loading} className="gen__estreito" />
+          </div>
 
-          <button className="btn" onClick={() => result && downloadJson(result)} disabled={!result} style={{ flex: '1 1 120px' }}>
-            ⬇️ Baixar JSON
-          </button>
+          {loading && (
+            <div className="gen__progresso">
+              <div className="gen__progresso-topo">
+                <span>{status}</span>
+                <b>{progress}%</b>
+              </div>
+              <ProgressBar value={progress} aria-label="Progresso da geração" />
+              {estrutura && (
+                <p>Cada módulo é gerado numa chamada própria — o resultado aparece abaixo conforme fica pronto.</p>
+              )}
+            </div>
+          )}
 
-          <label className="btn file" style={{ flex: '1 1 120px', textAlign: 'center' }}>
-            📂 Carregar JSON
-            <input type="file" accept="application/json" onChange={onLoadJson} hidden />
-          </label>
-        </div>
+          <div className="gen__acoes">
+            <Button variant="primary" size="lg" onClick={run} disabled={loading || text.trim().length < 10} icon={<Sparkles size={16} />}>
+              {loading ? "Processando…" : "Gerar material completo"}
+            </Button>
+            <Button onClick={() => result && downloadJson(result)} disabled={!result} icon={<Download size={15} />}>
+              Baixar JSON
+            </Button>
+            <label className="ui-btn gen__arquivo">
+              <Upload size={15} /> Carregar JSON
+              <input type="file" accept="application/json" onChange={onLoadJson} hidden />
+            </label>
+          </div>
 
-        {/* Módulos que falharam: refazer só eles, sem regerar o edital todo. */}
-        {falhas.length > 0 && !loading && (
-          <div style={{ marginTop: '20px', padding: '15px', borderRadius: '8px', border: '1px solid var(--warn, #B4720B)', background: 'var(--warn-soft, #FDF3E2)' }}>
-            <strong style={{ display: 'block', marginBottom: '10px', color: 'var(--warn, #B4720B)' }}>
-              {falhas.length} módulo(s) não foram gerados
-            </strong>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {/* Módulos que falharam: refazer só eles, sem regerar o edital todo. */}
+          {falhas.length > 0 && !loading && (
+            <div className="gen__falhas">
+              <b>{falhas.length} módulo(s) não foram gerados</b>
               {falhas.map((f) => (
-                <div key={f.indice} style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                <div key={f.indice} className="gen__falha">
+                  <span>
                     {f.titulo}
-                    <span style={{ color: 'var(--text-muted)', marginLeft: '8px', fontSize: '0.85rem' }}>{f.mensagem}</span>
+                    <i>{f.mensagem}</i>
                   </span>
-                  <button
-                    className="btn"
-                    onClick={() => refazerModulo(f.indice)}
-                    disabled={refazendo !== null}
-                    style={{ flex: 'none' }}
-                  >
-                    {refazendo === f.indice ? "Refazendo..." : "Refazer este módulo"}
-                  </button>
+                  <Button size="sm" onClick={() => refazerModulo(f.indice)} disabled={refazendo !== null}>
+                    {refazendo === f.indice ? "Refazendo…" : "Refazer este módulo"}
+                  </Button>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
 
-        {!!error && <div className="error" style={{ marginTop: '15px', padding: '10px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', borderRadius: '6px' }}>{error}</div>}
-        {!!status && !loading && !error && <div className="status" style={{ marginTop: '15px', color: 'var(--success-text)', fontWeight: 'bold' }}>{status}</div>}
+          {!!error && <Notice tone="err" onClose={() => setError("")}>{error}</Notice>}
+          {!!status && !loading && !error && <Notice tone="ok">{status}</Notice>}
 
-        {/* ÁREA DE SALVAR (Só aparece após sucesso) */}
-        {result && !loading && (
-          <div className="save-container" style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '25px', padding: '20px', backgroundColor: 'var(--hover-bg)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-            <h3 style={{ margin: 0, color: 'var(--heading-color)' }}>💾 Salvar Aula no Banco de Dados</h3>
-            <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-              Gerada para <strong style={{ color: 'var(--text-main)' }}>{saveBanca || "—"}</strong>
-              {saveConcurso ? <> · {saveConcurso}</> : null}
-              {saveCargo ? <> · {saveCargo}</> : null}
-              {saveAno ? <> · {saveAno}</> : null}
-            </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '120px' }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Visibilidade</label>
-                <select className="select" value={saveVisibility} onChange={e => setSaveVisibility(e.target.value)} style={{ width: '100%', marginTop: '5px' }}>
-                  <option value="public">🌍 Público</option>
-                  <option value="private">🔒 Privado</option>
-                </select>
+          {result && !loading && (
+            <div className="gen__salvar">
+              <h3>Salvar a aula</h3>
+              <p>
+                Gerada para <b>{saveBanca || "—"}</b>
+                {saveConcurso ? ` · ${saveConcurso}` : ""}
+                {saveCargo ? ` · ${saveCargo}` : ""}
+                {saveAno ? ` · ${saveAno}` : ""}
+              </p>
+              <div className="gen__linha">
+                <label className="ui-field">
+                  <span className="ui-field__label">Visibilidade</span>
+                  <select className="ui-input" value={saveVisibility} onChange={(e) => setSaveVisibility(e.target.value)}>
+                    <option value="public">Pública — qualquer assinante vê</option>
+                    <option value="private">Privada — só você e quem você compartilhar</option>
+                  </select>
+                </label>
+                <Input label="Título da aula" value={saveTitle} onChange={(e) => setSaveTitle(e.target.value)}
+                  placeholder="Um título fácil de reencontrar depois" />
               </div>
+              <Button variant="primary" onClick={saveToDb} icon={<Save size={15} />}>
+                Confirmar e salvar
+              </Button>
             </div>
-            
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-main)' }}>Título da Aula</label>
-                <input className="input" placeholder="Digite um título fácil de lembrar..." value={saveTitle} onChange={e => setSaveTitle(e.target.value)} style={{ width: '100%', marginTop: '5px' }} />
-              </div>
-              <button className="btn primary" onClick={saveToDb} style={{ padding: '10px 20px', height: '42px' }}>Confirmar e Salvar</button>
-            </div>
-          </div>
-        )}
-      </section>
+          )}
+        </CardBody>
+      </Card>
 
-      {/* RENDERIZA O RESULTADO */}
       {result && (
-        <section id="gerador-resultado" className="result" style={{ marginTop: '40px' }}>
+        <section id="gerador-resultado" className="gen__resultado">
           <LessonContent result={result} />
         </section>
       )}
 
-      {/* MODAL DE CONFIGURAÇÃO GLOBAL (CHAVE DA IA INDIVIDUAL) */}
       {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
       <Modal
         open={showConfig}
@@ -567,11 +525,7 @@ export default function Generator() {
         />
       </Modal>
 
-      {aviso && (
-        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg)', borderRadius: '10px' }}>
-          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
-        </div>
-      )}
+      <Toast aviso={aviso} onFechar={() => setAviso(null)} />
     </div>
   );
 }

@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Settings, BookOpen, Cpu, CheckCircle, AlertCircle, 
-  ArrowLeft, FileText, AlertTriangle, ShieldAlert,
-  BarChart2, PieChart, BookOpenCheck, SlidersHorizontal, X,
-  GraduationCap, Wand2
+import {
+  BookOpen, Cpu, CheckCircle, ArrowLeft, FileText, BarChart2, BookOpenCheck, SlidersHorizontal,
 } from "lucide-react";
 // Markdown único da plataforma: bloco de código, inline, tabelas e fórmulas.
 import Md from "../components/Markdown";
-import { Modal, ConfirmDialog, Notice } from "../components/ui";
+import { Modal, ConfirmDialog, Notice, Toast} from "../components/ui";
 import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
+import { QuestaoCard, PainelErros, HistoricoModal } from "../components/simulador";
 import { aulasData } from "../data/sintaxeData";
 
 // Helper para ler token unificado
@@ -85,7 +83,6 @@ export default function GabariteSintaxe() {
   const [showConfig, setShowConfig] = useState(false);
   const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
   const [aviso, setAviso] = useState(null);
-  const [confirmarLimpeza, setConfirmarLimpeza] = useState(false);
   const [confirmarEntrega, setConfirmarEntrega] = useState(false);
 
   // --- ESTADOS DA APLICAÇÃO ---
@@ -347,16 +344,16 @@ export default function GabariteSintaxe() {
   const showLessonAction = (isExamFinished || (!configExamMode && Object.keys(userAnswers).length === currentQuestions?.length)) && wrongCount > 0;
 
   return (
-    <div className="container">
+    <div className="gab">
       {/* HEADER PRINCIPAL */}
-      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '1.5rem' }}>
+      <header className="gab__topo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ color: 'var(--heading-color)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h1 style={{ color: 'var(--fg)', margin: '0 0 5px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <FileText size={32} color="var(--primary)" /> Sintaxe para Concursos <span style={{ color: 'var(--primary)' }}>CESPE</span>
           </h1>
-          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Aprenda profundamente e pratique no padrão CESPE/Cebraspe.</p>
+          <p style={{ color: 'var(--fg-2)', margin: 0 }}>Aprenda profundamente e pratique no padrão CESPE/Cebraspe.</p>
         </div>
-        <button onClick={() => setShowStatsModal(true)} className="btn" style={{ fontWeight: 'bold' }}>
+        <button onClick={() => setShowStatsModal(true)} className="ui-btn" style={{ fontWeight: 'bold' }}>
           <BarChart2 size={20} /> O meu Desempenho
         </button>
       </header>
@@ -375,7 +372,7 @@ export default function GabariteSintaxe() {
             <div 
               key={aula.id}
               onClick={() => selectTopic(aula.id)}
-              className="panel"
+              className="ui-card ui-card--pad"
               style={{ cursor: 'pointer', borderLeft: '5px solid var(--primary)', transition: 'transform 0.2s, box-shadow 0.2s' }}
               onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
               onMouseOut={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
@@ -383,7 +380,7 @@ export default function GabariteSintaxe() {
               <h2 style={{ fontSize: '1.3rem', color: 'var(--primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <BookOpen size={20} /> {aula.title}
               </h2>
-              <p style={{ color: 'var(--text-secondary)' }}>{aula.descricao}</p>
+              <p style={{ color: 'var(--fg-2)' }}>{aula.descricao}</p>
             </div>
           ))}
         </div>
@@ -391,10 +388,10 @@ export default function GabariteSintaxe() {
 
       {/* VIEW: AULA INDIVIDUAL */}
       {viewState === "lesson" && currentTopic && (
-        <div className="panel" style={{ padding: '2.5rem' }}>
+        <div className="ui-card ui-card--pad" style={{ padding: '2.5rem' }}>
           <button 
             onClick={() => setViewState("topics")}
-            style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'pointer', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
+            style={{ background: 'transparent', border: 'none', color: 'var(--fg-2)', fontSize: '1rem', cursor: 'pointer', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold' }}
           >
             <ArrowLeft size={18} /> Voltar para as aulas
           </button>
@@ -404,54 +401,54 @@ export default function GabariteSintaxe() {
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
-            <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>💡 1. O que é? (Definição Simples)</h3>
-            <div style={{ color: 'var(--text-main)', lineHeight: '1.6' }}><Md>{currentTopic.def}</Md></div>
+            <h3 style={{ color: 'var(--fg)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>💡 1. O que é? (Definição Simples)</h3>
+            <div style={{ color: 'var(--fg)', lineHeight: '1.6' }}><Md>{currentTopic.def}</Md></div>
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
-            <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>🔍 2. Análise Profunda</h3>
-            <div style={{ color: 'var(--text-main)', lineHeight: '1.6' }}><Md>{currentTopic.deep}</Md></div>
+            <h3 style={{ color: 'var(--fg)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>🔍 2. Análise Profunda</h3>
+            <div style={{ color: 'var(--fg)', lineHeight: '1.6' }}><Md>{currentTopic.deep}</Md></div>
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
-            <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📝 3. Exemplos Comentados</h3>
+            <h3 style={{ color: 'var(--fg)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📝 3. Exemplos Comentados</h3>
             {currentTopic.examples.map((ex, i) => (
-              <div key={i} style={{ background: 'var(--hover-bg)', borderLeft: '4px solid var(--text-secondary)', padding: '1rem', marginBottom: '1rem', borderRadius: '0 8px 8px 0', color: 'var(--text-main)' }}>
+              <div key={i} style={{ background: 'var(--hover-bg)', borderLeft: '4px solid var(--fg-2)', padding: '1rem', marginBottom: '1rem', borderRadius: '0 8px 8px 0', color: 'var(--fg)' }}>
                 <Md>{ex}</Md>
               </div>
             ))}
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
-            <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>🎯 4. Como cai no CESPE/Cebraspe</h3>
-            <div style={{ background: 'var(--primary-light)', border: '1px solid var(--primary)', padding: '1.5rem', borderRadius: '8px', color: 'var(--text-main)' }}>
+            <h3 style={{ color: 'var(--fg)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>🎯 4. Como cai no CESPE/Cebraspe</h3>
+            <div style={{ background: 'var(--primary-light)', border: '1px solid var(--primary)', padding: '1.5rem', borderRadius: '8px', color: 'var(--fg)' }}>
               <strong>Dica de Prova:</strong> <Md>{currentTopic.cespeTip}</Md>
             </div>
           </div>
 
           <div style={{ marginBottom: '2rem' }}>
-            <h3 style={{ color: 'var(--heading-color)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>⚠️ 5. Pegadinhas Comuns</h3>
-            <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border, #fecaca)', padding: '1.5rem', borderRadius: '8px', color: 'var(--error-text)' }}>
+            <h3 style={{ color: 'var(--fg)', fontSize: '1.3rem', marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '8px' }}>⚠️ 5. Pegadinhas Comuns</h3>
+            <div style={{ background: 'var(--error-bg)', border: '1px solid var(--danger)', padding: '1.5rem', borderRadius: '8px', color: 'var(--error-text)' }}>
               <strong>Alerta:</strong> <Md>{currentTopic.trap}</Md>
             </div>
           </div>
 
           {/* PAINEL DE CONFIGURAÇÃO DE QUESTÕES */}
           <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.5rem', marginTop: '2rem' }}>
-             <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--heading-color)' }}>
+             <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--fg)' }}>
                 <SlidersHorizontal size={20} color="var(--primary)" /> Configurar Simulado
              </h3>
              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
                 <div style={{ flex: '1 1 200px' }}>
-                   <label className="label">Formato</label>
-                   <select className="select" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ width: '100%', padding: '10px' }}>
+                   <label className="ui-field__label">Formato</label>
+                   <select className="ui-input" value={configFormato} onChange={e => setConfigFormato(e.target.value)} style={{ width: '100%', padding: '10px' }}>
                      <option value="Certo/Errado">Certo / Errado</option>
                      <option value="Múltipla Escolha">Múltipla Escolha</option>
                    </select>
                 </div>
                 <div style={{ flex: '1 1 200px' }}>
-                   <label className="label">Quantidade</label>
-                   <select className="select" value={configAmount} onChange={e => setConfigAmount(Number(e.target.value))} style={{ width: '100%', padding: '10px' }}>
+                   <label className="ui-field__label">Quantidade</label>
+                   <select className="ui-input" value={configAmount} onChange={e => setConfigAmount(Number(e.target.value))} style={{ width: '100%', padding: '10px' }}>
                      <option value={5}>5 Questões</option>
                      <option value={10}>10 Questões</option>
                      <option value={15}>15 Questões</option>
@@ -459,10 +456,10 @@ export default function GabariteSintaxe() {
                 </div>
                 <div style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setConfigExamMode(!configExamMode)}>
                    <div style={{ flex: 1 }}>
-                     <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)' }}>
+                     <span style={{ fontSize: '0.95rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--fg)' }}>
                        <BookOpenCheck size={18} /> Modo Prova
                      </span>
-                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Oculta respostas até o fim</span>
+                     <span style={{ fontSize: '0.75rem', color: 'var(--fg-3)' }}>Oculta respostas até o fim</span>
                    </div>
                    <div style={{ width: '40px', height: '22px', background: configExamMode ? 'var(--primary)' : 'var(--border)', borderRadius: '20px', position: 'relative', transition: '0.3s' }}>
                      <div style={{ width: '18px', height: '18px', background: '#fff', borderRadius: '50%', position: 'absolute', top: '2px', left: configExamMode ? '20px' : '2px', transition: '0.3s' }}></div>
@@ -470,7 +467,7 @@ export default function GabariteSintaxe() {
                 </div>
              </div>
              
-             <button onClick={generateQuiz} className="btn primary" style={{ width: '100%', padding: '1rem', fontSize: '1.1rem', marginTop: '20px' }}>
+             <button onClick={generateQuiz} className="ui-btn ui-btn--primary" style={{ width: '100%', padding: '1rem', fontSize: '1.1rem', marginTop: '20px' }}>
                👉 Gerar questões deste tópico com IA
              </button>
           </div>
@@ -479,9 +476,9 @@ export default function GabariteSintaxe() {
 
       {/* VIEW: LOADING */}
       {viewState === "loading" && (
-        <div className="panel" style={{ textAlign: 'center', padding: '3rem' }}>
+        <div className="ui-card ui-card--pad" style={{ textAlign: 'center', padding: '3rem' }}>
           <Cpu className="spin" size={48} color="var(--primary)" style={{ margin: '0 auto 20px auto' }} />
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', fontWeight: 'bold' }}>{loadingMsg}</p>
+          <p style={{ color: 'var(--fg-2)', fontSize: '1.1rem', fontWeight: 'bold' }}>{loadingMsg}</p>
         </div>
       )}
 
@@ -504,206 +501,73 @@ export default function GabariteSintaxe() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary)', fontWeight: 'bold' }}>
                 <BookOpenCheck size={20} /> Modo Prova Ativado
               </div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Respostas ocultas. Finalize para corrigir.</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--fg-2)' }}>Respostas ocultas. Finalize para corrigir.</span>
             </div>
           )}
 
           {currentQuestions.map((q, index) => {
-            const uAns = userAnswers[q.id];
-            const showExp = isExamFinished || (!configExamMode && uAns);
-            const isCorrect = uAns === q.gabarito;
-
-            return (
-              <div key={q.id} className="panel" style={{ 
-                borderColor: showExp ? (isCorrect ? 'var(--success-text)' : 'var(--error-text)') : 'var(--border)',
-                boxShadow: showExp ? (isCorrect ? '0 0 0 1px var(--success-text)' : '0 0 0 1px var(--error-text)') : 'var(--shadow-sm)'
-              }}>
-                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                  <div style={{ background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontWeight: 'bold', width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {index + 1}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ display: 'inline-block', padding: '4px 8px', background: 'var(--hover-bg)', color: 'var(--text-secondary)', fontSize: '0.75rem', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px' }}>
-                      {q.assunto}
-                    </span>
-                    <p style={{ fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.6', marginBottom: '20px', fontWeight: '500' }}>
-                      {q.enunciado}
-                    </p>
-                    
-                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', flexDirection: q.alternativas ? 'column' : 'row' }}>
-                      {q.alternativas && q.alternativas.length > 0 ? (
-                        q.alternativas.map((alt, altIdx) => {
-                          const letra = alt.charAt(0).toUpperCase(); 
-                          const isCorrectAlt = q.gabarito.toUpperCase() === letra;
-                          return (
-                            <button 
-                              key={altIdx}
-                              onClick={() => handleAnswerSelect(q.id, letra)}
-                              disabled={showExp && !configExamMode}
-                              style={{
-                                padding: '12px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '0.95rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left',
-                                border: '2px solid',
-                                borderColor: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                                background: uAns === letra ? (showExp ? (isCorrectAlt ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary-light)') : 'transparent',
-                                color: uAns === letra && !showExp ? 'var(--primary)' : (showExp && uAns === letra ? 'inherit' : 'var(--text-secondary)'),
-                                opacity: (showExp && uAns !== letra && !isCorrectAlt) ? 0.5 : 1
-                              }}
-                            >
-                              <span style={{ flex: 1 }}>{alt}</span>
-                              {showExp && isCorrectAlt && <CheckCircle size={18} color="var(--success-text)" style={{ flexShrink: 0, marginLeft: '10px' }}/>}
-                            </button>
-                          )
-                        })
-                      ) : (
-                        <>
-                          <button 
-                            onClick={() => handleAnswerSelect(q.id, 'C')}
-                            disabled={showExp && !configExamMode} 
-                            style={{
-                              flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                              border: '2px solid',
-                              borderColor: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                              background: uAns === 'C' ? (showExp ? (q.gabarito === 'C' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                              color: uAns === 'C' && !showExp ? 'white' : (showExp && uAns === 'C' ? 'inherit' : 'var(--text-secondary)'),
-                              opacity: (showExp && uAns !== 'C' && q.gabarito !== 'C') ? 0.5 : 1
-                            }}
-                          >
-                            CERTO {showExp && q.gabarito === 'C' && <CheckCircle size={18} color="var(--success-text)"/>}
-                          </button>
-                          <button 
-                            onClick={() => handleAnswerSelect(q.id, 'E')}
-                            disabled={showExp && !configExamMode}
-                            style={{
-                              flex: '1 1 140px', padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '1rem', cursor: (showExp && !configExamMode) ? 'default' : 'pointer', transition: 'all 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                              border: '2px solid',
-                              borderColor: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-text)' : 'var(--error-text)') : 'var(--primary)') : 'var(--border)',
-                              background: uAns === 'E' ? (showExp ? (q.gabarito === 'E' ? 'var(--success-bg)' : 'var(--error-bg)') : 'var(--primary)') : 'transparent',
-                              color: uAns === 'E' && !showExp ? 'white' : (showExp && uAns === 'E' ? 'inherit' : 'var(--text-secondary)'),
-                              opacity: (showExp && uAns !== 'E' && q.gabarito !== 'E') ? 0.5 : 1
-                            }}
-                          >
-                            ERRADO {showExp && q.gabarito === 'E' && <CheckCircle size={18} color="var(--success-text)"/>}
-                          </button>
-                        </>
-                      )}
-                    </div>
-
-                    {showExp && (
-                      <div className="quiz-explanation" style={{ marginTop: '20px', animation: 'fadeIn 0.3s ease-out' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', marginBottom: '8px', color: isCorrect ? 'var(--success-text)' : 'var(--error-text)' }}>
-                          {isCorrect ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                          {isCorrect ? "Você acertou!" : "Você errou."} (Gabarito: {q.gabarito})
-                        </div>
-                        <div className="markdown-format" style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                          <Md>{q.explicacao}</Md>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                const uAns = userAnswers[q.id];
+                const showExp = Boolean(isExamFinished || (!configExamMode && uAns));
+                return (
+                  <React.Fragment key={q.id}>
+                    <QuestaoCard
+                      numero={index + 1}
+                      assunto={q.assunto}
+                      enunciado={q.enunciado}
+                      alternativas={q.alternativas}
+                      gabarito={q.gabarito}
+                      explicacao={q.explicacao}
+                      resposta={uAns}
+                      mostrarGabarito={showExp}
+                      travado={showExp && !configExamMode}
+                      onResponder={(letra) => handleAnswerSelect(q.id, letra)}
+                    />
+                  </React.Fragment>
+                );
+              })}
 
           {!isExamFinished && (
-            <button onClick={submitQuiz} className="btn primary" style={{ padding: '15px', fontSize: '1.1rem', margin: '20px auto', display: 'block', maxWidth: '400px', width: '100%', gap: '10px' }}>
+            <button onClick={submitQuiz} className="ui-btn ui-btn--primary" style={{ padding: '15px', fontSize: '1.1rem', margin: '20px auto', display: 'block', maxWidth: '400px', width: '100%', gap: '10px' }}>
               <CheckCircle size={20} /> {configExamMode ? "Entregar Prova e Corrigir" : "Finalizar e Ver Pontuação"}
             </button>
           )}
 
           {/* GERADOR DE AULA SOBRE OS ERROS */}
           {showLessonAction && (
-            <div style={{ background: 'var(--warning-bg, #fffbeb)', border: '1px solid #fcd34d', padding: '25px', borderRadius: '12px', textAlign: 'center', margin: '20px auto', maxWidth: '500px', boxShadow: 'var(--shadow-md)' }}>
-              <h4 style={{ margin: '0 0 10px 0', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1.2rem' }}>
-                <GraduationCap size={24} /> Professor de Sintaxe (IA)
-              </h4>
-              <p style={{ color: '#92400e', fontSize: '0.95rem', marginBottom: '20px' }}>
-                Você errou {wrongCount} questão(ões) de Sintaxe. Quer uma revisão detalhada com dicas para não cair nessas pegadinhas de novo?
-              </p>
-              <button onClick={() => generateLesson(getWrongQuestions())} className="btn" style={{ background: '#f59e0b', color: 'white', border: 'none', width: '100%', padding: '12px', fontSize: '1.05rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                <Wand2 size={20} /> Gerar Explicação Detalhada
-              </button>
-            </div>
-          )}
+                <PainelErros
+                  titulo="Professor de Sintaxe"
+                  descricao={`Você errou ${wrongCount} questão(ões) de Sintaxe. Quer uma revisão detalhada das pegadinhas que derrubaram você?`}
+                  rotuloBotao="Gerar revisão detalhada"
+                  onGerar={() => generateLesson(getWrongQuestions())}
+                />
+              )}
         </div>
       )}
 
       {/* MODAL DA AULA DE REVISÃO DA IA */}
-      {showLessonModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '800px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out', border: '2px solid #f59e0b' }}>
-            <div style={{ background: '#f59e0b', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <GraduationCap size={24} /> Revisão Passo-a-Passo
-              </h2>
-              <button onClick={() => setShowLessonModal(false)} style={{ background: 'none', border: 'none', color: '#fef3c7', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            <div style={{ padding: '30px', overflowY: 'auto', flex: 1, background: 'var(--card-bg)' }}>
-              <div className="markdown-format" style={{ fontSize: '1.05rem', lineHeight: '1.7', color: 'var(--text-main)' }}>
-                <Md>{lessonContent}</Md>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={showLessonModal}
+        onClose={() => setShowLessonModal(false)}
+        title="Revisão de Sintaxe"
+        subtitle="Gerada a partir das questões que você errou."
+        wide
+      >
+        <Md>{lessonContent}</Md>
+      </Modal>
 
       {/* MODAL DE CONFIGURAÇÃO DE IA COM ABAS (OPENROUTER / AISTUDIO) */}
       {/* MODAL DE ESTATÍSTICAS */}
-      {showStatsModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="panel" style={{ width: '100%', maxWidth: '500px', padding: 0, overflow: 'hidden', animation: 'fadeIn 0.2s ease-out' }}>
-            <div style={{ padding: '20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg)' }}>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--heading-color)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <PieChart size={22} color="var(--primary)" /> Meu Histórico de Sintaxe
-              </h2>
-              <button onClick={() => setShowStatsModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            <div style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
-                <div style={{ flex: 1, background: 'var(--bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--text-main)' }}>{stats.total}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Resolvidas</span>
-                </div>
-                <div style={{ flex: 1, background: 'var(--success-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--success-text)' }}>{stats.correct}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Certas</span>
-                </div>
-                <div style={{ flex: 1, background: 'var(--error-bg)', padding: '15px', borderRadius: '10px', textAlign: 'center' }}>
-                  <span style={{ display: 'block', fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--error-text)' }}>{stats.wrong}</span>
-                  <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Erradas</span>
-                </div>
-              </div>
-
-              <h3 style={{ fontSize: '1rem', color: 'var(--heading-color)', marginBottom: '15px' }}>Desempenho por Assunto</h3>
-              <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '10px' }}>
-                {Object.keys(stats.topics).length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Nenhum dado registrado.</p>
-                ) : (
-                  Object.entries(stats.topics).map(([name, data]) => {
-                    const pct = (data.correct + data.wrong) > 0 ? Math.round((data.correct / (data.correct + data.wrong)) * 100) : 0;
-                    return (
-                      <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                        <span style={{ color: 'var(--text-main)', fontSize: '0.9rem', maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-                        <div style={{ display: 'flex', gap: '15px', fontSize: '0.9rem' }}>
-                          <span style={{ color: 'var(--success-text)', fontWeight: 'bold' }}>{data.correct}C</span>
-                          <span style={{ color: 'var(--error-text)', fontWeight: 'bold' }}>{data.wrong}E</span>
-                          <span style={{ color: pct >= 70 ? 'var(--success-text)' : pct < 50 ? 'var(--error-text)' : '#f59e0b', fontWeight: '900', width: '40px', textAlign: 'right' }}>{pct}%</span>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-              <button onClick={() => setConfirmarLimpeza(true)} style={{ width: '100%', marginTop: '20px', background: 'var(--error-bg)', color: 'var(--error-text)', border: '1px solid var(--error-text)', padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                Zerar Histórico
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <HistoricoModal
+        aberto={showStatsModal}
+        titulo="Meu histórico de Sintaxe"
+        materia="Sintaxe"
+        stats={stats}
+        onFechar={() => setShowStatsModal(false)}
+        onLimpar={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); }}
+      />
 
       {/* FOOTER DE CRÉDITO DO DESENVOLVEDOR (Atualizado com sua diretiva) */}
-      <div style={{ textAlign: 'center', marginTop: '3rem', paddingBottom: '1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+      <div style={{ textAlign: 'center', marginTop: '3rem', paddingBottom: '1rem', color: 'var(--fg-3)', fontSize: '0.85rem' }}>
         Foco na aprovação! Desenvolvido por TecnoPriv.Top
       </div>
       {/* CONFIGURAÇÃO DE IA — painel único, compartilhado com as demais telas */}
@@ -722,16 +586,6 @@ export default function GabariteSintaxe() {
       </Modal>
 
       <ConfirmDialog
-        open={confirmarLimpeza}
-        title="Limpar o histórico de Sintaxe"
-        message={`Apagar os ${stats.total} item(ns) já julgados e o desempenho por tópico?`}
-        detail="O histórico fica guardado apenas neste navegador e não pode ser recuperado depois."
-        confirmLabel="Limpar histórico"
-        onConfirm={() => { saveStats({ total: 0, correct: 0, wrong: 0, topics: {} }); setShowStatsModal(false); setConfirmarLimpeza(false); }}
-        onCancel={() => setConfirmarLimpeza(false)}
-      />
-
-      <ConfirmDialog
         open={confirmarEntrega}
         title="Entregar a prova com questões em branco"
         message="Ainda há questões sem resposta neste caderno."
@@ -741,11 +595,7 @@ export default function GabariteSintaxe() {
         onCancel={() => setConfirmarEntrega(false)}
       />
 
-      {aviso && (
-        <div style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '24px', zIndex: 9500, width: 'min(560px, calc(100vw - 32px))', boxShadow: 'var(--shadow-lg, 0 12px 32px rgba(0,0,0,.18))', borderRadius: '10px' }}>
-          <Notice tone={aviso.tone} onClose={() => setAviso(null)}>{aviso.texto}</Notice>
-        </div>
-      )}
+      <Toast aviso={aviso} onFechar={() => setAviso(null)} />
 
     </div>
   );

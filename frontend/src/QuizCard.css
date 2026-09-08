@@ -1,0 +1,242 @@
+/* ===================== Cartão de questão da aula =====================
+   Estas regras viviam no App.css, o vocabulário legado carregado em toda
+   página. Pertencem a um componente só — o QuizCard — e agora moram com ele.
+   ===================================================================== */
+
+/* --- Quiz Card Styles --- */
+.quiz-card-container {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  background: var(--card-bg); 
+  box-shadow: var(--shadow-sm);
+}
+
+.quiz-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.quiz-title {
+  margin: 0;
+  color: var(--fg); 
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.1rem;
+}
+
+.quiz-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.quiz-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--fg-2);
+  background: var(--bg); 
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 999px;
+  max-width: 520px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quiz-tag.meta {
+  color: var(--fg);
+  background: var(--hover-bg); 
+}
+
+.quiz-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card-bg); 
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.quiz-enunciado {
+  margin-bottom: 1rem;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--fg); 
+}
+
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quiz-option {
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg); 
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.quiz-option.cursor-default {
+  cursor: default;
+}
+
+.quiz-option.correct {
+  background: var(--success-bg);
+  border-color: var(--success-text);
+}
+
+.quiz-option.incorrect {
+  background: var(--error-bg);
+  border-color: var(--error-text);
+}
+
+.option-letter {
+  font-weight: 800;
+  color: var(--fg-3);
+  min-width: 28px;
+}
+
+.option-text {
+  flex: 1;
+  color: var(--fg); 
+  line-height: 1.5;
+}
+
+.quiz-explanation {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--primary-light); 
+  border-radius: 10px;
+  border-left: 4px solid var(--primary);
+}
+
+.explanation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.correct-answer-label {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+.toggle-explanation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--card-bg); 
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.explanation-snippet {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--card-bg); 
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.snippet-label {
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.snippet-content {
+  margin-top: 6px;
+  color: var(--fg-2); 
+  font-size: 0.95rem;
+}
+
+.explanation-comment {
+  margin-top: 12px;
+  color: var(--fg-2); 
+  line-height: 1.6;
+}
+
+.comment-label {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+.comment-text {
+  margin-top: 6px;
+}
+
+.full-breakdown {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.breakdown-label {
+  color: var(--primary);
+  font-weight: bold;
+}
+
+.breakdown-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.breakdown-item {
+  background: var(--card-bg); 
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.breakdown-letter {
+  font-weight: 900;
+  color: var(--fg); 
+  margin-bottom: 4px;
+}
+
+.breakdown-text {
+  color: var(--fg-2); 
+  line-height: 1.6;
+}
+
+.quiz-reset-btn:hover:not(.disabled) {
+  background: var(--hover-bg);
+}
+
+.quiz-reset-btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  background: var(--bg);
+}

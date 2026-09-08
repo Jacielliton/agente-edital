@@ -1,0 +1,118 @@
+/* ===================== Meu desempenho ===================== */
+.perf { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.perf__kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--space-4); }
+.perf__cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: var(--space-4); align-items: start; }
+
+/* ---------- liga / XP ----------
+   Cada faixa tem a sua cor como classe. Antes eram hexadecimais no meio do JSX
+   (#8b5cf6, #3b82f6, #eab308, #94a3b8, #b45309), que não trocavam no tema
+   escuro nem apareciam em nenhuma busca por token. */
+.perf__liga {
+  --liga: var(--fg-3);
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 2px solid var(--liga);
+  border-radius: var(--radius);
+}
+.perf__liga::after {
+  content: ""; position: absolute; right: -30px; top: -30px;
+  width: 110px; height: 110px; border-radius: 50%;
+  background: var(--liga); opacity: .14; filter: blur(18px);
+}
+.perf__liga.is-elite    { --liga: #7C4DEE; }
+.perf__liga.is-diamante { --liga: #2E6FE0; }
+.perf__liga.is-ouro     { --liga: #9D630A; }
+.perf__liga.is-prata    { --liga: #6B7789; }
+.perf__liga.is-bronze   { --liga: #8A4A0C; }
+.perf__liga.is-inicio   { --liga: var(--fg-3); }
+html.dark .perf__liga.is-elite    { --liga: #A78BFA; }
+html.dark .perf__liga.is-diamante { --liga: #7CA8FF; }
+html.dark .perf__liga.is-ouro     { --liga: #E9A13B; }
+html.dark .perf__liga.is-prata    { --liga: #A3AFC2; }
+html.dark .perf__liga.is-bronze   { --liga: #D08A4A; }
+
+.perf__liga-topo {
+  display: flex; align-items: center; gap: 7px;
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--liga);
+}
+.perf__liga-nome { font-size: 27px; font-weight: 800; letter-spacing: -.02em; color: var(--fg); }
+.perf__liga-meta { font-size: var(--text-sm); color: var(--fg-2); }
+.perf__liga-meta b { color: var(--fg); }
+
+/* ---------- ranking ---------- */
+.perf__rank { display: flex; flex-direction: column; }
+.perf__rank-linha {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.perf__rank-linha:last-child { border-bottom: none; }
+.perf__rank-linha.is-eu { background: var(--accent-soft); }
+.perf__rank-pos {
+  flex: none; width: 34px;
+  font-size: var(--text-sm); font-weight: 800; color: var(--fg-3);
+}
+.perf__rank-pos.is-podio { font-size: 17px; }
+.perf__rank-nome {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.perf__rank-xp { display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.perf__rank-xp span { font-size: var(--text-xs); }
+.perf__rank-xp b { font-size: var(--text-sm); color: var(--accent); }
+
+/* ---------- o que revisar ---------- */
+.perf__revisar { display: flex; flex-direction: column; gap: var(--space-4); }
+.perf__meta-ok {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--ok-soft); color: var(--ok);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm); line-height: 1.55;
+}
+.perf__meta-ok svg { flex: none; }
+
+.perf__tema {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--warn-soft);
+  border: 1px solid var(--line); border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+}
+.perf__tema.is-critico { background: var(--danger-soft); border-left-color: var(--danger); }
+.perf__tema-topo { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.perf__tema-nome { font-size: var(--text-sm); font-weight: 700; color: var(--fg); line-height: 1.35; }
+.perf__tema-topo b { font-size: var(--text-lg); font-weight: 800; color: var(--warn); }
+.perf__tema.is-critico .perf__tema-topo b { color: var(--danger); }
+.perf__tema-nota { font-size: var(--text-xs); color: var(--fg-2); }
+
+/* ---------- histórico ---------- */
+.perf__hist { display: flex; flex-direction: column; }
+.perf__item {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.perf__item:last-child { border-bottom: none; }
+.perf__item-corpo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.perf__item-tema { font-size: var(--text-sm); font-weight: 700; color: var(--fg); }
+.perf__item-tags { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.perf__item-data { font-size: var(--text-xs); color: var(--fg-3); text-transform: capitalize; }
+.perf__item-nota {
+  flex: none;
+  padding: 5px 13px; border-radius: 999px; border: 1px solid;
+  font-size: var(--text-sm); font-weight: 800; white-space: nowrap;
+}
+.perf__item-nota.is-ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.perf__item-nota.is-baixo { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+
+@media (max-width: 560px) {
+  .perf__item { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+}
