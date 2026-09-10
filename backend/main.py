@@ -44,6 +44,9 @@ ENV_FILE_PATH = os.getenv("ENV_FILE_PATH", ".env")
 # Importação direta do database.py (Evita duplicação e Erro 500)
 from database import engine, Base, AsyncSessionLocal, get_db
 
+# Redistribuicao do gabarito por codigo (ver backend/gabarito.py).
+from gabarito import equilibrar_gabaritos, equilibrar_payload, equilibrar_texto_json
+
 # ============================================================================
 # 2. MODELOS DE BANCO DE DADOS (ORM)
 # ============================================================================
@@ -1044,73 +1047,14 @@ async def remove_plan_share(plan_id: int, email: str, current_user: User = Depen
 # ============================================================================
 # 6. UTILITÁRIOS (TEXT PROCESSING & CLEANING)
 # ============================================================================
-def shuffle_question_options(question: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Recebe uma questão com chaves de alternativas e por_que_as_outras_estao_erradas,
-    embaralha e atualiza o gabarito de forma real por código.
-    """
-    try:
-        # Se for formato Certo/Errado ou não tiver alternativas estruturadas, não mexe
-        if "alternativas" not in question or len(question["alternativas"]) <= 2:
-            return question
-
-        # 1. Mapeia a letra atual para o índice (A=0, B=1, C=2, D=3)
-        gabarito_atual = question.get("gabarito", question.get("resposta_correta", "A")).strip().upper()
-        letras_validas = ["A", "B", "C", "D"]
-        if gabarito_atual not in letras_validas:
-            return question
-            
-        idx_correto_antigo = letras_validas.index(gabarito_atual)
-
-        # 2. Extrai os textos limpos (removendo o "A) ", "B) ", etc., se houver)
-        textos_limpos = []
-        for alt in question["alternativas"]:
-            texto = re.sub(r"^[A-E]\s*[\)\.\-:]\s*", "", str(alt)).strip()
-            textos_limpos.append(texto)
-
-        # Guarda qual é o texto da alternativa correta
-        texto_correto = textos_limpos[idx_correto_antigo]
-
-        # 3. Agrupa os comentários das erradas (por_que_as_outras_estao_erradas)
-        comentarios_erradas = question.get("por_que_as_outras_estao_erradas", {})
-        # Se for uma lista ou formato diferente, tenta extrair os textos limpos dos comentários
-        comentarios_limpos = {}
-        for l in letras_validas:
-            comentarios_limpos[l] = comentarios_erradas.get(l, "")
-
-        # 4. Embaralha os textos das alternativas
-        random.shuffle(textos_limpos)
-
-        # 5. Reconstrói o formato "A) texto" e descobre onde a correta parou
-        novo_idx_correto = textos_limpos.index(texto_correto)
-        nova_letra_correta = letras_validas[novo_idx_correto]
-
-        novas_alternativas = [f"{letras_validas[i]}) {textos_limpos[i]}" for i in range(len(textos_limpos))]
-        
-        # 6. Redistribui os comentários das erradas de forma coerente com o novo arranjo
-        # O comentário da antiga correta (se houver) some ou vira a justificativa do erro na nova posição
-        novos_comentarios = {}
-        # Mapeia qual texto de alternativa está em qual posição agora para associar o erro
-        for i, letra in enumerate(letras_validas):
-            if i != novo_idx_correto:
-                # Procura qual era a letra antiga desse texto para herdar o comentário de erro correto
-                texto_atual = textos_limpos[i]
-                # Fallback simples caso não ache correspondência perfeita
-                novos_comentarios[letra] = "Alternativa incorreta com base nos fundamentos do tema."
-
-        # Atualiza o objeto da questão
-        question["alternativas"] = novas_alternativas
-        if "gabarito" in question:
-            question["gabarito"] = nova_letra_correta
-        if "resposta_correta" in question:
-            question["resposta_correta"] = nova_letra_correta
-            
-        question["por_que_as_outras_estao_erradas"] = novos_comentarios
-
-    except Exception as e:
-        print(f"⚠️ Erro ao randomizar questão por código: {e}")
-    
-    return question
+# O antigo shuffle_question_options() vivia aqui. Foi substituido por
+# backend/gabarito.py, que:
+#   - equilibra o caderno inteiro em vez de sortear questao por questao;
+#   - PRESERVA a justificativa de cada alternativa errada (a versao antiga
+#     apagava todas e escrevia "Alternativa incorreta com base nos fundamentos
+#     do tema." no lugar, entao o aluno perdia o "por que a B esta errada");
+#   - acompanha as letras citadas no meio das explicacoes.
+# Use equilibrar_gabaritos(lista) ou equilibrar_payload(json).
 
 async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25, api_key: Optional[str] = None):
     """Lê o stream e repassa os chunks em tempo real para manter a conexão viva."""
@@ -1260,6 +1204,32 @@ def try_parse_json_loose(text: str) -> Any:
         # Se falhar até no repair, printa o trecho problemático no console para debug
         print(f"⚠️ Falha Crítica no JSON: {str(e)}\nTrecho: {text[:300]}...")
         raise
+
+
+async def stream_json_com_gabarito_equilibrado(
+    prompt: str,
+    model_name: str,
+    temp: float = 0.25,
+    api_key: Optional[str] = None,
+):
+    """Igual ao stream_json_response, mas redistribui o gabarito no fim.
+
+    Por que da para bufferizar sem piorar nada: o frontend usa
+    fetchStreamAsJson, que le o stream ATE O FIM antes de fazer o parse. O
+    streaming aqui nunca desenhou questao por questao na tela — ele so segura
+    a conexao aberta enquanto o modelo escreve. Continuamos segurando (um
+    espaco por chunk, que o JSON.parse ignora) e so o JSON final muda.
+
+    Se qualquer coisa falhar no meio, devolvemos o texto cru — exatamente o
+    que esta rota devolvia antes. O pior caso e o comportamento de hoje.
+    """
+    partes: List[str] = []
+    async for pedaco in stream_json_response(prompt, model_name, temp=temp, api_key=api_key):
+        partes.append(pedaco)
+        yield " "  # keep-alive; espaco antes do JSON e ignorado no parse
+
+    yield equilibrar_texto_json("".join(partes), try_parse_json_loose, clean_response)
+
 
 def clamp_text(s: str, max_len: int) -> str: return (s or "")[:max_len]
 
@@ -2428,7 +2398,7 @@ async def analyze_syllabus_deep(request: SyllabusRequest, current_user: User = D
             raw_quiz = exam.get("quiz") if isinstance(exam, dict) else []
             quiz_list = sanitize_quiz(raw_quiz)
             # Aplica o rand em cada questão gerada pela IA
-            quiz_list = [shuffle_question_options(q) for q in quiz_list]
+            quiz_list = equilibrar_gabaritos(quiz_list)
             mindmap_obj = mindmap_data.get("mapa_mental") if isinstance(mindmap_data, dict) else {}
 
             # Montagem do módulo final limpo
@@ -2549,7 +2519,7 @@ async def analyze_modulo(request: ModuloRequest, current_user: User = Depends(ge
             mod, area_do_modulo, lesson, request.model, api_key=request.api_key,
         ))
 
-        quiz_list = [shuffle_question_options(q) for q in sanitize_quiz(exam.get("quiz"))]
+        quiz_list = equilibrar_gabaritos(sanitize_quiz(exam.get("quiz")))
 
         return {
             **lesson,
@@ -2964,7 +2934,13 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest, current_us
       ]
     }}
     """
-    return StreamingResponse(stream_json_response(prompt, req.model, temp=0.3, api_key=req.api_key), media_type="text/plain")
+    # O gabarito NAO sai como o modelo escreveu: e reposicionado por codigo.
+    # O exemplo de JSON acima mostra "A", e o modelo copia a forma do exemplo —
+    # era por isso que quase toda correta caia na letra A.
+    return StreamingResponse(
+        stream_json_com_gabarito_equilibrado(prompt, req.model, temp=0.3, api_key=req.api_key),
+        media_type="text/plain",
+    )
 
 
 @app.post("/correct-essay")
@@ -3357,9 +3333,11 @@ INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
     ]
 }}
 """
+    # Multipla escolha sai com o gabarito redistribuido; Certo/Errado passa
+    # intacto (permutar duas alternativas inverteria o sentido da questao).
     return StreamingResponse(
-        stream_json_response(prompt, req.model, temp=0.5, api_key=req.api_key), 
-        media_type="text/plain"
+        stream_json_com_gabarito_equilibrado(prompt, req.model, temp=0.5, api_key=req.api_key),
+        media_type="text/plain",
     )
 
 @app.post("/generate-lesson-cespe")
@@ -3950,7 +3928,9 @@ RETORNE APENAS ESTE JSON EXATO:
   "sintese": "O que muda no estudo conforme a banca."
 }}
 """
-    return await get_json_response(prompt, req.model or DEFAULT_MODEL, temp=0.35, api_key=req.api_key)
+    resultado = await get_json_response(prompt, req.model or DEFAULT_MODEL, temp=0.35, api_key=req.api_key)
+    # Aqui o exemplo do JSON tambem mostrava "gabarito": "A".
+    return equilibrar_payload(resultado)
 
 
 if __name__ == "__main__":
