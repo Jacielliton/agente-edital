@@ -124,7 +124,16 @@ cd "$BACKEND"
 
 # ------------------------------------------------------------------ 3. ensaio
 titulo "3. Ensaio — nada será alterado"
-"$PY" migrar_fks.py
+
+# O --limpar-orfaos aqui NAO limpa nada: sem --aplicar o migrar_fks so imprime.
+# Mas a flag precisa estar presente para o ensaio prever a operacao REAL. Sem
+# ela o migrar_fks para no primeiro orfao e sai com codigo 1 — correto do lado
+# dele, mas o `set -e` deste script derrubava tudo antes da confirmacao, e a
+# pessoa ficava sem saber se era erro ou comportamento esperado.
+if ! "$PY" migrar_fks.py --limpar-orfaos; then
+  erro "o ensaio encontrou um impedimento que a limpeza automática não resolve
+   (a saída está acima). Nada foi alterado. O backup está em $DESTINO"
+fi
 
 # ------------------------------------------------------------ 4. confirmação
 if [[ $SEM_PERGUNTA -eq 0 ]]; then
