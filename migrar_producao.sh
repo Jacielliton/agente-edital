@@ -109,8 +109,10 @@ fazer_backup() {
 if ! fazer_backup || [[ ! -s "$DESTINO" ]]; then
   rm -f "$DESTINO"
   erro "SEM BACKUP — não vou migrar. Nada foi alterado.
-   Gere o dump à mão e rode de novo. Um destes deve funcionar:
-     pg_dump '$URL_PSQL' > ~/backup.sql
+   Gere o dump à mão e rode de novo. Um destes deve funcionar
+   (o primeiro lê a URL do .env para não trazer a senha à tela):
+     cd $BACKEND && pg_dump \"\$(grep -E '^[[:space:]]*DATABASE_URL' .env | tail -n1 \\
+       | cut -d= -f2- | tr -d '\\r\"'\"'\"' ' | sed 's/+asyncpg//')\" > ~/backup.sql
      docker exec \$(docker ps --format '{{.Names}}' | grep -i postgres) \\
        pg_dump -U <usuário> <banco> > ~/backup.sql"
 fi
@@ -188,6 +190,9 @@ cat <<TEXTO
     4. painel administrativo: excluir uma conta SEM comissão (some) e uma COM
        (fica marcada "Excluída", com botão Restaurar)
 
-  Se algo der errado, para voltar o banco:
-    psql "$URL_PSQL" < $DESTINO
+  Se algo der errado, para voltar o banco (o comando le a URL do .env em vez
+  de trazer a senha para a tela):
+    cd $RAIZ/backend
+    psql "\$(grep -E '^[[:space:]]*DATABASE_URL' .env | tail -n1 | cut -d= -f2- \\
+            | tr -d '\\r\"' | sed 's/+asyncpg//;s/+psycopg2//')" < $DESTINO
 TEXTO

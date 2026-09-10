@@ -365,8 +365,11 @@ def comparar(modelos: Dict[str, List[Coluna]], real: Dict[str, Dict], so_diff: b
     if sem_fk:
         print(f"  ⚠  {sem_fk} tabela(s) sem foreign key. Nao e divergencia — e como foi")
         print("     desenhado. Ver 'checar_orfaos.py' antes de decidir criar as FKs.")
-    print("\n  Isto vale para ESTE banco. Producao e outro: rode de novo com")
-    print("  DATABASE_URL apontando para la antes de concluir que esta tudo certo.")
+    # Antes esta linha dizia "producao e outro banco" sempre — inclusive
+    # quando o script estava rodando EM producao, o que confunde em vez de
+    # avisar. O aviso agora aponta para o banco que foi realmente medido.
+    print("\n  Isto vale para o banco medido acima. Cada ambiente (local, VPS,")
+    print("  Railway) tem o seu — confira em cada um antes de dar por encerrado.")
     return faltando
 
 
