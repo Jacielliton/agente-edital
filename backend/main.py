@@ -4,19 +4,16 @@ import uvicorn
 import json
 import re
 import asyncio
-import random
 import contextvars
 import time
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Any, Optional, AsyncGenerator
+from typing import List, Dict, Any, Optional
 from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict
 from dotenv import load_dotenv
-from typing import Literal
 import mercadopago
 from fastapi import Request
 import uuid
@@ -26,9 +23,8 @@ from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 
 # Imports de Banco de Dados (SQLAlchemy + Asyncpg)
-from sqlalchemy import Column, Float, Integer, String, DateTime, JSON, select, desc, func, Boolean, or_
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import select, desc, func, or_
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Cliente OpenAI/OpenRouter
 from openai import AsyncOpenAI
@@ -47,129 +43,39 @@ from database import engine, Base, AsyncSessionLocal, get_db
 # Redistribuicao do gabarito por codigo (ver backend/gabarito.py).
 from gabarito import equilibrar_gabaritos, equilibrar_payload, equilibrar_texto_json
 
+# As tabelas e os schemas moram em arquivos proprios desde 10/09/2026.
+# Ver models.py e schemas.py.
+from models import (
+    AITokenLog, CommissionHistory, Coupon, GlobalAIConfig, PerformanceRecord, PlanShare,
+    ProcessedPayment, StoredPlan, User
+)
+from schemas import (
+    AIConfigSchema, AIStatsResponse, ChatMessageRequest, CommissionActionRequest,
+    CommissionHistoryResponse, ComparadorRequest, ConfigRequest, CouponCreate,
+    EssayCorrectionRequest, EstruturaRequest, ExtractTopicsRequest, GenerateEssayRequest,
+    GlobalEssayRequest, LeiSecaRequest, LessonCespeRequest, ModuloRequest,
+    OpenRouterExchange, PaginatedPlansResponse, PasswordUpdate, PaymentRequest,
+    PerformanceCreate, PerformanceResponse, PlanSummaryResponse, PlanoEstudoRequest,
+    SavePlanRequest, ShareRequest, SimuladoCespeRequest, SimuladoTopicRequest,
+    SyllabusRequest, TextoLegalRequest, Token, TranslateWordRequest,
+    TreinoDiscursivaRequest, UpdatePlanRequest, UserCreate, UserCreateAdmin, UserLogin,
+    UserResponse, UserSettingsResponse, UserSettingsUpdate, UserUpdateAdmin, UserUpdateRole
+)
+
 # ============================================================================
-# 2. MODELOS DE BANCO DE DADOS (ORM)
+# 2. MODELOS E SCHEMAS  ->  models.py e schemas.py
 # ============================================================================
 
-class PerformanceRecord(Base):
-    __tablename__ = "performance_records"
-    id = Column(Integer, primary_key=True, index=True)
-    user_email = Column(String, index=True) # Vinculado ao usuário logado
-    tipo = Column(String)                   # 'simulado' ou 'discursiva'
-    tema = Column(String)                   # Ex: "Direito Penal" ou "Simulado Geral"
-    nota_obtida = Column(Float)
-    nota_maxima = Column(Float)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    nivel = Column(String, nullable=True)
-    formato = Column(String, nullable=True)
-    concurso = Column(String, nullable=True)
     
-class SimuladoTopicRequest(BaseModel):
-    area: str
-    topico: str
-    conteudo: str
-    model: Optional[str] = None
-    api_key: Optional[str] = None
-    qtd_questoes: Optional[int] = 5
-    nivel: Optional[Literal["Iniciante", "Normal", "Avançado", "Expert"]] = "Normal"
-    formato: Optional[str] = "Múltipla Escolha"
     
-class StoredPlan(Base):
-    __tablename__ = "study_plans"
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, index=True)
-    area = Column(String)
-    content = Column(JSON)
-    ano = Column(String, nullable=True)
-    banca = Column(String, nullable=True)
-    concurso = Column(String, nullable=True)
-    visibility = Column(String, default="public") # Adicionado
-    owner_id = Column(Integer, nullable=True)     # Adicionado
-    created_at = Column(DateTime, default=datetime.utcnow)
     
-class PlanShare(Base):
-    __tablename__ = "plan_shares"
-    id = Column(Integer, primary_key=True, index=True)
-    plan_id = Column(Integer, index=True)
-    user_email = Column(String, index=True)
 
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    role = Column(String, default="user") 
-    api_key = Column(String, nullable=True)          
-    preferred_model = Column(String, nullable=True)  
-    can_manage_lessons = Column(Boolean, default=False) 
-    session_version = Column(Integer, default=1)
-    plan_expires_at = Column(DateTime, nullable=True) # Controle do Mercado Pago
-    is_active = Column(Boolean, default=True)
-    allowed_concursos = Column(String, nullable=True)
-    
-    # --- NOVOS CAMPOS PARA INDICAÇÃO (Devem ficar alinhados aqui dentro do User) ---
-    referral_code = Column(String, unique=True, index=True, nullable=True) # Código único do usuário
-    referred_by_id = Column(Integer, nullable=True)                        # ID de quem o indicou
-    commission_balance = Column(Float, default=0.0)
-    
-    # --- NOVOS CAMPOS IA E ASSINATURA ---
-    plan_type = Column(String, default="Simples") # Simples, Plus, Pro
-    tokens_used = Column(Integer, default=0)
-    token_limit = Column(Integer, default=0)
-    token_reset_date = Column(DateTime, nullable=True)
-    ai_blocked = Column(Boolean, default=False)
 
-class GlobalAIConfig(Base):
-    __tablename__ = "global_ai_config"
-    id = Column(Integer, primary_key=True, index=True)
-    model = Column(String, default="openai/gpt-4o-mini")
-    api_key = Column(String, nullable=True)
-    global_prompt = Column(String, nullable=True)
-    temperature = Column(Float, default=0.5)
-    max_tokens = Column(Integer, default=8192)
-    top_p = Column(Float, default=1.0)
-    penalties = Column(Float, default=0.0)
-    timeout = Column(Integer, default=30)
 
-class AITokenLog(Base):
-    __tablename__ = "ai_token_logs"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
-    plan_type = Column(String)
-    tokens_prompt = Column(Integer, default=0)
-    tokens_completion = Column(Integer, default=0)
-    tokens_total = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
-class CommissionHistory(Base):
-    __tablename__ = "commission_history"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
-    amount = Column(Float)
-    action_type = Column(String) # 'ganho', 'pagamento' ou 'ajuste'
-    description = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
     
-class Coupon(Base):
-    __tablename__ = "coupons"
-    id = Column(Integer, primary_key=True, index=True)
-    code = Column(String, unique=True, index=True)
-    discount_percentage = Column(Float)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)     
     
-class CommissionActionRequest(BaseModel):
-    action: str
-    amount: float
-    description: Optional[str] = None
 
-class CommissionHistoryResponse(BaseModel):
-    id: int
-    amount: float
-    action_type: str
-    description: Optional[str] = None
-    created_at: datetime
-    model_config = ConfigDict(from_attributes=True)
 
 # ============================================================================
 # 3. SEGURANÇA (JWT & HASH)
@@ -203,122 +109,22 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# ============================================================================
-# 4. SCHEMAS (PYDANTIC)
-# ============================================================================
-class OpenRouterExchange(BaseModel):
-    code: str
     
-class UpdatePlanRequest(BaseModel):
-    title: Optional[str] = None
-    area: Optional[str] = None
-    ano: Optional[str] = None
-    banca: Optional[str] = None
-    concurso: Optional[str] = None
-    visibility: Optional[str] = None  
-    content: Optional[Dict[str, Any]] = None
 
-class ShareRequest(BaseModel):
-    email: str
     
-class PerformanceCreate(BaseModel):
-    tipo: str
-    tema: str
-    nota_obtida: float
-    nota_maxima: float
-    nivel: Optional[str] = None
-    formato: Optional[str] = None
-    concurso: Optional[str] = None
 
-class PerformanceResponse(BaseModel):
-    id: int
-    tipo: str
-    tema: str
-    nota_obtida: float
-    nota_maxima: float
-    nivel: Optional[str] = None
-    formato: Optional[str] = None
-    concurso: Optional[str] = None
-    created_at: datetime
-    model_config = ConfigDict(from_attributes=True)
     
-class GlobalEssayRequest(BaseModel):
-    area: str
-    aulas_titulos: List[str]
-    nivel: Optional[str] = "Normal"
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
     
-class TreinoDiscursivaRequest(BaseModel):
-    area: str
-    topicos: List[str]
-    tipo_prova: str
-    cargo: str
-    banca: str
-    nivel: Optional[str] = "Normal"
-    edital_regras_prova: Optional[str] = None
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
     
-class ExtractTopicsRequest(BaseModel):
-    texto: str
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
         
-class EssayCorrectionRequest(BaseModel):
-    texto_motivador: str
-    comando: str
-    aspectos: List[Dict[str, Any]]
-    resposta_aluno: str
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
 
-class GenerateEssayRequest(BaseModel):
-    area: str
-    aula_titulo: str
-    lesson_content: dict
-    nivel: Optional[str] = "Normal"
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
 
-class ChatMessageRequest(BaseModel):
-    area: str
-    aula_titulo: str
-    mensagem: str
-    historico: List[Dict[str, str]] = []
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
     
-class UserLogin(BaseModel):
-    email: str
-    password: str
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    role: str
-    email: str
-    can_manage_lessons: bool
 
-class UserCreate(BaseModel):
-    # O papel NAO entra aqui de proposito: o cadastro publico so cria conta comum.
-    # Promover alguem a admin e feito pelas rotas administrativas autenticadas.
-    email: str
-    password: str
-    referral_code: Optional[str] = None
 
-# ADICIONADO: Schema para validação e criação do cupom
-class CouponCreate(BaseModel):
-    code: str
-    discount_percentage: float
     
-class UserSettingsUpdate(BaseModel):
-    api_key: Optional[str] = None
-    preferred_model: Optional[str] = None
 
-class UserSettingsResponse(BaseModel):
-    api_key: Optional[str] = None
-    preferred_model: Optional[str] = None
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -347,7 +153,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         raise credentials_exception
     
     # === CONTROLE DE VENCIMENTO DO PLANO ===
-    if not user.is_active:
+    if not user.is_active or user.deleted_at is not None:
         raise HTTPException(
             status_code=403,
             detail="CONTA_BLOQUEADA"
@@ -372,165 +178,26 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         
     return user
 
-class ConfigRequest(BaseModel):
-    default_model: str | None = None
-    token: str | None = None
-    available_models: list[str] | None = None
-
-class SyllabusRequest(BaseModel):
-    text: str
-    model: str | None = None
-    question_format: str = "Múltipla Escolha"
-    question_level: Literal["Iniciante", "Normal", "Avançado", "Expert"] = "Normal"
-    api_key: Optional[str] = None
-    # Contexto da prova: chega ANTES da geracao para os agentes escreverem no
-    # padrao da banca certa, e nao so como rotulo no momento de salvar.
-    banca: Optional[str] = None
-    concurso: Optional[str] = None
-    cargo: Optional[str] = None
-    ano: Optional[str] = None
-    qtd_questoes: int = 10
-
-class EstruturaRequest(BaseModel):
-    """Etapa 1: so o arquiteto. Rapida, devolve a lista de modulos."""
-    text: str
-    model: Optional[str] = None
-    api_key: Optional[str] = None
-    banca: Optional[str] = None
-    concurso: Optional[str] = None
-    cargo: Optional[str] = None
-    ano: Optional[str] = None
 
 
-class ModuloRequest(BaseModel):
-    """Etapa 2: gera UM modulo completo. O frontend chama uma vez por modulo."""
-    modulo: Dict[str, Any]
-    area: str
-    instrucoes: Dict[str, Any] = {}
-    texto_edital: str = ""
-    model: Optional[str] = None
-    api_key: Optional[str] = None
-    question_format: str = "Múltipla Escolha"
-    question_level: Literal["Iniciante", "Normal", "Avançado", "Expert"] = "Normal"
-    qtd_questoes: int = 10
-    banca: Optional[str] = None
-    concurso: Optional[str] = None
-    cargo: Optional[str] = None
-    ano: Optional[str] = None
 
 
-class PlanoEstudoRequest(BaseModel):
-    """Etapa 3: o estrategista, com as aulas ja prontas."""
-    aulas: List[Dict[str, Any]]
-    area: str
-    model: Optional[str] = None
-    api_key: Optional[str] = None
 
 
-class SavePlanRequest(BaseModel):
-    title: str
-    area: str
-    content: Dict[str, Any]
-    ano: str
-    banca: str
-    concurso: str
-    visibility: str = "public" # NOVO
 
-class PlanSummaryResponse(BaseModel):
-    id: int
-    title: str
-    area: str
-    ano: Optional[str] = None
-    banca: Optional[str] = None
-    concurso: Optional[str] = None
-    visibility: str            # NOVO
-    owner_email: Optional[str] = None
-    created_at: datetime
-    model_config = ConfigDict(from_attributes=True)
 
-# NOVOS SCHEMAS PARA USUÁRIOS (CRUD ADMIN)
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    role: str
-    can_manage_lessons: bool 
-    plan_expires_at: Optional[datetime] = None
-    is_active: bool = True # NOVO
-    referral_code: Optional[str] = None     # NOVO
-    commission_balance: Optional[float] = 0.0 # NOVO
-    plan_type: str = "Simples"
-    tokens_used: int = 0
-    token_limit: int = 0
-    token_reset_date: Optional[datetime] = None
-    ai_blocked: bool = False
-    allowed_concursos: Optional[str] = None
-    model_config = ConfigDict(from_attributes=True)
 
-class UserCreateAdmin(BaseModel):
-    email: str
-    password: str
-    role: str = "user"
-    can_manage_lessons: bool = False
-    is_active: bool = True # NOVO
-    allowed_concursos: Optional[str] = None
 
-class UserUpdateAdmin(BaseModel):
-    email: Optional[str] = None
-    role: Optional[str] = None
-    can_manage_lessons: Optional[bool] = None
-    password: Optional[str] = None
-    is_active: Optional[bool] = None # NOVO
-    allowed_concursos: Optional[str] = None
+
+
     
-class PaginatedPlansResponse(BaseModel):
-    items: List[PlanSummaryResponse]
-    total: int
     
-class SimuladoCespeRequest(BaseModel):
-    subject: str = "Língua Portuguesa" # <-- Adicione este campo
-    focus: str
-    difficulty: str
-    amount: int
-    generate_text: bool
-    formato: Optional[str] = "Certo/Errado"
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
 
-class LessonCespeRequest(BaseModel):
-    wrong_questions: List[Dict[str, Any]]
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
     
-class TranslateWordRequest(BaseModel):
-    word: str
-    model: Optional[str] = "nvidia/nemotron-3-nano-30b-a3b:free"
-    api_key: Optional[str] = None
     
-class ProcessedPayment(Base):
-    __tablename__ = "processed_payments"
-    payment_id = Column(String, primary_key=True, index=True)
-    processed_at = Column(DateTime, default=datetime.utcnow)
     
-class UserUpdateRole(BaseModel):
-    role: str
 
-class AIConfigSchema(BaseModel):
-    model: str
-    api_key: str
-    global_prompt: Optional[str] = None
-    temperature: float
-    max_tokens: int
-    top_p: float
-    penalties: float
-    timeout: int
 
-class AIStatsResponse(BaseModel):
-    total_plus: int
-    total_pro: int
-    tokens_today: int
-    tokens_month: int
-    tokens_total: int
-    estimated_cost: float
 # ============================================================================
 # 5. CLIENTE OPENROUTER
 # ============================================================================
@@ -742,6 +409,13 @@ async def login(form_data: UserLogin, db: AsyncSession = Depends(get_db)):
     
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Email ou senha incorretos")
+
+    # Ate 10/09/2026 o login NAO olhava is_active: a conta bloqueada recebia um
+    # token normalmente e so era barrada na chamada seguinte, pelo
+    # get_current_user. Alem de confuso, isso incrementava session_version e
+    # derrubava a sessao de quem estivesse logado. Agora barra aqui.
+    if not user.is_active or user.deleted_at is not None:
+        raise HTTPException(status_code=403, detail="CONTA_BLOQUEADA")
 
     # === CONTROLE DE VENCIMENTO DO PLANO ===
     if user.role != "admin" and user.plan_expires_at:
@@ -2719,6 +2393,9 @@ async def validate_coupon(
 @app.get("/users", response_model=List[UserResponse])
 async def list_users(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
+    # As contas excluidas logicamente continuam na lista de proposito: sumir
+    # com elas tiraria do admin a unica forma de auditar o que aconteceu.
+    # Elas chegam com deleted_at preenchido e is_active falso.
     result = await db.execute(select(User).order_by(User.id))
     return result.scalars().all()
 
@@ -2747,7 +2424,17 @@ async def update_user_admin(user_id: int, payload: UserUpdateAdmin, db: AsyncSes
     result = await db.execute(select(User).filter(User.id == user_id))
     user = result.scalars().first()
     if not user: raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    
+
+    # Reativar por aqui seria uma armadilha: o is_active voltaria a True, o
+    # admin veria "conta reativada", e a pessoa continuaria sem conseguir
+    # entrar — porque o login e o get_current_user olham tambem o deleted_at.
+    # Restaurar conta excluida tem rota propria, que limpa os dois campos.
+    if payload.is_active is True and user.deleted_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Esta conta foi excluída. Use 'Restaurar conta' para trazê-la de volta.",
+        )
+
     if payload.email is not None: user.email = payload.email
     if payload.role is not None: user.role = payload.role
     if payload.allowed_concursos is not None: user.allowed_concursos = payload.allowed_concursos
@@ -2760,16 +2447,86 @@ async def update_user_admin(user_id: int, payload: UserUpdateAdmin, db: AsyncSes
     await db.refresh(user)
     return user
 
+@app.post("/users/{user_id}/restaurar", response_model=UserResponse)
+async def restaurar_usuario(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Desfaz uma exclusao logica.
+
+    Existe porque a alternativa era pior: contas com historico financeiro sao
+    guardadas de proposito, e uma exclusao sem volta transformaria um clique
+    errado em perda definitiva de acesso. Aqui o admin desfaz.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Não autorizado")
+
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if user.deleted_at is None:
+        raise HTTPException(status_code=409, detail="Esta conta não está excluída.")
+
+    user.deleted_at = None
+    user.is_active = True
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 @app.delete("/users/{user_id}")
-async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Esta rota ficou SEM NENHUMA AUTENTICACAO ate 10/09/2026: qualquer um que
+    # alcancasse a API apagava qualquer conta menos a de id 1. O frontend ja
+    # mandava o token; era o backend que nao pedia. Mesma guarda das rotas
+    # irmas (POST /users e PUT /users/{id}).
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Não autorizado")
+
     result = await db.execute(select(User).filter(User.id == user_id))
     user = result.scalars().first()
     if not user: raise HTTPException(status_code=404, detail="Usuário não encontrado")
     if user.id == 1: raise HTTPException(status_code=400, detail="Não é possível deletar o Admin Mestre.")
-    
+
+    # Ha DOIS caminhos aqui, e a diferenca e dinheiro.
+    #
+    # Conta SEM historico financeiro: apaga de verdade. As foreign keys criadas
+    # em migrar_fks.py cuidam do resto sozinhas — a aula fica sem dono
+    # (SET NULL), o log de token e o compartilhamento vao junto (CASCADE).
+    #
+    # Conta COM historico de comissao: NAO apaga. commission_history e livro
+    # contabil; apagar a conta levaria os lancamentos junto (CASCADE) ou os
+    # deixaria sem dono (SET NULL) — as duas destroem o extrato. Entao a conta
+    # some do sistema por deleted_at e o id continua existindo para o extrato
+    # apontar para alguem. E por isso que commission_history.user_id e a unica
+    # ligacao do projeto sem foreign key.
+    lancamentos = await db.execute(
+        select(func.count()).select_from(CommissionHistory).filter(CommissionHistory.user_id == user_id)
+    )
+    tem_financeiro = (lancamentos.scalar() or 0) > 0 or (user.commission_balance or 0) != 0
+
+    if tem_financeiro:
+        user.deleted_at = datetime.utcnow()
+        user.is_active = False
+        # Derruba as sessoes abertas: o get_current_user compara esta versao
+        # com a que esta dentro do token.
+        user.session_version = (user.session_version or 0) + 1
+        await db.commit()
+        return {
+            "ok": True,
+            "modo": "logica",
+            "message": "Conta excluída. O histórico de comissão foi preservado por ser registro financeiro.",
+        }
+
     await db.delete(user)
     await db.commit()
-    return {"ok": True, "message": "Usuário deletado"}
+    return {"ok": True, "modo": "fisica", "message": "Usuário deletado"}
 
 @app.get("/users/me", response_model=UserResponse) 
 async def read_users_me(
@@ -2814,9 +2571,6 @@ async def update_user_settings(
     await db.commit()
     return {"ok": True, "message": "Configurações de IA atualizadas no banco de dados."}
 
-class PasswordUpdate(BaseModel):
-    current_password: str
-    new_password: str
 
 @app.put("/users/me/password")
 async def update_my_password(payload: PasswordUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -3407,10 +3161,6 @@ async def translate_word_endpoint(req: TranslateWordRequest, current_user: User 
 mp_access_token = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "INSIRA_SEU_ACCESS_TOKEN_AQUI")
 sdk = mercadopago.SDK(mp_access_token)
 
-class PaymentRequest(BaseModel):
-    email: str
-    plano: str
-    coupon_code: Optional[str] = None
 
 @app.post("/payments/create-preference")
 async def create_preference(
@@ -3716,27 +3466,10 @@ async def handle_commission_action(
 # FERRAMENTAS DE TREINO: LEI SECA EM LACUNAS E COMPARADOR DE BANCAS
 # ============================================================================
 
-class TextoLegalRequest(BaseModel):
-    dispositivo: str
-    contexto: Optional[str] = ""
-    model: Optional[str] = None
-    api_key: Optional[str] = None
 
 
-class LeiSecaRequest(BaseModel):
-    texto: str
-    intensidade: Optional[Literal["Leve", "Media", "Pesada"]] = "Media"
-    model: Optional[str] = None
-    api_key: Optional[str] = None
 
 
-class ComparadorRequest(BaseModel):
-    tema: str
-    conteudo: Optional[str] = ""
-    bancas: Optional[List[str]] = None
-    nivel: Optional[Literal["Iniciante", "Normal", "Avancado", "Expert"]] = "Normal"
-    model: Optional[str] = None
-    api_key: Optional[str] = None
 
 
 # Quantas lacunas abrir a cada 100 palavras, por intensidade.

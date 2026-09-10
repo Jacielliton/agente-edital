@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Trash2, RefreshCw, Shield, Pencil, Plus, Search, Ban, CheckCircle2, ShieldOff, FileText, DollarSign, Settings2, Ticket, Users, UserCog,
+  Trash2, RefreshCw, Shield, Pencil, Plus, Search, Ban, CheckCircle2, ShieldOff, FileText, DollarSign, Settings2, Ticket, Users, UserCog, Undo2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -49,6 +49,10 @@ const PLANOS = [
   { id: "trimestral_pro", nome: "Trimestral Pro", detalhe: "90 dias · 6M tokens" },
   { id: "semestral_pro", nome: "Semestral Pro", detalhe: "180 dias · 6M tokens" },
 ];
+
+// deleted_at preenchido = conta excluida logicamente (tinha comissao).
+// Continua na lista de proposito: e a unica forma de o admin auditar.
+const foiExcluida = (u) => Boolean(u?.deleted_at);
 
 const ABAS = [
   { id: "users", rotulo: "Usuários", icone: UserCog },
@@ -189,21 +193,55 @@ export default function AdminPanel() {
     }
   };
 
+  // O servidor decide como excluir: conta com histórico de comissão vira
+  // exclusão lógica (o extrato é registro financeiro e não pode ir junto).
+  // Ele devolve "modo": "fisica" ou "logica", e a lista reage de um jeito
+  // diferente em cada caso — some, ou fica marcada como excluída.
+  const temComissao = (u) => Number(u.commission_balance || 0) !== 0;
+
   const pedirExclusaoUsuario = (u) =>
     setConfirmacao({
       titulo: "Excluir usuário",
-      mensagem: <>Excluir a conta de <b>{u.email}</b> permanentemente?</>,
-      detalhe: "Todo o histórico de desempenho e as comissões dessa conta deixam de ser acessíveis. Não há como desfazer.",
+      mensagem: <>Excluir a conta de <b>{u.email}</b>?</>,
+      detalhe: temComissao(u)
+        ? "Esta conta tem comissão. Ela sai do sistema, mas o extrato é preservado por ser registro financeiro — e dá para restaurar depois."
+        : "A conta e o histórico de desempenho são apagados. Se houver lançamento de comissão, ela será preservada e a exclusão passa a ser reversível.",
       rotulo: "Excluir conta",
       acao: async () => {
         const res = await fetch(`${API_URL}/users/${u.id}`, { method: "DELETE", headers: authHeaders() });
         if (!res.ok) throw new Error("O servidor recusou a exclusão.");
-        setUsers((atual) => atual.filter((x) => x.id !== u.id));
-        setAviso({ tone: "ok", texto: `Conta de ${u.email} excluída.` });
+        const dados = await res.json().catch(() => ({}));
+        if (dados.modo === "logica") {
+          setUsers((atual) => atual.map((x) =>
+            x.id === u.id ? { ...x, deleted_at: new Date().toISOString(), is_active: false } : x));
+          setAviso({ tone: "ok", texto: dados.message || `Conta de ${u.email} excluída.` });
+        } else {
+          setUsers((atual) => atual.filter((x) => x.id !== u.id));
+          setAviso({ tone: "ok", texto: `Conta de ${u.email} excluída.` });
+        }
+      },
+    });
+
+  const pedirRestauracao = (u) =>
+    setConfirmacao({
+      titulo: "Restaurar conta",
+      mensagem: <>Trazer de volta a conta de <b>{u.email}</b>?</>,
+      detalhe: "A pessoa volta a entrar normalmente, com o plano e o extrato que tinha.",
+      rotulo: "Restaurar",
+      acao: async () => {
+        const res = await fetch(`${API_URL}/users/${u.id}/restaurar`, { method: "POST", headers: authHeaders() });
+        if (!res.ok) throw new Error("O servidor recusou a restauração.");
+        setUsers((atual) => atual.map((x) =>
+          x.id === u.id ? { ...x, deleted_at: null, is_active: true } : x));
+        setAviso({ tone: "ok", texto: `Conta de ${u.email} restaurada.` });
       },
     });
 
   const pedirTrocaStatus = (u) => {
+    if (foiExcluida(u)) {
+      setAviso({ tone: "warn", texto: "Esta conta foi excluída. Use Restaurar para trazê-la de volta." });
+      return;
+    }
     if (u.id === 1) {
       setAviso({ tone: "warn", texto: "O administrador principal não pode ser suspenso." });
       return;
@@ -515,15 +553,26 @@ export default function AdminPanel() {
 
   const AcoesUsuario = ({ u }) => (
     <div className="adm__actions">
-      <button
-        className={`adm__icon-btn ${u.is_active === false ? "adm__icon-btn--ok" : "adm__icon-btn--danger"}`}
-        onClick={() => pedirTrocaStatus(u)}
-        disabled={u.id === 1}
-        title={u.is_active === false ? "Reativar" : "Suspender"}
-        aria-label={`${u.is_active === false ? "Reativar" : "Suspender"} ${u.email}`}
-      >
-        {u.is_active === false ? <CheckCircle2 size={16} /> : <Ban size={16} />}
-      </button>
+      {foiExcluida(u) ? (
+        <button
+          className="adm__icon-btn adm__icon-btn--ok"
+          onClick={() => pedirRestauracao(u)}
+          title="Restaurar conta"
+          aria-label={`Restaurar a conta de ${u.email}`}
+        >
+          <Undo2 size={16} />
+        </button>
+      ) : (
+        <button
+          className={`adm__icon-btn ${u.is_active === false ? "adm__icon-btn--ok" : "adm__icon-btn--danger"}`}
+          onClick={() => pedirTrocaStatus(u)}
+          disabled={u.id === 1}
+          title={u.is_active === false ? "Reativar" : "Suspender"}
+          aria-label={`${u.is_active === false ? "Reativar" : "Suspender"} ${u.email}`}
+        >
+          {u.is_active === false ? <CheckCircle2 size={16} /> : <Ban size={16} />}
+        </button>
+      )}
       <button
         className="adm__icon-btn adm__icon-btn--accent"
         onClick={() => { setSelectedUser(u); setShowModal(true); }}
@@ -535,8 +584,8 @@ export default function AdminPanel() {
       <button
         className="adm__icon-btn"
         onClick={() => handleOpenUserModal(u)}
-        disabled={u.id === 1}
-        title="Editar"
+        disabled={u.id === 1 || foiExcluida(u)}
+        title={foiExcluida(u) ? "Conta excluída" : "Editar"}
         aria-label={`Editar ${u.email}`}
       >
         <Pencil size={16} />
@@ -544,8 +593,8 @@ export default function AdminPanel() {
       <button
         className="adm__icon-btn adm__icon-btn--danger"
         onClick={() => pedirExclusaoUsuario(u)}
-        disabled={u.id === 1}
-        title="Excluir"
+        disabled={u.id === 1 || foiExcluida(u)}
+        title={foiExcluida(u) ? "Já excluída" : "Excluir"}
         aria-label={`Excluir ${u.email}`}
       >
         <Trash2 size={16} />
@@ -677,7 +726,9 @@ export default function AdminPanel() {
                                   <Badge tone={u.role === "admin" ? "accent" : "default"}>
                                     {(u.role || "user").toUpperCase()}
                                   </Badge>
-                                  {u.is_active === false && <Badge tone="danger">Suspenso</Badge>}
+                                  {foiExcluida(u)
+                                    ? <Badge tone="danger">Excluída</Badge>
+                                    : u.is_active === false && <Badge tone="danger">Suspenso</Badge>}
                                   {u.can_manage_lessons && <Badge outline>Gerencia aulas</Badge>}
                                 </span>
                               </span>
@@ -722,7 +773,9 @@ export default function AdminPanel() {
                         <span className="adm__tags">
                           <Badge tone={u.role === "admin" ? "accent" : "default"}>{(u.role || "user").toUpperCase()}</Badge>
                           <Badge tone={plano.tone}>{plano.texto}</Badge>
-                          {u.is_active === false && <Badge tone="danger">Suspenso</Badge>}
+                          {foiExcluida(u)
+                            ? <Badge tone="danger">Excluída</Badge>
+                            : u.is_active === false && <Badge tone="danger">Suspenso</Badge>}
                         </span>
                       </span>
                       <div className="adm__card-row">
