@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Button, Input, Badge } from '../components/ui';
 import './Login.css';
+import { chamarApi, textoDoErro } from "../api";
 
 // Precos base para o calculo dinamico com cupom.
 const PLAN_PRICES = {
@@ -200,15 +201,13 @@ export default function Login() {
     setIsApplyingCoupon(true);
     setCouponMessage({ text: '', type: '' });
     try {
-      const res = await fetch(`${API_URL}/coupons/validate/${couponCode}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Cupom inválido ou expirado.');
+      const data = await chamarApi(`${API_URL}/coupons/validate/${couponCode}`);
       setDiscount(data.discount_value);
       setDiscountType(data.discount_type || 'fixed');
       setCouponMessage({ text: 'Cupom aplicado. O novo preço já aparece na lista.', type: 'success' });
     } catch (err) {
       setDiscount(0);
-      setCouponMessage({ text: err.message, type: 'error' });
+      setCouponMessage({ text: textoDoErro(err) || 'Cupom inválido ou expirado.', type: 'error' });
     } finally {
       setIsApplyingCoupon(false);
     }
@@ -233,25 +232,32 @@ export default function Login() {
       if (isRegistering) {
         if (password !== confirmPassword) throw new Error("As senhas não coincidem.");
 
-        const res = await fetch(`${API_URL}/auth/register`, {
+        await chamarApi(`${API_URL}/auth/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, role: "user", referral_code: referralCode }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Erro ao criar conta.");
 
-        const payRes = await fetch(`${API_URL}/payments/create-preference`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            plano: selectedPlan,
-            coupon_code: discount > 0 ? couponCode : null,
-          }),
-        });
-        const payData = await payRes.json();
-        if (!payRes.ok) throw new Error(payData.detail || "Conta criada, mas falhou ao gerar a cobrança.");
+        let payData;
+        try {
+          payData = await chamarApi(`${API_URL}/payments/create-preference`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              plano: selectedPlan,
+              coupon_code: discount > 0 ? couponCode : null,
+            }),
+          });
+        } catch (erroDaCobranca) {
+          // A conta JÁ foi criada neste ponto. Sem esta distinção a pessoa lê
+          // "erro ao criar conta", tenta de novo e recebe "e-mail já
+          // cadastrado" — parecendo que o site quebrou duas vezes.
+          throw new Error(
+            `A sua conta foi criada, mas não consegui gerar a cobrança: ${textoDoErro(erroDaCobranca)} ` +
+            `Entre com o seu e-mail e senha e conclua o pagamento pela página de planos.`
+          );
+        }
 
         window.location.href = payData.init_point;
         return;
@@ -260,7 +266,11 @@ export default function Login() {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError(err.message === "CONTA_EXPIRADA" ? "CONTA_EXPIRADA" : (err.message || "Erro ao fazer login."));
+      // CONTA_EXPIRADA continua como código: o bloco de aviso abaixo troca de
+      // aparência por causa dele e oferece o botão de renovar.
+      setError(err?.codigo === "CONTA_EXPIRADA" || err?.message === "CONTA_EXPIRADA"
+        ? "CONTA_EXPIRADA"
+        : textoDoErro(err));
     } finally {
       setLoading(false);
     }
@@ -626,6 +636,18 @@ export default function Login() {
               No plano Simples, você conecta a sua própria chave e usa os modelos que quiser,
               inclusive os gratuitos. Nos planos Plus e Pro, a IA já vem inclusa e não há nada a configurar.
             </p>
+            {/* Esta frase existia só na /planos, ou seja: DEPOIS da decisão de
+                compra. Com "/mês" e "Assinar" nos cartões, quem lê entende
+                assinatura recorrente — e venda a consumidor exige que a forma
+                de cobrança esteja visível ANTES. */}
+            <p className="auth__cobranca">
+              <ShieldCheck size={15} />
+              <span>
+                <b>Pagamento único, sem renovação automática.</b> Você paga uma vez pelo período
+                escolhido e decide se quer renovar quando ele terminar — não há cobrança recorrente
+                no cartão.
+              </span>
+            </p>
           </div>
 
           <div className="auth__tiers">
@@ -666,12 +688,18 @@ export default function Login() {
                 <h3>Pro</h3>
                 <Badge outline icon={<Zap size={11} />}>volume alto</Badge>
               </div>
-              <div className="auth__tier-price">{brl(PLAN_PRICES.trimestral_pro)} <small>/trimestre</small></div>
+              <div className="auth__tier-price">
+                {brl(PLAN_PRICES.trimestral_pro / 3)} <small>/mês</small>
+              </div>
               <ul>
                 <li><Check size={15} /> Tudo do plano Plus</li>
                 <li><Check size={15} /> IA inclusa: 6 milhões de tokens por mês</li>
                 <li><Check size={15} /> Folga para simulados longos e turmas de estudo</li>
-                <li><Check size={15} /> Semestral {brl(PLAN_PRICES.semestral_pro)}</li>
+                {/* O Pro só existe em trimestral e semestral. Mostrar
+                    "{brl(trimestral)} /trimestre" entre dois cartões "/mês"
+                    deixava a comparação torta; agora a unidade é a mesma nos
+                    três e o valor real do pacote vem logo abaixo. */}
+                <li><Check size={15} /> Cobrado {brl(PLAN_PRICES.trimestral_pro)} a cada 3 meses · semestral {brl(PLAN_PRICES.semestral_pro)}</li>
               </ul>
               <Button block onClick={() => irParaCadastro('trimestral_pro')}>Assinar o Pro</Button>
               <p className="auth__tier-note">Disponível nos períodos trimestral e semestral.</p>

@@ -33,10 +33,13 @@ class CommissionActionRequest(BaseModel):
 
 class CommissionHistoryResponse(BaseModel):
     id: int
-    amount: float
+    amount: float               # SEMPRE a variacao do saldo (negativa num pagamento)
     action_type: str
     description: Optional[str] = None
     created_at: datetime
+    # Lancamentos antigos nao tem estes dois: ficam None, e a tela mostra "—".
+    saldo_anterior: Optional[float] = None
+    saldo_novo: Optional[float] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -69,6 +72,11 @@ class PerformanceCreate(BaseModel):
     nivel: Optional[str] = None
     formato: Optional[str] = None
     concurso: Optional[str] = None
+    # None  -> comportamento historico (simulado da aula substitui o anterior)
+    # False -> sempre grava um registro novo (ferramentas por materia: cada
+    #          sessao e um caderno inedito, e o historico precisa acumular para
+    #          a tendencia e o grafico dos ultimos simulados fazerem sentido)
+    substituir: Optional[bool] = None
 
 
 class PerformanceResponse(BaseModel):
@@ -162,6 +170,8 @@ class UserCreate(BaseModel):
 class CouponCreate(BaseModel):
     code: str
     discount_percentage: float
+    max_uses: int = 0                      # 0 = ilimitado
+    expires_at: Optional[datetime] = None  # None = sem validade
 
 
 class UserSettingsUpdate(BaseModel):
@@ -172,6 +182,15 @@ class UserSettingsUpdate(BaseModel):
 class UserSettingsResponse(BaseModel):
     api_key: Optional[str] = None
     preferred_model: Optional[str] = None
+    # Acrescentados em 14/09/2026 para a tela parar de mandar o assinante
+    # Plus/Pro configurar uma chave que o plano dele ja cobre.
+    plan_type: Optional[str] = None
+    # ativa | bloqueada | fora_do_plano | sem_cota | sem_chave_no_sistema
+    ia_do_plano: Optional[str] = None
+    ia_motivo: Optional[str] = None
+    tokens_used: Optional[int] = None
+    token_limit: Optional[int] = None
+    tokens_restantes: Optional[int] = None
 
 
 class ConfigRequest(BaseModel):
@@ -328,7 +347,14 @@ class UserUpdateRole(BaseModel):
 
 class AIConfigSchema(BaseModel):
     model: str
-    api_key: str
+    # Opcional e com sentido definido: vazio ou ausente = NAO mexer na chave.
+    # O painel carrega o formulario sem a chave (a leitura nao a devolve), e
+    # sem isto todo salvamento de "temperatura" apagaria a chave junto.
+    api_key: Optional[str] = None
+    # O unico jeito de remover a chave. Antes nao havia nenhum: o
+    # `if payload.api_key:` da rota tratava string vazia como "nao mexer",
+    # entao trocar a chave funcionava e tirar a chave era impossivel.
+    limpar_api_key: bool = False
     global_prompt: Optional[str] = None
     temperature: float
     max_tokens: int

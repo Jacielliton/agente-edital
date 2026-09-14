@@ -141,3 +141,17 @@
   .ga__cards { display: flex; }
   .ga__toolbar-actions { margin-left: 0; width: 100%; }
 }
+
+/* -------------------------------------------------- Alvo de toque (44px)
+   Mesmo caso do painel administrativo: 69 elementos abaixo de 44px a 375px,
+   com Abrir, Baixar, Editar e Excluir de 32px lado a lado. Ver
+   revisao-telas-internas.md. */
+@media (pointer: coarse) {
+  .ga__icon-btn { position: relative; }
+  .ga__icon-btn::after {
+    content: ""; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 44px; height: 44px;
+  }
+  .ga__actions { gap: var(--space-3); }
+}

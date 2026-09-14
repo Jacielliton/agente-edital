@@ -451,3 +451,20 @@
   background: var(--surface-3); white-space: nowrap;
 }
 .ui-table tbody tr:last-child td { border-bottom: none; }
+
+/* ---------------------- Alvo de toque no celular ----------------------
+   Medido em 375px: os botões ficavam com 35px de altura, abaixo dos 44px
+   que as diretrizes de toque recomendam (WCAG 2.5.5 / guias de iOS e
+   Android). Não quebrava nada — só errava o toque.
+
+   `pointer: coarse` é o que descreve o dedo: só cresce onde o ponteiro é
+   impreciso, sem engordar a interface de quem usa mouse. */
+@media (pointer: coarse) {
+  .ui-btn { min-height: 44px; }
+  .ui-btn--sm { min-height: 40px; }
+  .ui-input, .ui-select select { min-height: 44px; }
+  /* Tres botoes lado a lado: 44 de altura e 44 de largura ainda cabem na
+     barra lateral de 232px (3x44 + espacos = ~150px). */
+  .ui-seg__item { min-height: 44px; min-width: 44px; justify-content: center; }
+  .ui-tab { min-height: 44px; }
+}

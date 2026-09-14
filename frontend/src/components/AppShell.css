@@ -206,7 +206,9 @@
   font-size: var(--text-xs);
 }
 .shell__foot-social { display: flex; gap: var(--space-3); align-items: center; }
-.shell__foot-social a { color: var(--fg-3); display: flex; }
+/* Mesmo ajuste do rodapé público: alvo de toque de 44px sem mudar o
+   tamanho do ícone. */
+.shell__foot-social a { color: var(--fg-3); display: flex; padding: 11px; margin: -11px; border-radius: var(--radius-sm); }
 .shell__foot-social a:hover { color: var(--accent); }
 
 .shell__scrim { display: none; }
@@ -215,15 +217,27 @@
 @media (max-width: 900px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
 
+  /* A gaveta fechada precisa sair do caminho do Tab, e nao apenas sair da
+     vista. Medido no navegador em 13/09/2026, a 793px de largura: com a
+     gaveta fechada havia 23 elementos focaveis fora da tela ainda recebendo
+     foco — 17 deles links de navegacao. Quem navega por teclado apertava Tab
+     e o foco simplesmente desaparecia; para leitor de tela, a navegacao
+     inteira era anunciada como se estivesse a vista.
+
+     `transform` sozinho nao tira do Tab. `visibility: hidden` tira — do foco
+     e da arvore de acessibilidade — e ainda anima: a transicao de visibility
+     e discreta, entao o painel continua VISIVEL durante os .22s em que
+     desliza para fora, e so entao some. A animacao nao muda em nada.       */
   .shell__side {
     position: fixed;
     inset: 0 auto 0 0;
     width: 264px;
     transform: translateX(-100%);
-    transition: transform .22s ease;
+    visibility: hidden;
+    transition: transform .22s ease, visibility .22s;
     box-shadow: var(--shadow-3);
   }
-  .shell.is-open .shell__side { transform: translateX(0); }
+  .shell.is-open .shell__side { transform: translateX(0); visibility: visible; }
 
   .shell__burger { display: grid; }
 
@@ -301,4 +315,15 @@
   background: var(--sidebar-active);
   color: var(--sidebar-fg-strong);
   box-shadow: none;
+}
+
+/* -------------------------------------------------- Alvo de toque (44px)
+   O bloco @media (pointer: coarse) criado para a tela pública cobria .ui-btn,
+   .ui-input, .ui-seg__item e .ui-tab. A casca do app usa classes próprias, que
+   ficaram de fora: o hambúrguer e o atalho do perfil têm 36px, e os itens da
+   gaveta, 33px de altura. */
+@media (pointer: coarse) {
+  .shell__icon-btn { min-width: 44px; min-height: 44px; }
+  .shell__item { min-height: 44px; }
+  .shell__user { min-height: 44px; }
 }

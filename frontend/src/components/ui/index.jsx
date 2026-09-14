@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle, CheckCircle2, ChevronDown, X, Info,
@@ -349,13 +349,151 @@ export function PageHeader({ eyebrow, title, description, actions = null }) {
 
 /* ------------------------------------------------------------------- Modal
    Fecha com Esc e com clique no fundo. Substitui os modais montados a mao
-   espalhados pelas telas.                                                  */
+   espalhados pelas telas.
+
+   O FOCO (corrigido em 13/09/2026)
+   --------------------------------
+   Medido no navegador ANTES desta correcao, com a confirmacao do painel
+   admin aberta:
+
+     focoFoiParaODialogo: false     ->  o foco ficava no <body>
+     9 de 14 Tabs caiam ATRAS do modal, com 81 focaveis alcancaveis la
+
+   Na pratica: quem usa teclado abria "Excluir conta" e tinha de percorrer a
+   barra lateral inteira — 23 elementos — para alcancar o botao Cancelar. E o
+   aria-modal="true" afirmava ao leitor de tela que o resto da pagina estava
+   inerte, o que nao era verdade. A promessa e o comportamento discordavam.
+
+   O modal de formulario disfarcava o problema porque o primeiro <input> tem
+   autoFocus. O ConfirmDialog nao tem campo nenhum — e e justamente ele que
+   guarda as acoes irreversiveis.
+
+   Agora: ao abrir, o foco ENTRA no dialogo; o Tab CIRCULA dentro dele; ao
+   fechar, o foco VOLTA para o elemento que o abriu.                        */
+
+/* Quem tinha o foco ANTES de qualquer dialogo abrir.
+
+   Nao da para descobrir isso de dentro do Modal: o autoFocus do React roda
+   na fase de commit, ANTES do useEffect. Quando o efeito do Modal olha para
+   document.activeElement, o campo do proprio modal ja se focou — e foi
+   exatamente o que aconteceu na primeira tentativa desta correcao: o modal
+   guardava a si mesmo como "origem", e ao fechar tentava devolver o foco a
+   um no que tinha acabado de sumir.
+
+   Por isso a anotacao e continua e fica FORA do componente: todo foco que
+   cai em algo que nao esta dentro de um dialogo vira o ponto de retorno.  */
+let ultimoFocoForaDeDialogo = null;
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "focusin",
+    (e) => {
+      const alvo = e.target;
+      if (alvo && alvo !== document.body && !alvo.closest?.("[role='dialog']")) {
+        ultimoFocoForaDeDialogo = alvo;
+      }
+    },
+    true
+  );
+}
+
+const FOCAVEIS = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
 export function Modal({ open, onClose, title, subtitle, wide = false, footer = null, children }) {
+  const caixa = useRef(null);
+  const tituloId = useId();
+
+  /* Entra ao abrir, volta ao fechar.
+
+     O "volta ao fechar" tem uma armadilha que so apareceu ao medir: ao abrir
+     o dialogo, o React re-renderiza a tela de tras e o botao que o abriu
+     PODE DEIXAR DE EXISTIR (medido: `botaoAindaNoDom: false` logo apos o
+     clique, na tabela do painel admin). Guardar so a referencia ao elemento
+     nao basta — ela aponta para um no morto. Por isso guardamos tambem o
+     aria-label, que aqui nomeia a conta, para reencontrar o botao novo; e,
+     se nem ele existir mais (a acao excluiu a linha), o foco vai para o
+     <main>, nao para lugar nenhum.                                        */
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => e.key === "Escape" && onClose?.();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const veioDe = ultimoFocoForaDeDialogo;
+    const rotuloDeOrigem = veioDe ? veioDe.getAttribute?.("aria-label") : null;
+
+    const quadro = requestAnimationFrame(() => {
+      const el = caixa.current;
+      if (!el) return;
+      // Se algum campo ja se focou sozinho (autoFocus), respeita a escolha dele.
+      if (el.contains(document.activeElement)) return;
+      // data-foco-inicial marca o destino seguro (no ConfirmDialog, o Cancelar).
+      const preferido = el.querySelector("[data-foco-inicial]:not([disabled])");
+      (preferido || el).focus();
+    });
+
+    return () => {
+      cancelAnimationFrame(quadro);
+      // Espera a tela de tras terminar de se redesenhar antes de procurar
+      // o destino — senao o botao novo ainda nao esta no DOM.
+      requestAnimationFrame(() => {
+        if (veioDe && veioDe.isConnected && typeof veioDe.focus === "function") {
+          veioDe.focus();
+          if (document.activeElement === veioDe) return;
+        }
+        if (rotuloDeOrigem) {
+          const novo = [...document.querySelectorAll("[aria-label]")].find(
+            (el) => el.getAttribute("aria-label") === rotuloDeOrigem && el.offsetParent !== null
+          );
+          if (novo) { novo.focus(); if (document.activeElement === novo) return; }
+        }
+        // Ultimo recurso: devolve o foco ao conteudo da pagina. Melhor do que
+        // o <body>, onde o proximo Tab recomeca do topo do documento.
+        const principal = document.querySelector("main");
+        if (principal) {
+          if (!principal.hasAttribute("tabindex")) principal.setAttribute("tabindex", "-1");
+          principal.focus();
+        }
+      });
+    };
+  }, [open]);
+
+  /* Esc fecha; Tab circula dentro do dialogo. */
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose?.(); return; }
+      if (e.key !== "Tab") return;
+
+      const el = caixa.current;
+      if (!el) return;
+
+      const itens = [...el.querySelectorAll(FOCAVEIS)].filter(
+        (n) => n.offsetParent !== null || getComputedStyle(n).position === "fixed"
+      );
+      if (!itens.length) { e.preventDefault(); el.focus(); return; }
+
+      const primeiro = itens[0];
+      const ultimo = itens[itens.length - 1];
+      const atual = document.activeElement;
+
+      if (!el.contains(atual)) {                       // fugiu: traz de volta
+        e.preventDefault();
+        (e.shiftKey ? ultimo : primeiro).focus();
+      } else if (e.shiftKey && (atual === primeiro || atual === el)) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && atual === ultimo) {
+        e.preventDefault();
+        primeiro.focus();
+      }
+    };
+
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [open, onClose]);
 
   if (!open) return null;
@@ -363,15 +501,20 @@ export function Modal({ open, onClose, title, subtitle, wide = false, footer = n
   return (
     <div className="ui-overlay" onClick={onClose} role="presentation">
       <div
+        ref={caixa}
         className={cx("ui-modal", wide && "ui-modal--wide")}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={typeof title === "string" ? title : undefined}
+        /* aria-labelledby em vez de aria-label: o titulo as vezes chega como
+           elemento React (<>Excluir a conta de <b>x</b>?</>), e nesse caso o
+           aria-label antigo virava undefined — o dialogo ficava sem nome. */
+        aria-labelledby={tituloId}
+        tabIndex={-1}
       >
         <div className="ui-modal__head">
           <div style={{ minWidth: 0 }}>
-            <h3>{title}</h3>
+            <h3 id={tituloId}>{title}</h3>
             {subtitle && <p>{subtitle}</p>}
           </div>
           <button className="ui-btn ui-btn--ghost ui-btn--sm" onClick={onClose} aria-label="Fechar">
@@ -407,7 +550,9 @@ export function ConfirmDialog({
       title={title}
       footer={
         <>
-          <Button onClick={onCancel} disabled={loading}>{cancelLabel}</Button>
+          {/* data-foco-inicial: ao abrir, o foco vai para o CANCELAR — nunca
+              para o botao que executa. Um Enter apressado nao exclui nada. */}
+          <Button onClick={onCancel} disabled={loading} data-foco-inicial>{cancelLabel}</Button>
           <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} disabled={loading}>
             {loading ? "Aguarde…" : confirmLabel}
           </Button>

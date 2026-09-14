@@ -3,7 +3,8 @@ import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from "react
 import { Instagram, Youtube, SearchX } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AppShell from "./components/AppShell";
-import { Button, EmptyState, Skeleton } from "./components/ui";
+import { Button, EmptyState, Skeleton, SegmentedControl } from "./components/ui";
+import { ESCALAS, lerEscala, aplicarEscala } from "./preferencias";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./components/Publico.css";
 
@@ -63,9 +64,30 @@ const PrivateRoute = ({ children, adminOnly = false, requireManageLessons = fals
 };
 
 // Rodape simples das paginas publicas (login e planos), que nao usam o AppShell.
+// O controle de tamanho de letra vivia só no rodapé da barra lateral do
+// AppShell — ou seja, não existia justamente na landing, que é a página mais
+// longa e mais lida do site. A preferência salva já era aplicada aqui (o
+// preferencias.js roda no main.jsx); faltava o controle.
+function TamanhoDaLetra() {
+  const [escala, setEscala] = React.useState(lerEscala);
+  React.useEffect(() => { aplicarEscala(escala); }, [escala]);
+  return (
+    <span className="publico__fonte">
+      <span className="publico__fonte-rotulo">Tamanho da letra</span>
+      <SegmentedControl
+        aria="Tamanho da letra"
+        valor={escala}
+        onTrocar={setEscala}
+        itens={ESCALAS.map((e) => ({ id: e.id, rotulo: e.rotulo, aria: e.aria }))}
+      />
+    </span>
+  );
+}
+
 function PublicFooter() {
   return (
     <footer className="publico__foot">
+      <TamanhoDaLetra />
       <span className="publico__foot-aviso">
         A IA pode cometer erros. Na dúvida, consulte sempre o material oficial do edital.
       </span>

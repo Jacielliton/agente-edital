@@ -39,6 +39,10 @@ export function useAiKey() {
   const [userApiKey, setUserApiKey] = useState("");
   const [userModel, setUserModel] = useState("");
   const [carregando, setCarregando] = useState(true);
+  // A situação da IA DO PLANO, calculada no servidor (situacao_da_ia no
+  // main.py). Fica aqui e não no JavaScript porque a regra de quem pode usar a
+  // IA compartilhada é do backend — copiá-la para cá garantiria divergência.
+  const [ia, setIa] = useState(null);
 
   const recarregar = useCallback(async () => {
     try {
@@ -48,6 +52,13 @@ export function useAiKey() {
         const data = await res.json();
         setUserApiKey(data.api_key || "");
         setUserModel(data.preferred_model || "");
+        setIa({
+          estado: data.ia_do_plano || null,
+          motivo: data.ia_motivo || null,
+          plano: data.plan_type || null,
+          tokensRestantes: data.tokens_restantes ?? null,
+          tokenLimit: data.token_limit ?? null,
+        });
       }
     } catch (err) {
       console.error("Falha ao buscar as configurações de IA", err);
@@ -58,35 +69,76 @@ export function useAiKey() {
 
   useEffect(() => { recarregar(); }, [recarregar]);
 
-  return { userApiKey, userModel, setUserApiKey, setUserModel, carregando, recarregar };
+  return { userApiKey, userModel, setUserApiKey, setUserModel, carregando, recarregar, ia };
 }
 
 /**
  * Barra de status da chave, no topo de cada ferramenta. Substitui o bloco de
  * estilos inline que estava repetido nas seis telas Gabarite.
  */
-export function AiKeyBar({ userApiKey, userModel, onConfigurar, label = "IA geradora" }) {
+/* Formata "1.234.567 tokens" sem virar um número ilegível. */
+const emMilhares = (n) => {
+  if (n === null || n === undefined) return null;
+  if (n >= 1000000) return (n / 1000000).toFixed(n >= 10000000 ? 0 : 1).replace(".", ",") + " milhões de";
+  if (n >= 1000) return Math.round(n / 1000) + " mil";
+  return String(n);
+};
+
+/**
+ * Barra de status no topo de cada ferramenta.
+ *
+ * O ERRO QUE ELA COMETIA (corrigido em 14/09/2026)
+ * ------------------------------------------------
+ * Ela só olhava a chave PESSOAL. Para quem assina Plus ou Pro — planos que já
+ * incluem a IA da plataforma — a barra dizia "Nenhuma chave conectada. Leva
+ * menos de um minuto" e oferecia um botão azul "Conectar a minha IA".
+ *
+ * Ou seja: o assinante que pagou justamente para NÃO precisar configurar nada
+ * era mandado configurar. Ou ele perdia tempo criando uma conta no OpenRouter
+ * sem necessidade, ou concluía que o produto estava quebrado.
+ *
+ * Agora há três situações, não duas: chave própria, IA do plano ativa, e IA
+ * indisponível — esta última dizendo POR QUE (plano sem IA, cota esgotada,
+ * bloqueio do administrador, plataforma sem chave).
+ */
+export function AiKeyBar({ userApiKey, userModel, onConfigurar, label = "IA geradora", ia = null }) {
   const conectada = Boolean(userApiKey);
+  const doPlanoAtiva = !conectada && ia?.estado === "ativa";
+  const indisponivel = !conectada && ia && ia.estado !== "ativa";
+  const ligada = conectada || doPlanoAtiva;
+
+  const restantes = emMilhares(ia?.tokensRestantes);
+
   return (
     <div className="aik-bar">
       <span className="aik-bar__status">
-        <span className={`aik-bar__dot${conectada ? " is-on" : ""}`} aria-hidden="true" />
+        <span className={`aik-bar__dot${ligada ? " is-on" : ""}`} aria-hidden="true" />
         <span className="aik-bar__text">
           <b>{label}</b>
           {conectada ? (
-            <span>Chave conectada · modelo <code>{userModel || "padrão do plano"}</code></span>
+            <span>Chave própria conectada · modelo <code>{userModel || "padrão do plano"}</code></span>
+          ) : doPlanoAtiva ? (
+            <span>
+              Ativa pelo seu plano{ia.plano ? <> <b>{ia.plano}</b></> : null} — você não precisa
+              configurar nada.
+              {restantes ? <> Restam {restantes} tokens neste ciclo.</> : null}
+            </span>
+          ) : indisponivel ? (
+            <span>{ia.motivo}</span>
           ) : (
             <span>Nenhuma chave conectada. Leva menos de um minuto e há modelos gratuitos.</span>
           )}
         </span>
       </span>
       <Button
-        variant={conectada ? "default" : "primary"}
+        /* Com a IA do plano ativa, conectar chave própria é opção, não tarefa:
+           o botão deixa de ser o azul que pede atenção. */
+        variant={ligada ? "default" : "primary"}
         size="sm"
         onClick={onConfigurar}
         icon={<Settings size={15} />}
       >
-        {conectada ? "Alterar chave" : "Conectar a minha IA"}
+        {conectada ? "Alterar chave" : doPlanoAtiva ? "Usar a minha própria chave" : "Conectar a minha IA"}
       </Button>
     </div>
   );

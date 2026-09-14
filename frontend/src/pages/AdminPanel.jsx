@@ -3,9 +3,10 @@ import {
   Trash2, RefreshCw, Shield, Pencil, Plus, Search, Ban, CheckCircle2, ShieldOff, FileText, DollarSign, Settings2, Ticket, Users, UserCog, Undo2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { lerLancamento, sinalDe, detalheDoLancamento } from "../comissao";
 import {
   Button, Badge, Input, ProgressBar, StatCard, EmptyState, Skeleton, PageHeader,
-  Modal, ConfirmDialog, Notice, Tabs,
+  Modal, ConfirmDialog, Notice, Tabs, SegmentedControl,
 } from "../components/ui";
 import "./AdminPanel.css";
 
@@ -81,6 +82,9 @@ export default function AdminPanel() {
   const [savingUser, setSavingUser] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
+  // Como o periodo do plano concedido pelo painel deve ser calculado.
+  // "definir" = comeca hoje. "somar" = soma ao que ainda resta.
+  const [modoPlano, setModoPlano] = useState("definir");
   const [selectedUser, setSelectedUser] = useState(null);
 
   const [coupons, setCoupons] = useState([]);
@@ -272,13 +276,29 @@ export default function AdminPanel() {
 
   const handleSavePlan = async (planType) => {
     try {
-      const res = await fetch(`${API_URL}/admin/grant-plan/${selectedUser.id}?plan=${planType}`, {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-      });
+      const res = await fetch(
+        `${API_URL}/admin/grant-plan/${selectedUser.id}?plan=${planType}&modo=${modoPlano}`,
+        { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) }
+      );
       if (!res.ok) throw new Error("O servidor recusou a atribuição do plano.");
+      const dados = await res.json().catch(() => ({}));
       setShowModal(false);
-      setAviso({ tone: "ok", texto: `Plano atribuído a ${selectedUser.email}.` });
+
+      // A mensagem diz a DATA, não só "plano atribuído": é assim que o
+      // administrador percebe na hora se o período encurtou sem querer.
+      const nova = dados.expires_at ? new Date(dados.expires_at) : null;
+      const antiga = dados.expires_at_anterior ? new Date(dados.expires_at_anterior) : null;
+      const dia = (d) => d.toLocaleDateString("pt-BR");
+      let texto = `Plano atribuído a ${selectedUser.email}.`;
+      if (nova && !isNaN(nova)) {
+        texto += ` Vale até ${dia(nova)}`;
+        if (antiga && !isNaN(antiga) && antiga > new Date()) {
+          texto += nova < antiga ? ` (antes ia até ${dia(antiga)} — encurtou).` : ` (antes: ${dia(antiga)}).`;
+        } else {
+          texto += ".";
+        }
+      }
+      setAviso({ tone: "ok", texto });
       await fetchUsers();
     } catch (e) {
       setAviso({ tone: "err", texto: e.message || "Erro ao atribuir o plano." });
@@ -395,7 +415,13 @@ export default function AdminPanel() {
       ]);
       if (confRes.ok) {
         const data = await confRes.json();
-        if (data.model) setAiConfig((atual) => ({ ...atual, ...data }));
+        // A chave NÃO volta do servidor. O campo abre sempre vazio, e vazio
+        // quer dizer "manter a que está lá" — por isso o api_key é forçado a
+        // "" mesmo que a resposta traga algo. Guardamos só se existe uma e os
+        // quatro últimos caracteres, para o admin reconhecer qual está ativa.
+        if (data && Object.keys(data).length) {
+          setAiConfig((atual) => ({ ...atual, ...data, api_key: "" }));
+        }
       }
       if (statsRes.ok) {
         const data = await statsRes.json();
@@ -406,13 +432,37 @@ export default function AdminPanel() {
     }
   };
 
+  // A única forma de REMOVER a chave compartilhada. Antes não havia nenhuma:
+  // o backend tratava string vazia como "não mexer", então trocar funcionava e
+  // tirar era impossível.
+  const pedirRemocaoDaChave = () =>
+    setConfirmacao({
+      titulo: "Remover a chave da IA",
+      mensagem: <>Remover a chave da IA compartilhada?</>,
+      detalhe:
+        "Quem não tem chave própria fica sem IA até você cadastrar outra. As aulas e o histórico não são afetados.",
+      rotulo: "Remover chave",
+      acao: async () => {
+        const res = await fetch(`${API_URL}/admin/ai-config`, {
+          method: "PUT",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ ...aiConfig, api_key: "", limpar_api_key: true }),
+        });
+        if (!res.ok) throw new Error("O servidor recusou a remoção da chave.");
+        setAiConfig((atual) => ({ ...atual, api_key: "", tem_chave: false, chave_final: "" }));
+        setAviso({ tone: "ok", texto: "Chave removida." });
+      },
+    });
+
   const handleSaveAiConfig = async () => {
     setSavingAi(true);
     try {
       const res = await fetch(`${API_URL}/admin/ai-config`, {
         method: "PUT",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(aiConfig),
+        // api_key vazio = não mexer na chave. Sem isso, salvar um ajuste de
+        // temperatura apagaria a chave junto, agora que o campo abre vazio.
+        body: JSON.stringify({ ...aiConfig, limpar_api_key: false }),
       });
       if (!res.ok) throw new Error("Erro ao salvar a configuração da IA.");
       setAviso({ tone: "ok", texto: "Configuração da IA salva." });
@@ -498,6 +548,12 @@ export default function AdminPanel() {
     });
     return { total: users.length, ativos, suspensos, comPlano };
   }, [users]);
+
+  // Toda vez que o modal abre, o modo volta a "definir". Deixar "somar"
+  // grudado da sessão anterior é como um admin empilha período sem querer.
+  useEffect(() => {
+    if (showModal) setModoPlano("definir");
+  }, [showModal]);
 
   const statusDoPlano = (u) => {
     const expira = u.plan_expires_at ? new Date(u.plan_expires_at) : null;
@@ -829,13 +885,31 @@ export default function AdminPanel() {
                   onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
                   placeholder="ex: openai/gpt-4o-mini"
                 />
-                <Input
-                  label="Chave da OpenRouter"
-                  type="password"
-                  value={aiConfig.api_key || ""}
-                  onChange={(e) => setAiConfig({ ...aiConfig, api_key: e.target.value })}
-                  placeholder="sk-or-v1-…"
-                />
+                <div>
+                  <Input
+                    label="Chave da IA compartilhada"
+                    type="password"
+                    value={aiConfig.api_key || ""}
+                    onChange={(e) => setAiConfig({ ...aiConfig, api_key: e.target.value })}
+                    placeholder={aiConfig.tem_chave ? "deixe em branco para manter a atual" : "sk-or-v1-…"}
+                  />
+                  <div className="adm__chave-estado">
+                    {aiConfig.tem_chave ? (
+                      <>
+                        <span>
+                          Há uma chave guardada
+                          {aiConfig.chave_final ? <> (termina em <code>{aiConfig.chave_final}</code>)</> : null}.
+                          Preencher o campo troca; deixar vazio mantém.
+                        </span>
+                        <Button size="sm" variant="danger" onClick={pedirRemocaoDaChave}>
+                          Remover
+                        </Button>
+                      </>
+                    ) : (
+                      <span>Nenhuma chave cadastrada — quem não tiver chave própria fica sem IA.</span>
+                    )}
+                  </div>
+                </div>
                 <Input
                   label="Temperatura"
                   type="number"
@@ -1085,6 +1159,35 @@ export default function AdminPanel() {
         <Notice tone="warn">
           O plano é concedido na hora, sem passar pelo pagamento. Use para cortesias, testes e correções.
         </Notice>
+
+        {/* O período: começa hoje, ou soma ao que resta? Antes desta escolha a
+            rota SEMPRE somava, e cada clique empurrava a validade para frente. */}
+        {selectedUser && (
+          <div className="adm__modo-plano">
+            <div>
+              <strong>Período</strong>
+              <p>
+                {statusDoPlano(selectedUser).ativo && selectedUser.plan_expires_at
+                  ? `Hoje vale até ${new Date(selectedUser.plan_expires_at).toLocaleDateString("pt-BR")}.`
+                  : "Esta conta não tem período em aberto."}
+              </p>
+            </div>
+            <SegmentedControl
+              aria="Como calcular o período"
+              valor={modoPlano}
+              onTrocar={setModoPlano}
+              itens={[
+                { id: "definir", rotulo: "Começa hoje" },
+                { id: "somar", rotulo: "Somar ao que resta" },
+              ]}
+            />
+          </div>
+        )}
+        {modoPlano === "somar" && selectedUser && !statusDoPlano(selectedUser).ativo && (
+          <Notice tone="info">
+            Esta conta não tem período em aberto, então somar dá no mesmo que começar hoje.
+          </Notice>
+        )}
         <div className="adm__plans">
           {PLANOS.map((p) => (
             <button key={p.id} className="adm__plan" onClick={() => handleSavePlan(p.id)}>
@@ -1144,7 +1247,11 @@ export default function AdminPanel() {
             {commissionHistory.length === 0 ? (
               <div className="adm__hist-empty">Nenhum lançamento registrado.</div>
             ) : (
-              commissionHistory.map((item) => (
+              commissionHistory.map((item) => {
+                // Ver comissao.js: `amount` virou variação em 13/09/2026, e os
+                // lançamentos antigos continuam no formato velho.
+                const lanc = lerLancamento(item);
+                return (
                 <div className="adm__hist-row" key={item.id}>
                   <span>{new Date(item.created_at).toLocaleDateString("pt-BR")}</span>
                   <span>
@@ -1153,11 +1260,17 @@ export default function AdminPanel() {
                     {item.action_type === "ajuste" && <Badge tone="accent">Ajuste</Badge>}
                   </span>
                   <span className="d" style={{ color: "var(--fg-2)" }}>{item.description}</span>
-                  <span className={`v${item.action_type === "pagamento" ? " is-out" : ""}`}>
-                    {item.action_type === "pagamento" ? "−" : ""} {brl(item.amount)}
+                  <span
+                    className={`v${lanc.tipo === "saida" ? " is-out" : ""}`}
+                    title={detalheDoLancamento(item, brl)}
+                  >
+                    {lanc.tipo === "saldo-definido"
+                      ? <>saldo → {brl(lanc.valor)}</>
+                      : <>{sinalDe(lanc.tipo)} {brl(lanc.valor)}</>}
                   </span>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         )}

@@ -1,0 +1,27 @@
+# AgenteIA Edital
+#
+# A landing (/ e /login) e a página de planos são públicas e devem ser
+# indexadas. O resto exige conta: indexar não adianta — o robô só encontraria
+# a tela de login — e ainda expõe a estrutura interna do site na busca.
+
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /planos
+
+Disallow: /dashboard
+Disallow: /aula/
+Disallow: /generator
+Disallow: /gerenciar
+Disallow: /admin
+Disallow: /profile
+Disallow: /performance
+Disallow: /treino
+Disallow: /ferramentas
+Disallow: /gabarite-
+Disallow: /lei-seca
+Disallow: /comparador-bancas
+Disallow: /baralho
+Disallow: /auth/
+
+Sitemap: https://agente-edital.tecnopriv.top/sitemap.xml

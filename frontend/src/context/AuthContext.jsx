@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
+import { chamarApi } from "../api";
 
 const AuthContext = createContext();
 
@@ -89,31 +90,24 @@ export const AuthProvider = ({ children }) => {
   // =======================================================================
   const login = async (email, password) => {
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
+      // O chamarApi classifica a falha na origem. Antes, TUDO que não fosse
+      // 200 virava "Email ou senha inválidos." — inclusive o 500 — e falha de
+      // rede escapava crua como "Failed to fetch". Ver src/api.js.
+      const data = await chamarApi(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const token = data.access_token || data.token; 
-        localStorage.setItem("professor_ai_token", token);
-        
-        // Puxa os dados do usuário recém-logado
-        const userRes = await fetch(`${API_URL}/users/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const userData = await userRes.json();
-        setUser(userData);
-        return true;
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        if (res.status === 403 && errorData.detail === "CONTA_EXPIRADA") {
-          throw new Error("CONTA_EXPIRADA");
-        }
-        throw new Error("Email ou senha inválidos.");
-      }
+      const token = data.access_token || data.token;
+      localStorage.setItem("professor_ai_token", token);
+
+      // Puxa os dados do usuário recém-logado
+      const userData = await chamarApi(`${API_URL}/users/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUser(userData);
+      return true;
     } catch (error) {
       console.error("Erro no login", error);
       throw error; // Passa o erro adiante para o Login.jsx

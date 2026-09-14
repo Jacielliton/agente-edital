@@ -26,3 +26,6 @@ Thumbs.db
 # Backups locais do redesign
 frontend/_backup-ui/
 frontend/_to_delete/
+
+# Config local da maquina (Vite: .env.local, .env.development.local)
+*.local

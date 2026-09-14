@@ -38,7 +38,7 @@ const normalizar = (t) =>
 
 export default function LeiSeca() {
   const [showConfig, setShowConfig] = useState(false);
-  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const { userApiKey, userModel, setUserApiKey, setUserModel, ia } = useAiKey();
   const [aviso, setAviso] = useState(null);
 
   const [modo, setModo] = useState("colar");   // colar | ia
@@ -218,6 +218,7 @@ export default function LeiSeca() {
       />
 
       <AiKeyBar
+        ia={ia}
         userApiKey={userApiKey}
         userModel={userModel}
         onConfigurar={() => setShowConfig(true)}

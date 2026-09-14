@@ -132,6 +132,15 @@ class CommissionHistory(Base):
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Acrescentadas em 13/09/2026. Antes, `amount` queria dizer duas coisas
+    # diferentes: no 'pagamento' era o valor pago, no 'ajuste' era o saldo
+    # RESULTANTE. Um extrato em que a mesma coluna muda de significado nao
+    # fecha conta nenhuma — e um ajuste que zerava R$ 400 gravava amount=0,
+    # igualzinho a um ajuste que nao mudou nada.
+    # Agora `amount` e SEMPRE a variacao, e o antes/depois fica registrado.
+    saldo_anterior = Column(Float, nullable=True)
+    saldo_novo = Column(Float, nullable=True)
+
 
 class Coupon(Base):
     __tablename__ = "coupons"
@@ -140,6 +149,15 @@ class Coupon(Base):
     discount_percentage = Column(Float)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Acrescentadas em 13/09/2026. O formulario do painel ja pedia limite de
+    # usos e validade desde sempre; o Pydantic descartava os dois campos em
+    # silencio (nenhum schema usa extra="forbid"), a rota respondia 201 e a
+    # tela dizia "Cupom criado". Na pratica, todo cupom de campanha virava
+    # desconto ilimitado e eterno.
+    max_uses = Column(Integer, default=0)       # 0 = ilimitado
+    current_uses = Column(Integer, default=0)   # so sobe com pagamento APROVADO
+    expires_at = Column(DateTime, nullable=True)
 
 
 class ProcessedPayment(Base):

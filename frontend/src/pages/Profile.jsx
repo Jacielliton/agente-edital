@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { lerLancamento, sinalDe, detalheDoLancamento } from "../comissao";
 import {
   Key, Clock, Copy, Check, Sparkles,
 } from "lucide-react";
@@ -47,7 +48,7 @@ export default function Profile() {
   const [passStatus, setPassStatus] = useState(null);
   const [isChangingPass, setIsChangingPass] = useState(false);
 
-  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const { userApiKey, userModel, setUserApiKey, setUserModel, ia } = useAiKey();
 
   const [commissionHistory, setCommissionHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -240,9 +241,22 @@ export default function Profile() {
       <Card>
         <CardHead
           title="Sua chave de IA"
-          action={temChave ? <Badge tone="ok" icon={<Check size={11} />}>conectada</Badge> : <Badge outline>não conectada</Badge>}
+          /* Com a IA do plano ativa, não ter chave própria não é pendência —
+             é o normal. O selo "não conectada" fazia o assinante Plus/Pro achar
+             que faltava configurar alguma coisa. */
+          action={
+            temChave ? <Badge tone="ok" icon={<Check size={11} />}>conectada</Badge>
+            : ia?.estado === "ativa" ? <Badge outline>opcional</Badge>
+            : <Badge outline>não conectada</Badge>
+          }
         />
         <CardBody>
+          {!temChave && ia?.estado === "ativa" && (
+            <p className="pf__hint">
+              A IA do seu plano{ia.plano ? ` ${ia.plano}` : ""} já está ativa — você só precisa de
+              uma chave própria se quiser usar outro modelo ou não consumir a sua cota.
+            </p>
+          )}
           <AiKeyPanel
             userApiKey={userApiKey}
             userModel={userModel}
@@ -345,7 +359,11 @@ export default function Profile() {
             ) : (
               <div className="pf__hist">
                 {commissionHistory.map((item, idx) => {
-                  const saida = item.action_type === "pagamento";
+                  // O sinal vem do lançamento, não do tipo: desde 13/09/2026
+                  // `amount` é a variação (negativa numa saída), e os
+                  // lançamentos antigos continuam no formato velho.
+                  const lanc = lerLancamento(item);
+                  const saida = lanc.tipo === "saida";
                   return (
                     <div className="pf__hist-row" key={item.id ?? idx}>
                       <span className="t">{new Date(item.created_at || Date.now()).toLocaleDateString("pt-BR")}</span>
@@ -355,8 +373,13 @@ export default function Profile() {
                           : <Badge tone="ok">Comissão</Badge>}
                       </span>
                       <span className="d">{item.description || "—"}</span>
-                      <span className={`v${saida ? " is-out" : ""}`}>
-                        {saida ? "−" : "+"} {brl(item.amount)}
+                      <span
+                        className={`v${saida ? " is-out" : ""}`}
+                        title={detalheDoLancamento(item, brl)}
+                      >
+                        {lanc.tipo === "saldo-definido"
+                          ? <>saldo → {brl(lanc.valor)}</>
+                          : <>{sinalDe(lanc.tipo)} {brl(lanc.valor)}</>}
                       </span>
                     </div>
                   );

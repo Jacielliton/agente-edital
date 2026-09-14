@@ -53,7 +53,7 @@ export default function Generator() {
 
   // ESTADOS GLOBAIS DE CONFIGURAÇÃO DE IA INDIVIDUAL
   const [showConfig, setShowConfig] = useState(false);
-  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const { userApiKey, userModel, setUserApiKey, setUserModel, ia } = useAiKey();
   const [aviso, setAviso] = useState(null);
 
   // Execução e UX
@@ -94,7 +94,14 @@ export default function Generator() {
 
   const fetchConfig = async () => {
     try {
-      const resp = await fetch(`${API_URL}/config`);
+      // COM token: /config passou a exigir autenticação em 13/09/2026 (antes
+      // respondia a qualquer um na internet). Sem o cabeçalho, a resposta vira
+      // 401, o resp.ok falha em silêncio e esta tela fica SEM lista de modelos
+      // — nenhum erro aparece, o seletor só nasce vazio.
+      const token = getAuthToken();
+      const resp = await fetch(`${API_URL}/config`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok) {
         const models = safeArray(data?.available_models);
@@ -369,6 +376,7 @@ export default function Generator() {
       />
 
       <AiKeyBar
+        ia={ia}
         userApiKey={userApiKey}
         userModel={userModel}
         onConfigurar={() => setShowConfig(true)}

@@ -668,7 +668,7 @@ export default function LessonContent({ result }) {
   const [isNavOpen, setIsNavOpen] = useState(false);
   
   const [showConfig, setShowConfig] = useState(false);
-  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const { userApiKey, userModel, setUserApiKey, setUserModel, ia, carregando: carregandoIa } = useAiKey();
   const [aviso, setAviso] = useState(null);
   
   const [simuladoQuestoes, setSimuladoQuestoes] = useState(null);
@@ -837,6 +837,11 @@ export default function LessonContent({ result }) {
 
   const aulas = safeArray(result?.aulas);
   const temChave = Boolean(userApiKey);
+  // A IA do PLANO também liga a aula. Sem isto, o assinante Plus/Pro lia
+  // "Conecte a sua IA para liberar o tutor" — sendo que o plano dele já
+  // libera tudo isso. Ver situacao_da_ia() no main.py.
+  const iaDoPlanoAtiva = !temChave && ia?.estado === "ativa";
+  const iaIndisponivel = !temChave && ia && ia.estado !== "ativa";
 
   const indice = (
     <nav className="lc__toc">
@@ -860,8 +865,14 @@ export default function LessonContent({ result }) {
 
   return (
     <div className="lc">
-      {/* -------------------- Estado da IA do usuário -------------------- */}
-      {temChave ? (
+      {/* -------------------- Estado da IA do usuário --------------------
+          Três situações, não duas. A terceira — "a IA do seu plano já está
+          ativa" — faltava, e por isso o assinante Plus/Pro era convidado a
+          configurar uma chave que não precisa ter.
+
+          Enquanto carrega não mostra nada: piscar o aviso errado por um
+          instante é pior do que não mostrar aviso nenhum.            */}
+      {carregandoIa ? null : temChave ? (
         <span className="lc__ai-ok">
           <CheckCircle2 size={15} /> IA conectada ({userModel || result?.modelo_utilizado || "modelo padrão"})
           <button
@@ -872,6 +883,26 @@ export default function LessonContent({ result }) {
             <Settings size={14} /> Alterar
           </button>
         </span>
+      ) : iaDoPlanoAtiva ? (
+        <span className="lc__ai-ok">
+          <CheckCircle2 size={15} />
+          IA ativa pelo seu plano{ia.plano ? ` ${ia.plano}` : ""} — nada para configurar
+          <button
+            className="ui-btn ui-btn--ghost ui-btn--sm"
+            onClick={() => setShowConfig(true)}
+            style={{ marginLeft: 4 }}
+          >
+            <Settings size={14} /> Usar minha chave
+          </button>
+        </span>
+      ) : iaIndisponivel ? (
+        <div className="lc__ai-alert">
+          <KeyRound size={18} />
+          <span>{ia.motivo}</span>
+          <Button variant="primary" size="sm" onClick={() => setShowConfig(true)} icon={<Settings size={14} />}>
+            Conectar a minha chave
+          </Button>
+        </div>
       ) : (
         <div className="lc__ai-alert">
           <KeyRound size={18} />

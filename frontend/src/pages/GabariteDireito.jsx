@@ -6,6 +6,7 @@ import {
 import Md from "../components/Markdown";
 import { Modal, ConfirmDialog, Notice, Toast} from "../components/ui";
 import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
+import { registrarSimulado } from "../desempenho";
 import { QuestaoCard, PainelErros, HistoricoModal } from "../components/simulador";
 
 // ==========================================
@@ -529,7 +530,7 @@ export default function GabariteDireito() {
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
   const [showConfig, setShowConfig] = useState(false);
-  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const { userApiKey, userModel, setUserApiKey, setUserModel, ia } = useAiKey();
   const [aviso, setAviso] = useState(null);
   const [confirmarEntrega, setConfirmarEntrega] = useState(false);
 
@@ -736,6 +737,17 @@ export default function GabariteDireito() {
       saveStats(newStats);
     }
 
+    // Além do painel local, o resultado da sessão vai para o servidor: sem
+    // isto, o Meu Desempenho e o ranking ignoram esta ferramenta inteira.
+    const respondidas = currentQuestions.filter((q) => userAnswers[q.id]);
+    registrarSimulado({
+      ferramenta: "direito",
+      foco: currentTopic?.title || "",
+      acertos: respondidas.filter((q) => userAnswers[q.id] === q.gabarito).length,
+      respondidas: respondidas.length,
+      formato: configFormato,
+    });
+
     setViewState("results");
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -808,6 +820,7 @@ export default function GabariteDireito() {
       </header>
 
       <AiKeyBar
+        ia={ia}
         userApiKey={userApiKey}
         userModel={userModel}
         onConfigurar={() => setShowConfig(true)}

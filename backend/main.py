@@ -214,6 +214,71 @@ def get_openrouter_client():
         _CLIENT = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
     return _CLIENT
 
+def situacao_da_ia(user, ha_chave_no_sistema: bool) -> dict:
+    """A IA da plataforma esta disponivel para este usuario? Por que nao?
+
+    Esta e a MESMA regra aplicada em stream_ai_response na hora de gerar. Ela
+    vive aqui para a tela poder consultar o veredito em vez de reimplementar a
+    regra em JavaScript e divergir na primeira mudanca.
+
+    Vale so para quem NAO tem chave propria: com chave propria, o usuario usa a
+    IA dele e nenhuma destas checagens se aplica.
+    """
+    if getattr(user, "role", None) == "admin":
+        return {"estado": "ativa", "motivo": None}
+    if getattr(user, "ai_blocked", False):
+        return {"estado": "bloqueada",
+                "motivo": "O administrador bloqueou o seu acesso à IA da plataforma."}
+    if getattr(user, "plan_type", None) == "Simples":
+        return {"estado": "fora_do_plano",
+                "motivo": "O plano Simples não inclui a IA da plataforma. "
+                          "Conecte uma chave própria ou mude para Plus ou Pro."}
+    limite = getattr(user, "token_limit", 0) or 0
+    usados = getattr(user, "tokens_used", 0) or 0
+    if limite > 0 and usados >= limite:
+        return {"estado": "sem_cota",
+                "motivo": "Você atingiu o limite de processamento deste ciclo."}
+    if not ha_chave_no_sistema:
+        return {"estado": "sem_chave_no_sistema",
+                "motivo": "A plataforma está sem chave de IA configurada no momento."}
+    return {"estado": "ativa", "motivo": None}
+
+
+async def chave_compartilhada() -> Optional[str]:
+    """A chave da IA compartilhada, na ordem de precedencia do sistema.
+
+    1. GlobalAIConfig.api_key, no banco  <- a fonte canonica
+    2. OPENROUTER_API_KEY, no .env       <- socorro para instalacoes antigas
+
+    POR QUE ISTO EXISTE (13/09/2026)
+    --------------------------------
+    A chave compartilhada tinha DOIS lugares para morar: o arquivo .env (escrito
+    por POST /config) e o banco (escrito pela aba "IA global" do painel). Quem
+    EXECUTAVA a chamada preferia o banco; quem AUTORIZAVA a chamada olhava so a
+    env. As duas pontas discordavam, e o resultado media-se assim:
+
+      - chave so no banco  -> 403 "Nenhuma chave de API configurada" em TODAS as
+        ferramentas, com a chave certa guardada e funcional;
+      - chave so na env, revogada -> a guarda deixava passar e o erro aparecia
+        la na frente, como falha de parsing.
+
+    Agora as duas pontas perguntam a mesma coisa a esta funcao.
+    """
+    try:
+        async with AsyncSessionLocal() as db_session:
+            config = (
+                await db_session.execute(select(GlobalAIConfig).filter(GlobalAIConfig.id == 1))
+            ).scalars().first()
+            if config and config.api_key and config.api_key.strip():
+                return config.api_key.strip()
+    except Exception as e:
+        # Banco fora do ar nao pode virar "nenhuma chave configurada": cai para a env.
+        print("[IA] Falha ao ler a chave compartilhada do banco: %s" % e)
+
+    da_env = os.getenv("OPENROUTER_API_KEY")
+    return da_env.strip() if da_env and da_env.strip() else None
+
+
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
 AVAILABLE_MODELS = [m.strip() for m in os.getenv("AVAILABLE_MODELS", "nvidia/nemotron-3-nano-30b-a3b:free,google/gemini-2.5-flash").split(",") if m.strip()]
 
@@ -480,10 +545,18 @@ def update_env_file(path: str, updates: dict) -> None:
         raise HTTPException(status_code=500, detail=f"Falha ao atualizar .env: {e}")
 
 @app.get("/config")
-async def get_config():
+async def get_config(current_user: User = Depends(get_current_user)):
+    """Configuracao de IA visivel ao app.
+
+    Passou a exigir token em 13/09/2026. Respondia a qualquer um na internet
+    contando quais modelos a plataforma usa e se ha IA configurada — sem
+    necessidade, ja que quem consome isto e a tela logada.
+    """
     default_model = os.getenv("DEFAULT_MODEL", DEFAULT_MODEL)
     models = [m.strip() for m in os.getenv("AVAILABLE_MODELS", ",".join(AVAILABLE_MODELS)).split(",") if m.strip()]
-    has_token = bool(os.getenv("OPENROUTER_API_KEY"))
+    # Reflete a chave que o sistema REALMENTE vai usar (banco primeiro), e nao
+    # apenas a presenca da env — que pode estar definida com uma chave revogada.
+    has_token = bool(await chave_compartilhada())
     return {"default_model": default_model, "available_models": models, "has_token": has_token}
 
 @app.post("/config")
@@ -778,7 +851,8 @@ async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25,
     else:
         client = get_openrouter_client()
         if not client: 
-            yield '{"error": "OPENROUTER_API_KEY não encontrado."}'
+            yield json.dumps({"error": "Nenhuma chave de IA configurada. O administrador "
+                                       "define a chave compartilhada no painel, aba IA global."})
             return
 
     try:
@@ -827,7 +901,11 @@ async def stream_json_response(prompt: str, model_name: str, temp: float = 0.25,
                 if chunk.choices and len(chunk.choices) > 0 and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
     except Exception as e:
-        yield f'{{"error": "{str(e)}"}}'
+        # json.dumps, e nao f-string: a mensagem da excecao vem do SDK do provedor e
+        # costuma conter aspas e chaves. Interpolada crua, ela produzia um JSON
+        # INVALIDO — o front nao conseguia ler nem o erro, e mostrava a falha do
+        # parser no lugar de "sua chave foi recusada".
+        yield json.dumps({"error": str(e)})
         
 # Cerca markdown que envolve a RESPOSTA INTEIRA (```json { ... } ```).
 _CERCA_EXTERNA = re.compile(
@@ -1061,7 +1139,7 @@ async def get_json_response(prompt: str, model_name: str, temp: float = 0.25, ap
         client = AsyncOpenAI(base_url=url_base, api_key=chave_limpa)
     else:
         client = get_openrouter_client()
-        if not client: raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY não encontrado no ambiente (.env).")
+        if not client: raise HTTPException(status_code=500, detail="Nenhuma chave de IA configurada. Defina a chave compartilhada no painel, aba IA global.")
 
     tentativa = 0
     max_tentativas = 5
@@ -1891,7 +1969,12 @@ async def save_performance(
     db: AsyncSession = Depends(get_db)
 ):
     # Lógica de Substituição (UPSERT)
-    if record.tipo == 'simulado':
+    #
+    # Vale para o simulado DENTRO DA AULA: refazer o mesmo simulado atualiza a
+    # nota em vez de criar uma linha nova. NAO vale para as ferramentas por
+    # materia, onde cada sessao e um caderno de questoes ineditas sobre o mesmo
+    # assunto — la o historico precisa acumular. Elas mandam substituir=False.
+    if record.tipo == 'simulado' and record.substituir is not False:
         existing_query = select(PerformanceRecord).filter(
             PerformanceRecord.user_email == current_user.email,
             PerformanceRecord.tipo == record.tipo,
@@ -2224,12 +2307,46 @@ async def analyze_plano(request: PlanoEstudoRequest, current_user: User = Depend
         return {"plano_estudo": ""}
 
 
+def motivo_de_recusa_do_cupom(coupon) -> Optional[str]:
+    """Por que este cupom nao vale — ou None se vale.
+
+    Uma funcao so, usada pela validacao no checkout E pela criacao da
+    preferencia de pagamento. Antes eram duas consultas diferentes, e NENHUMA
+    das duas olhava is_active, validade ou limite de usos: o cupom nascia
+    eterno e ilimitado porque ninguem nunca perguntava o contrario.
+    """
+    if not coupon:
+        return "Cupom inválido ou inexistente."
+    if coupon.is_active is False:
+        return "Este cupom está desativado."
+    if coupon.expires_at and datetime.utcnow() > coupon.expires_at:
+        return f"Este cupom venceu em {coupon.expires_at.strftime('%d/%m/%Y')}."
+    limite = coupon.max_uses or 0
+    if limite > 0 and (coupon.current_uses or 0) >= limite:
+        return "Este cupom já atingiu o limite de usos."
+    return None
+
+
 @app.get("/admin/ai-config")
 async def get_ai_config(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.role != "admin": raise HTTPException(status_code=403, detail="Não autorizado")
     config = (await db.execute(select(GlobalAIConfig).filter(GlobalAIConfig.id == 1))).scalars().first()
-    if not config: return {}
-    return config
+    if not config:
+        return {"tem_chave": False}
+
+    # A chave NAO volta para o navegador. Antes voltava em texto puro a cada
+    # abertura do painel — e como a tela devolve o formulario inteiro no
+    # salvamento, ela tambem trafegava de volta a cada ajuste de temperatura.
+    dados = {
+        c.name: getattr(config, c.name)
+        for c in config.__table__.columns
+        if c.name != "api_key"
+    }
+    bruta = (config.api_key or "").strip()
+    dados["tem_chave"] = bool(bruta)
+    dados["chave_final"] = bruta[-4:] if len(bruta) >= 4 else ""
+    dados["api_key"] = ""   # o formulario abre vazio: vazio = "manter a atual"
+    return dados
 
 @app.put("/admin/ai-config")
 async def update_ai_config(payload: AIConfigSchema, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -2240,7 +2357,15 @@ async def update_ai_config(payload: AIConfigSchema, db: AsyncSession = Depends(g
         db.add(config)
     
     config.model = payload.model
-    if payload.api_key: config.api_key = payload.api_key
+
+    # Tres estados, e so o terceiro mexe na chave:
+    #   limpar_api_key=True -> remove
+    #   api_key vazio       -> mantem a atual (o formulario abre vazio)
+    #   api_key preenchido  -> troca
+    if payload.limpar_api_key:
+        config.api_key = None
+    elif payload.api_key and payload.api_key.strip():
+        config.api_key = payload.api_key.strip()
     config.global_prompt = payload.global_prompt
     config.temperature = payload.temperature
     config.max_tokens = payload.max_tokens
@@ -2315,9 +2440,26 @@ async def create_coupon(
         raise HTTPException(status_code=400, detail="Este código de cupom já existe.")
         
     # 3. Salva no banco de dados
+    # A coluna expires_at e TIMESTAMP SEM fuso. Uma data COM fuso ("...Z")
+    # derrubava a criacao com 500 e a mensagem "Internal Server Error" — o
+    # formulario do painel manda so "2026-12-31" e escapava, mas qualquer outro
+    # cliente nao. Normaliza para UTC ingenuo.
+    validade = coupon.expires_at
+    if validade is not None:
+        if validade.tzinfo is not None:
+            validade = validade.astimezone(timezone.utc).replace(tzinfo=None)
+        # "Vale ate 31/12" tem de valer o dia 31 INTEIRO. O <input type="date">
+        # manda meia-noite, e sem isto o cupom morria um dia antes do prometido.
+        if (validade.hour, validade.minute, validade.second) == (0, 0, 0):
+            validade = validade.replace(hour=23, minute=59, second=59)
+
     db_coupon = Coupon(
         code=coupon.code,
-        discount_percentage=coupon.discount_percentage
+        discount_percentage=coupon.discount_percentage,
+        # Estes dois chegavam do formulario e eram descartados em silencio.
+        max_uses=coupon.max_uses or 0,
+        expires_at=validade,
+        current_uses=0,
     )
     db.add(db_coupon)
     await db.commit()
@@ -2380,14 +2522,21 @@ async def validate_coupon(
     result = await db.execute(select(Coupon).filter(Coupon.code == code))
     coupon = result.scalars().first()
     
-    # Se não encontrar o cupom, retorna erro 404
     if not coupon:
         raise HTTPException(status_code=404, detail="Cupom inválido ou inexistente.")
-        
-    # Se encontrar, retorna o valor do desconto no formato que o frontend espera
+
+    # Desativado, vencido ou esgotado: 400 com o motivo, para a tela poder dizer
+    # POR QUE nao valeu em vez de um "cupom invalido" generico.
+    recusa = motivo_de_recusa_do_cupom(coupon)
+    if recusa:
+        raise HTTPException(status_code=400, detail=recusa)
+
     return {
         "discount_value": coupon.discount_percentage,
-        "discount_type": "percent" # Como seu banco salva 'discount_percentage', definimos como porcentagem
+        "discount_type": "percent", # o banco guarda 'discount_percentage'
+        # O checkout mostra quantos restam quando ha limite.
+        "usos_restantes": (coupon.max_uses - (coupon.current_uses or 0)) if (coupon.max_uses or 0) > 0 else None,
+        "expira_em": coupon.expires_at,
     }
     
 @app.get("/users", response_model=List[UserResponse])
@@ -2547,9 +2696,22 @@ async def read_users_me(
 
 @app.get("/users/me/settings", response_model=UserSettingsResponse)
 async def get_user_settings(current_user: User = Depends(get_current_user)):
+    # A tela precisa saber se a IA DO PLANO esta ativa. Sem isto, o assinante
+    # Plus/Pro via "Nenhuma chave conectada" e era mandado configurar uma chave
+    # que ele nao precisa ter — justamente o que ele pagou para nao fazer.
+    situacao = situacao_da_ia(current_user, bool(await chave_compartilhada()))
+    limite = current_user.token_limit or 0
+    usados = current_user.tokens_used or 0
     return {
         "api_key": current_user.api_key,
-        "preferred_model": current_user.preferred_model
+        "preferred_model": current_user.preferred_model,
+        "plan_type": current_user.plan_type,
+        "ia_do_plano": situacao["estado"],
+        "ia_motivo": situacao["motivo"],
+        "tokens_used": usados,
+        "token_limit": limite,
+        # None quando o plano nao tem teto (o Simples usa chave propria).
+        "tokens_restantes": max(limite - usados, 0) if limite > 0 else None,
     }
 
 @app.put("/users/me/settings")
@@ -2601,7 +2763,7 @@ async def get_my_commission_history(
     
 @app.post("/chat")
 async def chat_tutor(req: ChatMessageRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     hist_text = ""
@@ -2630,7 +2792,7 @@ async def chat_tutor(req: ChatMessageRequest, current_user: User = Depends(get_c
 
 @app.post("/generate-simulado-topic")
 async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     qtd = req.qtd_questoes or 5
@@ -2699,7 +2861,7 @@ async def generate_simulado_topic_endpoint(req: SimuladoTopicRequest, current_us
 
 @app.post("/correct-essay")
 async def correct_essay(req: EssayCorrectionRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     prompt = f"""
@@ -2748,7 +2910,7 @@ async def correct_essay(req: EssayCorrectionRequest, current_user: User = Depend
 
 @app.post("/generate-essay")
 async def generate_essay_endpoint(req: GenerateEssayRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     nivel = req.nivel or "Normal"
@@ -2783,7 +2945,7 @@ async def generate_essay_endpoint(req: GenerateEssayRequest, current_user: User 
 
 @app.post("/generate-treino-discursiva")
 async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     tipo = req.tipo_prova
@@ -2879,7 +3041,7 @@ async def generate_treino_discursiva_endpoint(req: TreinoDiscursivaRequest, curr
 
 @app.post("/extract-topics")
 async def extract_topics_endpoint(req: ExtractTopicsRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     prompt = f"""
@@ -2899,7 +3061,7 @@ async def extract_topics_endpoint(req: ExtractTopicsRequest, current_user: User 
 
 @app.post("/generate-global-essay")
 async def generate_global_essay_endpoint(req: GlobalEssayRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     nivel = req.nivel or "Normal"
@@ -2962,7 +3124,7 @@ async def exchange_openrouter_key(payload: OpenRouterExchange, current_user: Use
     
 @app.post("/generate-simulado-cespe")
 async def generate_simulado_cespe_endpoint(req: SimuladoCespeRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(
             status_code=403, 
             detail="Por favor, configure sua chave de API nas configurações."
@@ -3096,7 +3258,7 @@ INSTRUÇÃO DE RESPOSTA JSON OBRIGATÓRIO:
 
 @app.post("/generate-lesson-cespe")
 async def generate_lesson_cespe_endpoint(req: LessonCespeRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada no sistema.")
     
     prompt = f"""
@@ -3121,12 +3283,12 @@ async def generate_lesson_cespe_endpoint(req: LessonCespeRequest, current_user: 
 
 @app.post("/api/translate")
 async def translate_word_endpoint(req: TranslateWordRequest, current_user: User = Depends(get_current_user)):
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"): 
+    if not req.api_key and not await chave_compartilhada(): 
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
     
     prompt = f"Traduza a palavra em inglês '{req.word}' para o português. Responda APENAS com a tradução ou traduções mais comuns, de forma bem curta. Não adicione explicações."
     
-    chave_limpa = (req.api_key or os.getenv("OPENROUTER_API_KEY")).strip()
+    chave_limpa = (req.api_key or await chave_compartilhada() or "").strip()
     model_name = req.model or "google/gemini-2.5-flash"
     
     # === Roteador Dinâmico ===
@@ -3194,9 +3356,10 @@ async def create_preference(
         result = await db.execute(select(Coupon).filter(Coupon.code == req.coupon_code.upper()))
         coupon = result.scalars().first()
         
-        if not coupon:
-            raise HTTPException(status_code=400, detail="Cupom inválido ou inexistente.")
-            
+        recusa = motivo_de_recusa_do_cupom(coupon)
+        if recusa:
+            raise HTTPException(status_code=400, detail=recusa)
+
         # Calcula o desconto (baseado em porcentagem)
         discount_amount = final_price * (coupon.discount_percentage / 100.0)
         final_price -= discount_amount
@@ -3232,7 +3395,10 @@ async def create_preference(
             }
         ],
         "payer": {"email": req.email},
-        "external_reference": f"{req.email}|{req.plano}",
+        # Tres partes agora: o cupom viaja junto para o webhook poder contar o
+        # uso SO quando o pagamento for aprovado. A leitura do lado de la aceita
+        # as duas formas, porque pagamentos antigos ainda tem duas partes.
+        "external_reference": f"{req.email}|{req.plano}|{(req.coupon_code or '').upper()}",
         "back_urls": {
             "success": f"{front_url}/login",
             "failure": f"{front_url}/planos",
@@ -3278,7 +3444,10 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
             if payment.get("status") == "approved":
                 external_ref = payment.get("external_reference")
                 if external_ref and "|" in external_ref:
-                    email, plano = external_ref.split("|")
+                    # "email|plano" (antigo) ou "email|plano|CUPOM" (atual).
+                    partes = external_ref.split("|")
+                    email, plano = partes[0], partes[1]
+                    codigo_cupom = partes[2].strip().upper() if len(partes) > 2 else ""
                     
                     planos_info = {
                         "diario_teste": {"dias": 1, "preco": 1.90, "tipo": "Plus", "limite": 200000},
@@ -3304,8 +3473,19 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
                         user.plan_expires_at = base_date + timedelta(days=info["dias"])
                         user.plan_type = info["tipo"]
                         user.token_limit = info["limite"]
-                        user.tokens_used = 0 
+                        user.tokens_used = 0
                         user.token_reset_date = datetime.utcnow() + timedelta(days=30)
+
+                        # O uso do cupom e contado AQUI, e so aqui: abrir o
+                        # checkout e desistir nao pode queimar uma vaga da
+                        # campanha. Esta rota ja e protegida contra reprocesso
+                        # pela tabela processed_payments.
+                        if codigo_cupom:
+                            cup = (await db.execute(
+                                select(Coupon).filter(Coupon.code == codigo_cupom)
+                            )).scalars().first()
+                            if cup:
+                                cup.current_uses = (cup.current_uses or 0) + 1
 
                         # --- NOVA LÓGICA: ATUALIZAÇÃO DO MODELO DE IA ---
                         if info["tipo"] in ["Plus", "Pro"]:
@@ -3325,14 +3505,20 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
                             referrer = referrer_result.scalars().first()
                             
                             if referrer:
-                                referrer.commission_balance += comissao
-                                
-                                # Registra o histórico da comissão
+                                saldo_antes = referrer.commission_balance or 0.0
+                                referrer.commission_balance = saldo_antes + comissao
+
+                                # Registra o histórico da comissão. O antes/depois
+                                # vai junto: sem isto, a comissao nasceria com os
+                                # mesmos campos vazios dos lancamentos antigos, e a
+                                # tela nao teria como conferir a conta.
                                 nova_comissao = CommissionHistory(
                                     user_id=referrer.id,
-                                    amount=comissao,
+                                    amount=round(comissao, 2),
                                     action_type="ganho",
-                                    description=f"Comissão de 20% pela assinatura do plano {info['tipo']}."
+                                    description=f"Comissão de 20% pela assinatura do plano {info['tipo']}.",
+                                    saldo_anterior=round(saldo_antes, 2),
+                                    saldo_novo=round(saldo_antes + comissao, 2),
                                 )
                                 db.add(nova_comissao)
 
@@ -3347,13 +3533,33 @@ async def mercadopago_webhook(request: Request, db: AsyncSession = Depends(get_d
 
 @app.post("/admin/grant-plan/{user_id}")
 async def grant_plan(
-    user_id: int, 
-    plan: str, 
+    user_id: int,
+    plan: str,
+    modo: str = "definir",
     db: AsyncSession = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
+    """Concede um plano a um usuario, pelo painel do administrador.
+
+    O PARAMETRO `modo` (13/09/2026)
+    -------------------------------
+    Esta rota SOMAVA o periodo novo ao tempo que ainda restava. Isso esta certo
+    no WEBHOOK DE PAGAMENTO: quem pagou uma renovacao nao pode perder os dias
+    que ja comprou. Aqui no painel, nao: o administrador abre "Atribuir plano"
+    para DIZER qual e o plano da pessoa, e espera ver a data virar "hoje + N
+    dias". Em vez disso a data ia empilhando a cada clique.
+
+      definir (padrao) -> o periodo comeca agora: hoje + N dias
+      somar            -> soma ao que resta, como o pagamento faz
+
+    O `somar` continua existindo porque tem uso legitimo: creditar uma
+    renovacao que a pessoa pagou por fora, sem tirar dela os dias restantes.
+    """
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Não autorizado")
+
+    if modo not in ("definir", "somar"):
+        raise HTTPException(status_code=400, detail="modo deve ser 'definir' ou 'somar'.")
 
     # Mapeamento dos novos planos
     planos_info = {
@@ -3375,17 +3581,30 @@ async def grant_plan(
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
     now = datetime.utcnow()
-    base_date = target_user.plan_expires_at if (target_user.plan_expires_at and target_user.plan_expires_at > now) else now
-    
+    anterior = target_user.plan_expires_at
+    ainda_vale = bool(anterior and anterior > now)
+
+    # "somar" so muda alguma coisa quando ainda ha periodo em aberto; sem isso,
+    # os dois modos sao a mesma coisa e partem de agora.
+    base_date = anterior if (modo == "somar" and ainda_vale) else now
+
     target_user.plan_expires_at = base_date + timedelta(days=info["dias"])
     target_user.plan_type = info["tipo"]
     target_user.token_limit = info["limite"]
     target_user.tokens_used = 0
     target_user.token_reset_date = now + timedelta(days=30)
-    
+
     await db.commit()
     await db.refresh(target_user)
-    return {"message": "Plano atualizado", "expires_at": target_user.plan_expires_at}
+    return {
+        "message": "Plano atualizado",
+        "modo": modo,
+        "expires_at": target_user.plan_expires_at,
+        # A data ANTERIOR volta junto para o painel dizer o que mudou —
+        # inclusive quando o periodo ENCURTOU, que e o caso em que o
+        # administrador precisa perceber na hora o que acabou de fazer.
+        "expires_at_anterior": anterior,
+    }
 # NOVA ROTA: Remover plano
 @app.post("/admin/revoke-plan/{user_id}")
 async def revoke_plan(
@@ -3432,28 +3651,34 @@ async def handle_commission_action(
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     
     saldo_atual = target_user.commission_balance or 0.0
-    
+
     # LÓGICA DE PAGAMENTO (Abatimento)
     if req.action == "pagamento":
         if req.amount <= 0: raise HTTPException(status_code=400, detail="Valor inválido.")
         if req.amount > saldo_atual: raise HTTPException(status_code=400, detail="Saldo insuficiente para o pagamento.")
         target_user.commission_balance = saldo_atual - req.amount
         desc = req.description or "Pagamento realizado"
-        
-    # LÓGICA DE AJUSTE (Edição Livre)
+
+    # LÓGICA DE AJUSTE (Edição Livre): o valor recebido e o saldo FINAL.
     elif req.action == "ajuste":
         if req.amount < 0: raise HTTPException(status_code=400, detail="O saldo não pode ser negativo.")
         target_user.commission_balance = req.amount
         desc = req.description or "Ajuste manual de saldo"
     else:
         raise HTTPException(status_code=400, detail="Ação inválida")
-        
-    # Salva no Histórico
+
+    saldo_novo = target_user.commission_balance or 0.0
+
+    # `amount` agora e SEMPRE a variacao — negativa quando o saldo cai. Antes
+    # significava "valor pago" no pagamento e "saldo resultante" no ajuste, e
+    # um extrato com duas unidades na mesma coluna nao fecha conta nenhuma.
     hist = CommissionHistory(
         user_id=user_id,
-        amount=req.amount,
+        amount=round(saldo_novo - saldo_atual, 2),
         action_type=req.action,
-        description=desc
+        description=desc,
+        saldo_anterior=round(saldo_atual, 2),
+        saldo_novo=round(saldo_novo, 2),
     )
     db.add(hist)
     
@@ -3491,7 +3716,7 @@ async def training_texto_legal(req: TextoLegalRequest, current_user: User = Depe
     `confiavel: false` quando nao tiver certeza da literalidade, em vez de
     inventar uma versao plausivel.
     """
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"):
+    if not req.api_key and not await chave_compartilhada():
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
 
     dispositivo = (req.dispositivo or "").strip()
@@ -3542,7 +3767,7 @@ async def training_lei_seca(req: LeiSecaRequest, current_user: User = Depends(ge
     operador. O candidato sabe o artigo e nao percebe que a assertiva trocou
     "podera" por "devera". Aqui o operador e o objeto do treino, nao a armadilha.
     """
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"):
+    if not req.api_key and not await chave_compartilhada():
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
 
     texto = (req.texto or "").strip()
@@ -3604,7 +3829,7 @@ async def training_comparador_bancas(req: ComparadorRequest, current_user: User 
     Responde a duvida de quem presta mais de um concurso: "estudei isso, mas cai
     desse jeito na MINHA prova?". Reaproveita o BANCA_ESTILOS ja existente.
     """
-    if not req.api_key and not os.getenv("OPENROUTER_API_KEY"):
+    if not req.api_key and not await chave_compartilhada():
         raise HTTPException(status_code=403, detail="Nenhuma chave de API configurada.")
 
     tema = (req.tema or "").strip()

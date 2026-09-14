@@ -23,7 +23,7 @@ const ROTULO_NIVEL = { Iniciante: "Iniciante", Normal: "Normal", Avancado: "Avan
 
 export default function ComparadorBancas() {
   const [showConfig, setShowConfig] = useState(false);
-  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const { userApiKey, userModel, setUserApiKey, setUserModel, ia } = useAiKey();
   const [aviso, setAviso] = useState(null);
 
   const [tema, setTema] = useState("");
@@ -104,6 +104,7 @@ export default function ComparadorBancas() {
       />
 
       <AiKeyBar
+        ia={ia}
         userApiKey={userApiKey}
         userModel={userModel}
         onConfigurar={() => setShowConfig(true)}

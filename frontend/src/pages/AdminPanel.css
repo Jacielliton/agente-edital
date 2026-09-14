@@ -175,3 +175,47 @@
   .adm__hist-row { grid-template-columns: 1fr auto; }
   .adm__hist-row .d { display: none; }
 }
+
+/* ---------------------------------------------- Período do plano concedido
+   A escolha entre "começa hoje" e "somar ao que resta". Antes dela a rota
+   sempre somava, e cada clique em Atribuir plano empurrava a validade para
+   frente sem o administrador perceber. */
+.adm__modo-plano {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2, var(--surface));
+}
+.adm__modo-plano strong { display: block; font-size: var(--text-sm); }
+.adm__modo-plano p { margin: 2px 0 0; font-size: var(--text-sm); color: var(--fg-2); }
+
+/* ------------------------------------------ Estado da chave da IA global */
+.adm__chave-estado {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+  margin-top: 6px;
+  font-size: var(--text-sm); color: var(--fg-2);
+}
+.adm__chave-estado code { font-family: var(--font-mono); }
+
+/* -------------------------------------------------- Alvo de toque (44px)
+   Medido em 13/09/2026, a 375px: 71 elementos abaixo de 44px nesta tela, e os
+   piores eram QUATRO botões de 32px encostados — Suspender, Gerenciar plano,
+   Editar e Excluir. No celular, "Excluir" ficava a poucos pixels de "Editar".
+
+   Só a ÁREA cresce; o quadrado visível continua com 32px, senão a linha da
+   tabela estoura. O ::after estica o alvo para fora do botão, e o
+   `position: relative` do pai é o que ancora isso. */
+@media (pointer: coarse) {
+  .adm__icon-btn { position: relative; }
+  .adm__icon-btn::after {
+    content: ""; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 44px; height: 44px;
+  }
+  /* Com alvos de 44px em botões de 32px, vizinhos colados se sobrepõem — e o
+     de cima venceria. O espaçamento devolve a separação física. */
+  .adm__actions { gap: var(--space-3); }
+}

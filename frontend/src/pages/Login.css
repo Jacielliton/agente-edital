@@ -323,3 +323,37 @@
   .auth__card { padding: var(--space-5) var(--space-4); }
   .auth__cta { width: calc(100% - var(--space-6)); }
 }
+
+/* Aviso de cobrança no bloco de planos. Fica ANTES dos cartões de propósito:
+   com "/mês" e "Assinar" logo abaixo, a pessoa precisa saber que não é
+   assinatura recorrente antes de escolher, e não na página seguinte. */
+.auth__cobranca {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: 760px;
+  margin: var(--space-4) auto 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--ok-soft);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius-md);
+  color: var(--fg-2);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  text-align: left;
+}
+.auth__cobranca svg { color: var(--ok); flex: none; margin-top: 2px; }
+.auth__cobranca b { color: var(--fg); }
+
+/* `.auth__section-head span` e o rotulo da secao ("PLANOS", "COMO FUNCIONA"):
+   11px, caixa alta, espacado, na cor de destaque. Como este aviso mora dentro
+   do mesmo cabecalho, o <span> dele foi pego por aquela regra e a frase inteira
+   saiu em MAIUSCULAS AZUIS — legivel num rotulo de tres palavras, pessimo num
+   paragrafo. Aqui ele volta a ser texto corrido. */
+.auth__section-head .auth__cobranca span {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+}

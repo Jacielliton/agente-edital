@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import Md, { componentesMarkdown } from "../components/Markdown";
 import { Modal, ConfirmDialog, Notice, Toast} from "../components/ui";
 import { AiKeyBar, AiKeyPanel, useAiKey, getAuthToken } from "../components/AiKeyConfig";
+import { registrarSimulado } from "../desempenho";
 import { QuestaoCard, TextoBase, PainelErros, HistoricoModal } from "../components/simulador";
 
 // Dados teóricos integrados para Língua Inglesa
@@ -123,7 +124,7 @@ export default function GabariteIngles() {
 
   // --- ESTADOS DA CONFIGURAÇÃO DA IA ---
   const [showConfig, setShowConfig] = useState(false);
-  const { userApiKey, userModel, setUserApiKey, setUserModel } = useAiKey();
+  const { userApiKey, userModel, setUserApiKey, setUserModel, ia } = useAiKey();
   const [aviso, setAviso] = useState(null);
 
   // --- ESTADOS DO SIMULADOR ---
@@ -374,6 +375,17 @@ export default function GabariteIngles() {
     });
 
     saveStats(newStats);
+    // Além do painel local, o resultado da sessão vai para o servidor: sem
+    // isto, o Meu Desempenho e o ranking ignoram esta ferramenta inteira.
+    const respondidas = currentData.questoes.filter((q) => userAnswers[q.id]);
+    registrarSimulado({
+      ferramenta: "ingles",
+      foco: configFocus,
+      acertos: respondidas.filter((q) => userAnswers[q.id] === q.gabarito).length,
+      respondidas: respondidas.length,
+      nivel: configDifficulty,
+      formato: configFormato,
+    });
     setAviso({ tone: "ok", texto: `Simulado de Inglês finalizado! Pontuação líquida CESPE: ${right - wrong}` });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -501,6 +513,7 @@ export default function GabariteIngles() {
       </header>
 
       <AiKeyBar
+        ia={ia}
         userApiKey={userApiKey}
         userModel={userModel}
         onConfigurar={() => setShowConfig(true)}
